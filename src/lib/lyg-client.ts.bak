@@ -1,0 +1,1231 @@
+import "server-only";
+
+/**
+ * Centralized LYG API Client
+ * 
+ * Handles:
+ * - URL construction (avoid double /api)
+ * - TLS/SSL validation
+ * - Error diagnostics with body snippets
+ * - Timeout handling
+ * - Token injection
+ * - Banklogs endpoint fallback (404 handling)
+ */
+
+import { debug, error as logError } from "./logger";
+
+export interface LygClientConfig {
+  baseUrl: string;
+  token: string;
+}
+
+export interface LygResponse<T = any> {
+  ok: boolean;
+  status: number;
+  statusText?: string;
+  headers: Record<string, string>;
+  data?: T;
+  text?: string;
+  contentType?: string | null;
+  error?: string;
+  hint?: string;
+  resolvedUrl?: string;
+  duration?: number;
+}
+
+/**
+ * Safe JSON parse that handles SteamID64 precision loss
+ * 
+ * SteamID64 is 17 digits (76561198xxxxxxxxx), which exceeds Number.MAX_SAFE_INTEGER (2^53-1).
+ * If LYG returns steamid as a number without quotes, JSON.parse converts it to Number
+ * and loses precision.
+ * 
+ * Solution: Convert numeric steamid/steamId to strings BEFORE JSON.parse using regex.
+ * 
+ * Example:
+ * Input:  { "steamid": 76561198012345678, "steamId": 76561198087654321 }
+ * Output: { "steamid": "76561198012345678", "steamId": "76561198087654321" }
+ * 
+ * Returns: { data, precisionWarning: boolean }
+ * precisionWarning = true if we detected and fixed numeric steamids
+ */
+export function safeLygJsonParse(
+  rawText: string
+): { data: any; precisionWarning: boolean } {
+  if (!rawText) {
+    return { data: null, precisionWarning: false };
+  }
+
+  let modified = rawText;
+  let precisionWarning = false;
+
+  // Convert "steamid": number (17 digits) to "steamid": "number"
+  if (/"steamid"\s*:\s*(\d{17})([,\}])/g.test(rawText)) {
+    modified = modified.replace(/"steamid"\s*:\s*(\d{17})/g, '"steamid":"$1"');
+    precisionWarning = true;
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-parse] Detected numeric steamid (17 digits), converted to string");
+    }
+  }
+
+  // Convert "steamId": number (17 digits) to "steamId": "number"
+  if (/"steamId"\s*:\s*(\d{17})([,\}])/g.test(rawText)) {
+    modified = modified.replace(/"steamId"\s*:\s*(\d{17})/g, '"steamId":"$1"');
+    precisionWarning = true;
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-parse] Detected numeric steamId (17 digits), converted to string");
+    }
+  }
+
+  // Parse JSON safely
+  try {
+    const data = JSON.parse(modified);
+    if (precisionWarning && process.env.NODE_ENV !== 'production') {
+      debug("[lyg-parse] SteamID precision warning: numeric steamid converted to string before parsing");
+    }
+    return { data, precisionWarning };
+  } catch (err: any) {
+    logError("[lyg-parse] JSON parse error:", err.message);
+    return { data: null, precisionWarning };
+  }
+}
+
+type LygFamilyEndpointKind = "members" | "banklogs";
+
+type LygEndpointDiagnostics = {
+  kind: LygFamilyEndpointKind;
+  familyId: string;
+  tested: string[];
+  chosen?: string;
+  lastStatus?: number;
+};
+
+const endpointCache = new Map<string, string>();
+const endpointDiagnostics = new Map<string, LygEndpointDiagnostics>();
+
+function getEndpointCacheKey(kind: LygFamilyEndpointKind, familyId: string): string {
+  return `${kind}:${familyId}`;
+}
+
+function buildFamilyEndpointCandidates(kind: LygFamilyEndpointKind, familyId: string): string[] {
+  // CRITICAL: Validate slug format - reject display names
+  if (familyId.includes(" ") || familyId.includes("%20") || !familyId) {
+    console.error("[LYG CRITICAL] familyId invalid - contains spaces or empty", { familyId, rejected: true });
+    return [];
+  }
+  
+  const safe = encodeURIComponent(familyId);
+  const baseSegments = ["familles", "families", "famille"];
+  const suffixes = kind === "members" ? ["members", "membres"] : ["banklogs", "banklog"];
+
+  const candidates: string[] = [];
+  for (const base of baseSegments) {
+    for (const suffix of suffixes) {
+      candidates.push(`/${base}/${safe}/${suffix}`);
+    }
+  }
+  return candidates;
+}
+
+export function getLygEndpointDiagnostics(): LygEndpointDiagnostics[] {
+  return Array.from(endpointDiagnostics.values());
+}
+
+export async function fetchFamilyEndpointText(
+  kind: LygFamilyEndpointKind,
+  familyId: string,
+  opts?: { timeoutMs?: number; query?: Record<string, string> }
+): Promise<LygResponse<string> & { pathUsed?: string; tested?: string[] }> {
+  // CRITICAL: Log all LYG calls with enforced slug validation
+  console.log("[LYG CALL]", {
+    kind,
+    familyId,
+    enforced: "MUST_BE_slugonly",
+    timestamp: new Date().toISOString(),
+  });
+  
+  const cacheKey = getEndpointCacheKey(kind, familyId);
+  const candidates = buildFamilyEndpointCandidates(kind, familyId);
+  const cached = endpointCache.get(cacheKey);
+  const ordered = cached
+    ? [cached, ...candidates.filter((c) => c !== cached)]
+    : candidates;
+
+  const tested: string[] = [];
+  let lastResult: LygResponse<string> | null = null;
+
+  const queryString = opts?.query
+    ? new URLSearchParams(opts.query).toString()
+    : "";
+
+  for (const path of ordered) {
+    tested.push(path);
+    const pathWithQuery = queryString ? `${path}?${queryString}` : path;
+    const result = await lyFetch<string>(pathWithQuery, {
+      method: "GET",
+      timeoutMs: opts?.timeoutMs,
+      returnText: true,
+    });
+
+    lastResult = result;
+
+    if (result.ok) {
+      endpointCache.set(cacheKey, path);
+      endpointDiagnostics.set(cacheKey, {
+        kind,
+        familyId,
+        tested,
+        chosen: path,
+        lastStatus: result.status,
+      });
+
+      if (path !== candidates[0]) {
+        console.warn("[LYG] endpoint_fallback", { kind, familyId, familySlug: familyId, path });
+      }
+
+      console.info("[LYG] urlUsed", { kind, familyId, familySlug: familyId, endpoint: path, status: result.status });
+      return { ...result, pathUsed: path, tested };
+    }
+
+    if (result.status !== 404) {
+      endpointDiagnostics.set(cacheKey, {
+        kind,
+        familyId,
+        tested,
+        chosen: path,
+        lastStatus: result.status,
+      });
+      console.warn("[LYG] endpoint_error", { kind, familyId, familySlug: familyId, endpoint: path, status: result.status });
+      return { ...result, pathUsed: path, tested };
+    }
+  }
+
+  endpointDiagnostics.set(cacheKey, {
+    kind,
+    familyId,
+    tested,
+    chosen: undefined,
+    lastStatus: lastResult?.status ?? 404,
+  });
+
+  return {
+    ok: false,
+    status: lastResult?.status ?? 404,
+    statusText: lastResult?.statusText,
+    headers: lastResult?.headers ?? {},
+    error: `LYG endpoint not found (tested: ${tested.join(", ")})`,
+    hint: lastResult?.hint,
+    resolvedUrl: lastResult?.resolvedUrl,
+    duration: lastResult?.duration,
+    text: lastResult?.text,
+    data: lastResult?.data,
+    pathUsed: undefined,
+    tested,
+  };
+}
+
+/**
+ * Strip trailing slashes from URL
+ */
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/$/, "");
+}
+
+/**
+ * Strip /api suffix from URL (for computing root base)
+ * 
+ * Examples:
+ * - "https://api.lyg.fr/api" -> "https://api.lyg.fr"
+ * - "https://api.lyg.fr/api/" -> "https://api.lyg.fr"
+ * - "https://api.lyg.fr" -> "https://api.lyg.fr"
+ */
+function stripApiSuffix(url: string): string {
+  const clean = stripTrailingSlash(url);
+  if (clean.endsWith("/api")) {
+    return clean.slice(0, -4); // Remove "/api"
+  }
+  return clean;
+}
+
+/**
+ * Safe URL join - prevents double slashes and /api duplication
+ * 
+ * Examples:
+ * - safeJoinUrl("https://api.lyg.fr/api", "familles/x/members") -> "https://api.lyg.fr/api/familles/x/members"
+ * - safeJoinUrl("https://api.lyg.fr", "/api/test") -> "https://api.lyg.fr/api/test"
+ */
+function safeJoinUrl(base: string, path: string): string {
+  const normalizedBase = stripTrailingSlash(base);
+  let normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  
+  // Prevent double /api
+  if (normalizedBase.endsWith("/api") && normalizedPath.startsWith("/api")) {
+    normalizedPath = normalizedPath.slice(4);
+  }
+  
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+/**
+ * Get LYG config from environment
+ */
+function getLygConfig(): LygClientConfig {
+  const baseUrl = process.env.LYG_BASE_URL?.trim();
+  const token = process.env.LYG_TOKEN?.trim();
+
+  if (!baseUrl || !token) {
+    throw new Error(
+      `Missing LYG config: baseUrl=${!!baseUrl}, token=${!!token}`
+    );
+  }
+
+  // Normalize base URL: ensure it ends with /api if not already there
+  let normalizedUrl = baseUrl;
+  if (!normalizedUrl.endsWith("/api") && !normalizedUrl.endsWith("/api/")) {
+    normalizedUrl = normalizedUrl.replace(/\/$/, "") + "/api";
+  }
+
+  return { baseUrl: normalizedUrl, token };
+}
+
+/**
+ * Get internal panel base URL for same-origin proxy calls
+ * 
+ * In production, Node.js may not be able to access the public URL via
+ * NEXTAUTH_URL/PANEL_PUBLIC_URL (e.g., tunnel/TLS/DNS issues), so we use
+ * the internal loopback address instead.
+ * 
+ * Fallback chain:
+ * 1. PANEL_INTERNAL_BASE_URL (explicit config)
+ * 2. http://127.0.0.1:{PORT} (loopback)
+ * 3. http://localhost:3000 (dev fallback)
+ */
+function getInternalPanelBase(): string {
+  // Explicit internal base URL
+  if (process.env.PANEL_INTERNAL_BASE_URL) {
+    const url = process.env.PANEL_INTERNAL_BASE_URL.trim();
+    debug(`[lyg-banklogs] using INTERNAL base from PANEL_INTERNAL_BASE_URL: ${url}`);
+    return stripTrailingSlash(url);
+  }
+
+  // Loopback fallback (works in Node runtime regardless of public URL)
+  const port = process.env.PORT ?? "3000";
+  const internalUrl = `http://127.0.0.1:${port}`;
+  debug(`[lyg-banklogs] using INTERNAL base (loopback): ${internalUrl}`);
+  return internalUrl;
+}
+
+/**
+ * Extract array from LYG response supporting multiple formats:
+ * - Format A: { data: [...] }
+ * - Format B: { members: [...] }
+ * - Format C: [ ... ] (direct array)
+ * - Format D: { message, familyName, data: [...] } (wrapper)
+ * - Format E: { result: [...] }
+ * - Format F: { payload: { data: [...] } }
+ * 
+ * IMPROVED: Includes detection of chosen key + robust recursive search
+ * 
+ * Also logs debug info if NODE_ENV !== 'production':
+ * - content-type
+ * - root keys
+ * - extracted array length + key path
+ * - first item sample
+ * 
+ * CRITICAL RULE: Never filter silently. Always log which structure was found.
+ * If no array found → return { array: [], chosenKey: "none" }
+ * Call site MUST log warning and provide diagnostics.
+ * 
+ * Returns { array, chosenKey } where chosenKey is:
+ * - "direct" for direct array format
+ * - "preferred:<key>" for preferred key match
+ * - "nested:<path>" for nested extraction
+ * - "fallback:<key>" for first Array found
+ * - "none" if NO array found (always log warning at call site)
+ */
+export function extractArrayFromLygResponse(
+  response: any,
+  contentType?: string | null
+): { array: any[]; chosenKey: string } {
+  if (Array.isArray(response)) {
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-parse] Array extraction", {
+        format: "direct",
+        contentType,
+        length: response.length,
+        firstItem: response[0] ? JSON.stringify(response[0]).slice(0, 150) : undefined,
+      });
+    }
+    return { array: response, chosenKey: "direct" };
+  }
+
+  if (!response || typeof response !== 'object') {
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-parse] Invalid response type:", { type: typeof response, contentType });
+    }
+    return { array: [], chosenKey: "invalid" };
+  }
+
+  const rootKeys = Object.keys(response);
+  if (process.env.NODE_ENV !== 'production') {
+    debug("[lyg-parse] Response root keys:", { keys: rootKeys, count: rootKeys.length, contentType });
+  }
+
+  const preferredKeys = [
+    "members",
+    "data",
+    "result",
+    "items",
+    "content",
+    "payload",
+    "response",
+    "value",
+  ] as const;
+
+  // Try preferred keys first (1 level deep)
+  for (const key of preferredKeys) {
+    if (Array.isArray((response as any)[key])) {
+      const arr = (response as any)[key];
+      if (process.env.NODE_ENV !== 'production') {
+        debug("[lyg-parse] Array extraction", {
+          format: `preferred:${key}`,
+          length: arr.length,
+          firstItem: arr[0] ? JSON.stringify(arr[0]).slice(0, 150) : undefined,
+        });
+      }
+      return { array: arr, chosenKey: `preferred:${key}` };
+    }
+  }
+
+  // Recursive search up to depth 2
+  const findArrayRecursive = (
+    obj: any,
+    path: string,
+    depth: number
+  ): { path: string; arr: any[] } | null => {
+    if (!obj || typeof obj !== "object") return null;
+    if (depth < 0) return null;
+
+    // Check preferred keys at this level
+    for (const key of preferredKeys) {
+      if (Array.isArray((obj as any)[key])) {
+        return { path: path ? `${path}.${key}` : key, arr: (obj as any)[key] };
+      }
+    }
+
+    // Recurse into object values
+    if (depth > 0) {
+      for (const [key, value] of Object.entries(obj)) {
+        if (value && typeof value === "object") {
+          const found = findArrayRecursive(value, path ? `${path}.${key}` : key, depth - 1);
+          if (found) return found;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const nested = findArrayRecursive(response, "", 2);
+  if (nested) {
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-parse] Array extraction", {
+        format: `nested:${nested.path}`,
+        length: nested.arr.length,
+        firstItem: nested.arr[0] ? JSON.stringify(nested.arr[0]).slice(0, 150) : undefined,
+      });
+    }
+    return { array: nested.arr, chosenKey: `nested:${nested.path}` };
+  }
+
+  // Fallback: scan all values for any Array
+  for (const [key, value] of Object.entries(response)) {
+    if (Array.isArray(value)) {
+      if (process.env.NODE_ENV !== 'production') {
+        debug("[lyg-parse] Array extraction", {
+          format: `fallback:${key}`,
+          length: value.length,
+          firstItem: value[0] ? JSON.stringify(value[0]).slice(0, 150) : undefined,
+        });
+      }
+      return { array: value, chosenKey: `fallback:${key}` };
+    }
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    debug("[lyg-parse] No array found", { keys: rootKeys, contentType });
+  }
+  return { array: [], chosenKey: "none" };
+}
+
+/**
+ * Normalize LYG member to standard format
+ * 
+ * Handles various field names:
+ * - steamId: steamid, steamId, steam_id, steam, id (if numeric)
+ * - family: family, familyName, class (if string)
+ * - rank/class: class, rank, grade, type
+ * - owner: owner, isOwner, ownerFlag
+ */
+export function normalizeLygMember(item: any, defaultFamily?: string): {
+  steamId64: string;
+  family: string;
+  rank?: string;
+  owner?: boolean;
+  rpName?: string;
+  grade?: string;
+  joinedAt?: string;
+  isActive?: boolean;
+  discordId?: string;
+} | null {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const steamIdKeys = [
+    "steamId",
+    "steamID",
+    "SteamID",
+    "steam_id",
+    "steam",
+    "id",
+    "steamid",
+  ] as const;
+
+  let steamIdRaw: unknown = undefined;
+  for (const key of steamIdKeys) {
+    if (Object.prototype.hasOwnProperty.call(item, key)) {
+      steamIdRaw = (item as any)[key];
+      if (steamIdRaw !== undefined && steamIdRaw !== null && String(steamIdRaw).trim() !== "") {
+        break;
+      }
+    }
+  }
+
+  if (typeof steamIdRaw === "number" && !Number.isSafeInteger(steamIdRaw)) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[lyg-members] steamId not safe integer:", steamIdRaw);
+    }
+  }
+
+  // Extract steamId64
+  const steamId64 = String(steamIdRaw ?? "").trim();
+
+  // Skip if no steam identifier
+  if (!steamId64 || steamId64 === "") {
+    return null;
+  }
+
+  // Extract family name
+  const family = (
+    item.family ?? 
+    item.familyName ?? 
+    item.class ??
+    defaultFamily ??
+    "unknown"
+  );
+
+  // Extract rank/grade
+  const rank = item.class ?? item.rank ?? item.grade ?? item.type ?? null;
+
+  // Extract owner flag
+  const owner = item.owner ?? item.isOwner ?? item.ownerFlag ?? false;
+
+  return {
+    steamId64,
+    family: String(family),
+    rank: rank ? String(rank) : undefined,
+    owner: Boolean(owner),
+    rpName: item.rpName || item.name || item.nomRP || item.username,
+    grade: item.grade || item.rank || null,
+    joinedAt: item.joinedAt || item.joined_at || item.createdAt,
+    isActive: item.isActive ?? item.active ?? true,
+    discordId: item.discordId || item.discord_id,
+  };
+}
+
+/**
+ * Safe URL join - prevents double /api and trailing slashes (legacy, use safeJoinUrl)
+ * 
+ * Examples:
+ * - base: "https://api.lyg.fr/api", path: "/familles/x/members" -> "https://api.lyg.fr/api/familles/x/members"
+ * - base: "https://api.lyg.fr", path: "/api/banklogs" -> "https://api.lyg.fr/api/banklogs"
+ * - base: "https://api.lyg.fr/api/", path: "familles/x/infos" -> "https://api.lyg.fr/api/familles/x/infos"
+ */
+function joinUrl(base: string, path: string): string {
+  return safeJoinUrl(base, path);
+}
+
+/**
+ * Validate and normalize URL (legacy, use joinUrl instead)
+ */
+function normalizeUrl(base: string, path: string): string {
+  return joinUrl(base, path);
+}
+
+/**
+ * Fetch JSON from LYG with diagnostics
+ */
+export async function lygFetchJson<T = any>(
+  path: string,
+  opts?: { timeoutMs?: number }
+): Promise<LygResponse<T>> {
+  return lyFetch<T>(path, { ...opts, method: "GET" });
+}
+
+/**
+ * Fetch text (for debugging non-JSON responses)
+ */
+export async function lygFetchText(
+  path: string,
+  opts?: { timeoutMs?: number }
+): Promise<LygResponse<string>> {
+  return lyFetch<string>(path, { ...opts, method: "GET", returnText: true });
+}
+
+/**
+ * Build LYG family members path using stable familyId/slug only.
+ */
+export function familyMembersPath(familyId: string): string {
+  const safe = encodeURIComponent(familyId);
+  return `/familles/${safe}/members`;
+}
+
+/**
+ * Build LYG family banklogs path using stable familyId/slug only.
+ */
+export function familyBankLogsPath(familyId: string): string {
+  const safe = encodeURIComponent(familyId);
+  return `/familles/${safe}/banklogs`;
+}
+
+/**
+ * Fetch members from LYG with observable metadata
+ * 
+ * Returns:
+ * - data: extracted array of members
+ * - meta: { urlUsed, status, contentType, rootKeys, extractedCount, skippedInvalid }
+ * 
+ * Logs in dev: finalUrl + status + contentType
+ * Logs in prod (WARN): only if extractedCount === 0
+ */
+export async function lygFetchMembers(
+  familyId?: string,
+  opts?: { timeoutMs?: number }
+): Promise<
+  LygResponse<any[]> & {
+    meta?: {
+      urlUsed: string;
+      status: number;
+      contentType?: string | null;
+      rootKeys: string[];
+      extractedCount: number;
+      skippedInvalid: number;
+      precisionWarning?: boolean;
+      chosenKey?: string;
+    };
+  }
+> {
+  try {
+    try {
+      getLygConfig();
+    } catch (err: any) {
+      return {
+        ok: false,
+        status: 0,
+        headers: {},
+        error: err.message,
+        data: [],
+        meta: {
+          urlUsed: "unknown",
+          status: 0,
+          rootKeys: [],
+          extractedCount: 0,
+          skippedInvalid: 0,
+        },
+      };
+    }
+
+    // CRITICAL: Warn if familyId parameter is not slug and ignore it
+    if (familyId && familyId !== "esperados") {
+      console.warn("[lyg-members] Ignoring non-slug familyId parameter, using FAMILY_SLUG", {
+        received: familyId,
+        enforced: "esperados",
+      });
+    }
+
+    const timeoutMs = opts?.timeoutMs || 15_000;
+    // CRITICAL: ALWAYS use "esperados" slug, never familyId parameter
+    const res = await fetchFamilyEndpointText("members", "esperados", { timeoutMs });
+    const resolvedUrl = res.resolvedUrl ?? res.pathUsed ?? "unknown";
+    const contentType = res.contentType;
+    const rawText = typeof res.data === "string" ? res.data : res.text ?? "";
+
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-members] Fetching from URL", { resolvedUrl });
+    }
+
+    // Parse safely (handles numeric steamid conversion)
+    const { data: parsedData, precisionWarning } = rawText 
+      ? safeLygJsonParse(rawText) 
+      : { data: null, precisionWarning: false };
+
+    const rootKeys = Array.isArray(parsedData)
+      ? ["<array>"]
+      : parsedData
+        ? Object.keys(parsedData)
+        : [];
+
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-members] Fetched from LYG", {
+        url: resolvedUrl,
+        status: res.status,
+        contentType,
+        rootKeys,
+        precisionWarning,
+      });
+    }
+
+    if (!res.ok || !parsedData) {
+      const meta = {
+        urlUsed: resolvedUrl,
+        status: res.status,
+        contentType,
+        rootKeys,
+        extractedCount: 0,
+        skippedInvalid: 0,
+        precisionWarning,
+      };
+
+      if (process.env.NODE_ENV === 'production') {
+        console.warn(`[lyg-members] WARN: fetch failed - HTTP ${res.status}`, {
+          urlUsed: resolvedUrl,
+          status: res.status,
+        });
+      }
+
+      return {
+        ok: false,
+        status: res.status,
+        headers: res.headers ?? {},
+        error: res.error || res.statusText || `HTTP ${res.status}`,
+        data: [],
+        meta,
+      };
+    }
+
+    // Extract array from response
+    const { array: extracted, chosenKey } = extractArrayFromLygResponse(parsedData, contentType);
+    const firstItemKeys =
+      extracted[0] && typeof extracted[0] === "object"
+        ? Object.keys(extracted[0] as Record<string, unknown>)
+        : [];
+
+    if (process.env.NODE_ENV !== 'production') {
+      debug("[lyg-members] Array extraction result", {
+        chosenKey,
+        extractedLength: extracted.length,
+        firstItemKeys,
+      });
+    }
+
+    // Validate and count steamIds (accept 17-digit strings)
+    // IMPORTANT: Log every extraction/validation step for diagnostics
+    let skippedInvalid = 0;
+    const validated = extracted.map(item => {
+      const normalized = normalizeLygMember(item, "esperados");
+      if (normalized === null) {
+        skippedInvalid++;
+        return null;
+      }
+      // Accept steamId64 if it's 17 digits (relaxed validation)
+      if (!normalized.steamId64 || !/^[0-9]{17}$/.test(normalized.steamId64)) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[lyg-members] REJECTED: Invalid steamId64 format: "${normalized.steamId64}"`);
+        }
+        skippedInvalid++;
+        return null;
+      }
+      return normalized;
+    }).filter((n): n is NonNullable<typeof n> => n !== null);
+
+    const meta = {
+      urlUsed: resolvedUrl,
+      status: res.status,
+      contentType,
+      rootKeys,
+      extractedCount: validated.length,
+      skippedInvalid,
+      precisionWarning,
+      chosenKey,
+    };
+
+    // CRITICAL: Always log extraction/validation summary in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      console.log("[lyg-members] EXTRACTION SUMMARY:", {
+        extracted: extracted.length,
+        validated: validated.length,
+        rejected_steamId: skippedInvalid,
+        precisionWarning,
+      });
+
+      if (extracted.length === 0) {
+        console.warn("[lyg-members] EXTRACTION FAILED: No members extracted from response", {
+          rootKeys,
+          contentType,
+          urlUsed: resolvedUrl,
+          status: res.status,
+          hint: "Check API response structure (should have members array/object)",
+        });
+      } else if (validated.length === 0 && extracted.length > 0) {
+        console.warn("[lyg-members] VALIDATION FAILED: Extracted members but all had invalid steamIds", {
+          extracted: extracted.length,
+          rejected_steamId: skippedInvalid,
+          chosenKey,
+          urlUsed: resolvedUrl,
+          status: res.status,
+          hint: "Check that steamId field exists and is 17-digit format",
+          sampleFirstItem: extracted[0] ? JSON.stringify(extracted[0]).slice(0, 200) : undefined,
+        });
+      }
+    }
+
+    return {
+      ok: true,
+      status: res.status,
+      headers: res.headers ?? {},
+      data: validated,
+      meta,
+    };
+  } catch (err: any) {
+    logError("[lyg-members] Exception:", err.message);
+    return {
+      ok: false,
+      status: 0,
+      headers: {},
+      error: err.message,
+      data: [],
+      meta: {
+        urlUsed: "unknown",
+        status: 0,
+        contentType: undefined,
+        rootKeys: [],
+        extractedCount: 0,
+        skippedInvalid: 0,
+        chosenKey: undefined,
+      },
+    };
+  }
+}
+
+/**
+ * Fetch banklogs with realistic endpoint fallback
+ * 
+ * Strategy: Try multiple endpoint patterns including both /api root and non-/api root
+ * 
+ * Fallback chain:
+ * 1-2. WITH /api prefix (canonical upstream endpoints)
+ * 3-6. WITHOUT /api prefix (root-level upstream endpoints)
+ * 7. LEGACY: Internal proxy endpoint as final fallback
+ * 
+ * For each attempt: logs status, contentType, bodySnippet (800 chars)
+ * Stops on 401/403 (auth errors), continues on 404/500/network errors.
+ */
+export async function lygFetchBanklogs(
+  familyId: string,
+  opts?: { timeoutMs?: number }
+): Promise<
+  LygResponse<any> & {
+    triedUrls?: Array<{ 
+      url: string; 
+      status: number; 
+      tried: boolean;
+      contentType?: string | null;
+      bodySnippet?: string;
+    }>;
+  }
+> {
+  let config: LygClientConfig;
+  try {
+    config = getLygConfig();
+  } catch (err: any) {
+    return {
+      ok: false,
+      status: 0,
+      headers: {},
+      error: err.message,
+      triedUrls: [],
+    };
+  }
+
+  // Compute rootBase (e.g., https://api.lyg.fr/api -> https://api.lyg.fr)
+  const rootBase = stripApiSuffix(config.baseUrl);
+  
+  // Use internal base URL for same-origin proxy calls (avoids tunnel/TLS/DNS issues)
+  // This is different from publicPanelBase which is for browser redirects
+  const internalPanelBase = getInternalPanelBase();
+
+  // Build fallback chain - 7 endpoints across 3 strategies
+  const candidates = [
+    // WITH /api prefix (canonical)
+    { 
+      type: "api", 
+      url: safeJoinUrl(config.baseUrl, `banklogs`), 
+      label: "LYG /api/banklogs" 
+    },
+    { 
+      type: "api", 
+      url: safeJoinUrl(config.baseUrl, `banklogs?family=${encodeURIComponent(familyId)}`), 
+      label: "LYG /api/banklogs?family=..." 
+    },
+    
+    // WITHOUT /api prefix (root-level)
+    { 
+      type: "root", 
+      url: safeJoinUrl(rootBase, `banklogs`), 
+      label: "LYG root /banklogs" 
+    },
+    { 
+      type: "root", 
+      url: safeJoinUrl(rootBase, `banklogs?family=${encodeURIComponent(familyId)}`), 
+      label: "LYG root /banklogs?family=..." 
+    },
+    { 
+      type: "root", 
+      url: safeJoinUrl(rootBase, `banklogs/${encodeURIComponent(familyId)}`), 
+      label: "LYG root /banklogs/{id}" 
+    },
+    { 
+      type: "root", 
+      url: safeJoinUrl(rootBase, `familles/${encodeURIComponent(familyId)}/banklogs`), 
+      label: "LYG root /familles/{id}/banklogs" 
+    },
+    
+    // LEGACY internal proxy fallback - use internal base to avoid tunnel/TLS issues
+    { 
+      type: "legacy", 
+      url: safeJoinUrl(internalPanelBase, `api/lygbanklogs`), 
+      label: "Legacy proxy /api/lygbanklogs" 
+    },
+  ];
+
+  const triedUrls: Array<{ 
+    url: string; 
+    status: number; 
+    tried: boolean;
+    contentType?: string | null;
+    bodySnippet?: string;
+  }> = [];
+  
+  let lastError: LygResponse<any> | null = null;
+
+  for (const candidate of candidates) {
+    const { type, url, label } = candidate;
+    
+    debug(`[lyg-banklogs] Trying ${label}: ${url}`);
+
+    try {
+      let result: LygResponse<any>;
+      
+      if (type === "legacy") {
+        // For legacy proxy, fetch from same origin (internal next.js API)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), opts?.timeoutMs || 10_000);
+        
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { "Accept": "application/json" },
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        
+        clearTimeout(timeoutId);
+        const contentType = res.headers.get("content-type");
+        const text = await res.text().catch(() => "");
+        let data: any;
+        
+        try {
+          data = text ? JSON.parse(text) : undefined;
+        } catch {
+          // Not JSON, OK
+        }
+        
+        result = {
+          ok: res.ok,
+          status: res.status,
+          headers: Object.fromEntries(res.headers.entries()),
+          data,
+          text,
+          contentType,
+          resolvedUrl: url,
+          duration: 0,
+        };
+      } else {
+        // For LYG endpoints, use lygFetchJson (includes token + proper error handling)
+        const path = "/" + url.split("/").slice(3).join("/");
+        result = await lygFetchJson<any>(path, opts);
+      }
+      
+      const snippet = result.text ? result.text.slice(0, 800) : undefined;
+      triedUrls.push({
+        url,
+        status: result.status,
+        tried: true,
+        contentType: result.contentType,
+        bodySnippet: snippet,
+      });
+
+      if (result.ok) {
+        debug(`[lyg-banklogs] ✓ Success on ${label}`, {
+          status: result.status,
+          endpoint: url,
+        });
+        return { ...result, triedUrls };
+      }
+
+      // If 401/403, stop trying (auth error)
+      if (result.status === 401 || result.status === 403) {
+        debug(`[lyg-banklogs] Auth error (${result.status}), stopping fallback`, { url });
+        return { ...result, triedUrls };
+      }
+
+      // If 404/500/other, log and continue to next candidate
+      debug(`[lyg-banklogs] Failed (${result.status}), trying next...`, {
+        url,
+        bodySnippet: snippet?.slice(0, 200),
+      });
+      lastError = result;
+      continue;
+    } catch (err: any) {
+      logError(`[lyg-banklogs] Exception on ${label}:`, err.message);
+      const snippet = err.message.slice(0, 800);
+      triedUrls.push({
+        url,
+        status: 0,
+        tried: true,
+        bodySnippet: snippet,
+      });
+      lastError = {
+        ok: false,
+        status: 0,
+        headers: {},
+        error: err.message,
+        resolvedUrl: url,
+        duration: 0,
+      };
+    }
+  }
+
+  // All candidates failed - generate helpful hint
+  let hint = "Banklogs unavailable on all attempted endpoints.";
+  
+  // Check if /api endpoints tried and failed
+  const apiAttempts = triedUrls.filter(t => t.url.includes("/api"));
+  const rootAttempts = triedUrls.filter(t => !t.url.includes("/api") && !t.url.includes("legacy"));
+  const apiFailed = apiAttempts.some(t => t.status === 404);
+  const legacyFailed = triedUrls[triedUrls.length - 1]?.status !== 200;
+  
+  if (apiFailed && rootAttempts.length > 0) {
+    hint = "Banklogs not available on /api endpoints, root endpoints also unavailable.";
+  } else if (legacyFailed && triedUrls.some(t => t.url.includes("lygbanklogs"))) {
+    hint = "Banklogs unavailable on both upstream and legacy proxy endpoints (keep optional).";
+  }
+
+  debug(`[lyg-banklogs] All endpoint candidates exhausted`, {
+    lastStatus: lastError?.status,
+    attempts: triedUrls.length,
+    hint,
+  });
+
+  return {
+    ok: false,
+    status: lastError?.status || 404,
+    headers: {},
+    error: lastError?.error || "Banklogs endpoint not found",
+    triedUrls,
+    hint,
+    duration: 0,
+  };
+}
+
+/**
+ * Internal fetch with comprehensive error handling
+ */
+async function lyFetch<T>(
+  path: string,
+  opts?: {
+    method?: "GET" | "POST";
+    timeoutMs?: number;
+    returnText?: boolean;
+  }
+): Promise<LygResponse<T>> {
+  const startTime = performance.now();
+  const timeoutMs = opts?.timeoutMs || 10_000;
+  const method = opts?.method || "GET";
+  const returnText = opts?.returnText || false;
+
+  let config: LygClientConfig;
+  try {
+    config = getLygConfig();
+  } catch (err: any) {
+    logError("[lyg-client] CONFIG_ERROR:", err.message);
+    return {
+      ok: false,
+      status: 0,
+      headers: {},
+      error: err.message,
+      duration: Math.round(performance.now() - startTime),
+    };
+  }
+
+  const resolvedUrl = normalizeUrl(config.baseUrl, path);
+  debug(`[lyg-client] Fetching ${method} ${path}`, { resolvedUrl, timeoutMs });
+
+  try {
+    // Validate URL format
+    if (!resolvedUrl.startsWith("http")) {
+      throw new Error(`Invalid URL format: ${resolvedUrl}`);
+    }
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const res = await fetch(resolvedUrl, {
+      method,
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    clearTimeout(timeoutId);
+
+    const contentType = res.headers.get("content-type");
+    const duration = Math.round(performance.now() - startTime);
+
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (e: any) {
+      logError("[lyg-client] Failed to read response body:", e.message);
+      text = "";
+    }
+
+    let data: T | undefined;
+    if (!returnText && text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch (e: any) {
+        debug("[lyg-client] Failed to parse JSON:", e.message);
+      }
+    }
+
+    // Success case
+    if (res.ok) {
+      return {
+        ok: true,
+        status: res.status,
+        statusText: res.statusText || undefined,
+        headers: Object.fromEntries(res.headers.entries()),
+        data: returnText ? (text as any) : data,
+        contentType,
+        resolvedUrl,
+        duration,
+      };
+    }
+
+    // Error case: capture diagnostics
+    const bodySnippet = text.slice(0, 800);
+    const hints: string[] = [];
+
+    if (res.status === 401 || res.status === 403) {
+      hints.push("Token invalide ou expiré. Vérifiez LYG_TOKEN.");
+    } else if (res.status === 404) {
+      hints.push(
+        "Endpoint inexistant. Vérifiez le chemin et LYG_BASE_URL (double /api ?)."
+      );
+    } else if (res.status === 405) {
+      hints.push(`Méthode ${method} non autorisée pour cet endpoint.`);
+    } else if (res.status === 400) {
+      hints.push("Requête invalide. Vérifiez les paramètres.");
+    } else if (res.status >= 500) {
+      hints.push("Erreur serveur LYG. Contactez le support.");
+    }
+
+    // Detect TLS/SSL issues
+    if (
+      bodySnippet.includes("SSL") ||
+      bodySnippet.includes("packet length") ||
+      bodySnippet.includes("ERR_SSL")
+    ) {
+      hints.push(
+        "TLS/SSL error: votre base URL semble incorrecte (HTTP vs HTTPS, proxy). Vérifiez LYG_BASE_URL."
+      );
+    }
+
+    // Non-JSON response
+    if (contentType && !contentType.includes("json")) {
+      hints.push(`Content-Type n'est pas JSON: ${contentType}`);
+    }
+
+    return {
+      ok: false,
+      status: res.status,
+      statusText: res.statusText || undefined,
+      headers: Object.fromEntries(res.headers.entries()),
+      text,
+      contentType,
+      error: `HTTP ${res.status}: ${res.statusText}`,
+      hint: hints.join(" | "),
+      resolvedUrl,
+      duration,
+      data: returnText ? (text as any) : undefined,
+    };
+  } catch (err: any) {
+    const duration = Math.round(performance.now() - startTime);
+    logError("[lyg-client] FETCH_ERROR:", err.message);
+
+    let error = err.message;
+    let status = 0;
+
+    // Timeout
+    if (err.name === "AbortError") {
+      error = `Timeout (${timeoutMs}ms)`;
+      status = 408;
+    }
+
+    // Network error
+    if (err.message.includes("fetch failed")) {
+      error = "Fetch failed (network error)";
+      status = 0;
+    }
+
+    return {
+      ok: false,
+      status,
+      headers: {},
+      error,
+      hint:
+        error.includes("Timeout") || error.includes("network")
+          ? "Vérifiez la connectivité réseau et l'URL de base."
+          : "Une erreur réseau est survenue.",
+      resolvedUrl,
+      duration,
+    };
+  }
+}
+
+/**
+ * Extract body snippet (first N chars, handling both JSON and non-JSON)
+ */
+export function getBodySnippet(
+  text: string | undefined,
+  maxLen = 800
+): string {
+  if (!text) return "";
+  return text.length > maxLen ? text.slice(0, maxLen) + "..." : text;
+}

@@ -1,0 +1,1152 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  isStaff       Boolean   @default(false)
+  isChef        Boolean   @default(false)
+
+  accounts                  Account[]
+  sessions                  Session[]
+  recruitments              Recruitment[]       @relation("RecruitmentCreatedBy")
+  complaints                Complaint[]         @relation("ComplaintCreatedBy")
+  absences                  Absence[]           @relation("AbsenceCreatedBy")
+  sanctions                 Sanction[]          @relation("SanctionCreatedBy")
+  sanctionsClosed           Sanction[]          @relation("SanctionClosedBy")
+  recruitmentTicketsClaimed RecruitmentTicket[] @relation("RecruitmentTicketClaimedBy")
+  staffUsers                StaffUser[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SyncState {
+  key      String    @id // ex: "banklogs:esperados"
+  cursor   String?
+  syncedAt DateTime?
+  meta     Json?
+}
+
+model InteractionEvent {
+  id        String   @id @default(cuid())
+  dedupeKey String   @unique
+  messageId String?
+  createdAt DateTime @default(now())
+  kind      String
+  customId  String?
+  userId    String?
+  guildId   String?
+}
+
+model JobRun {
+  id        String   @id @default(cuid())
+  jobKey    String   @unique
+  type      String
+  status    String   // started|done|failed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Family {
+  id        String   @id @default(cuid())
+  slug      String   @unique // External ID from LYG (e.g., "esperados")
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members    Member[]
+  staffUsers StaffUser[]
+  bankLogs   BankLog[]
+}
+
+model BankLog {
+  id          String   @id
+  familyId    String
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  at          DateTime
+  type        Int
+  fingerprint String   @unique
+  money       Int
+  steamId     String
+  raw         Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([familyId, at])
+  @@index([steamId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Member {
+  id String @id @default(cuid())
+
+  familyId String
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  steamId            String? // SteamID64
+  discordId          String? @db.VarChar(32)
+  debugPrevDiscordId String? @unique @db.VarChar(32)
+  rpName             String? // Nom RP issu du ticket recrutement
+  discordUsername    String? // Discord username (ex: crakers76)
+  discordDisplayName String? // Discord nickname ou globalName
+  age                Int?
+
+  // Source tracking
+  source MemberSource @default(LYG) // Provenance du Member
+
+  // Grade system (legacy - for history only)
+  grade         String?  // WL1, WL2, WL3, WL4, CHEF, etc.
+  gradeLevel    Int      @default(0) // Numeric level for sorting (WL1=1, WL2=2, etc.)
+  roleDiscordId String?  // Discord role ID for this grade (legacy)
+  
+  // Discord rank (15 managed ranks from config)
+  rankRoleId    String?  // Discord role ID of rank (Général, Consejero, Comandante, etc.)
+  rankLabel     String?  // Rank label (e.g., "Général", "Capitán", "Soldato")
+  
+  isActive      Boolean  @default(true)
+  joinedAt      DateTime?
+  
+  // Grace period for deactivation (avoid marking inactive on single mismatch)
+  lastSeenAt    DateTime?  // Last time member was seen in LYG API
+  missingSince  DateTime?  // When member first went missing from LYG (null if currently seen)
+
+  // Discord mirror (updated by worker/resync, avoids 429 spam)
+  discordInGuild          Boolean?   // null=unknown, true=in guild, false=left
+  discordRoleIds          String[]   @default([]) // Current Discord role IDs
+  discordRolesUpdatedAt   DateTime?  // Last successful Discord sync
+  discordLastError        String?    // Last error during Discord sync (if any)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sanctions     Sanction[]     @relation("SanctionMember")
+  gradeHistory  GradeHistory[]
+
+  @@unique([familyId, steamId])
+  @@unique([familyId, discordId])
+  @@index([familyId])
+  @@index([steamId])
+  @@index([discordId])
+  @@index([familyId, isActive])
+  @@index([familyId, grade])
+}
+
+enum MemberSource {
+  LYG           // Sync depuis LYG API (source légitime)
+  MANUAL        // Création manuelle par staff
+  RECRUITMENT   // Créé depuis ticket recrutement
+  LINK          // Créé depuis système de liaison
+  BANKLOG_GHOST // Fantôme créé depuis BankLog (à filtrer)
+}
+
+enum GradeChangeSource {
+  MIGRATION
+  MEETING
+  MANUAL
+  SYNC
+}
+
+model GradeHistory {
+  id        String   @id @default(cuid())
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  oldGrade      String?
+  oldGradeLevel Int?
+  newGrade      String
+  newGradeLevel Int
+
+  changedAt   DateTime          @default(now())
+  changedBy   String?           // Staff discordId who made the change
+  source      GradeChangeSource @default(MANUAL)
+  notes       String?
+
+  @@index([memberId, changedAt])
+}
+
+enum RecruitmentLegacyStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  ARCHIVED
+}
+
+enum RecruitmentStatus {
+  OPEN
+  CLAIMED
+  CLOSED_ACCEPTED
+  CLOSED_REJECTED
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+  CLOSED
+}
+
+enum ComplaintTicketStatus {
+  OPEN
+  CLOSED
+  TREATED
+  UNTREATED
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+enum SanctionType {
+  AVERT_ORAL_PLAYTIME
+  AVERT_ORAL_REUNION
+  AVERT_LEGER
+  AVERT_LOURD
+  DEMOTE
+  RESERVISTE
+  BLACKLIST
+}
+
+enum SanctionSource {
+  MANUAL
+  ACTIVITY
+  MEETING
+  SYSTEM
+  DISCORD_COMMAND
+}
+
+enum SanctionStatus {
+  ACTIVE
+  EXPIRED
+  CLOSED
+}
+
+enum SanctionDiscordStatus {
+  PENDING
+  APPLIED
+  FAILED
+}
+
+enum SanctionClearedStatus {
+  PENDING
+  APPLIED
+  FAILED
+}
+
+enum JustificationStatus {
+  SUBMITTED
+  REVIEWED
+}
+
+model Recruitment {
+  id        String                  @id @default(cuid())
+  familyId  String
+  discordId String
+  steamId   String?
+  rpName    String?
+  age       Int?
+  notes     String?
+  status    RecruitmentLegacyStatus @default(PENDING)
+
+  // Contact panel / Discord worker fields
+  ticketKey          String?   @unique
+  discordThreadId    String?   @unique
+  authorTag          String?
+  payload            Json?
+  availabilities     String?
+  motivation         String?
+  screenshots        String?
+  closedAt           DateTime?
+  closeReason        String?
+  closedByDiscordId  String?
+
+  // Ticket sync fields
+  ticketChannelId       String?
+  lastSyncedMessageId   String?
+  lastSyncedAt          DateTime?
+
+  // Thread fields (new)
+  threadId          String?
+  threadCreatedAt   DateTime?
+  lastSyncAt        DateTime?
+  closedAtDiscord   DateTime?
+
+  // Search optimization
+  searchText String? // Lowercase: rpName + steamId + discordId
+
+  createdById String
+  createdBy   User   @relation("RecruitmentCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId, status, createdAt])
+  @@index([discordId])
+  @@index([rpName])
+  @@index([ticketKey])
+  @@index([threadId])
+}
+
+model RecruitmentTicket {
+  id        String            @id @default(cuid())
+  status    RecruitmentStatus @default(OPEN)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  closedAt  DateTime?
+
+  discordGuildId   String?
+  discordChannelId String?
+  discordMessageId String?
+  sourcePayload    Json?
+
+  candidateRpName    String
+  candidateAge       Int?
+  candidateSteamId   String?
+  candidateDiscordId String?
+
+  claimedById String?
+  claimedBy   User?     @relation("RecruitmentTicketClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
+  claimedAt   DateTime?
+
+  answersJson Json?
+  scoresJson  Json?
+  totalPoints Float?
+  totalOn20   Float?
+  staffNotes  String?
+
+  @@index([status, updatedAt])
+  @@index([claimedById])
+  @@index([createdAt])
+}
+
+model Complaint {
+  id            String          @id @default(cuid())
+  familyId      String
+  complainantId String?
+  targetId      String?
+  title         String
+  description   String
+  status        ComplaintStatus @default(OPEN)
+
+  // Contact panel / Discord worker fields
+  ticketKey          String?   @unique
+  discordThreadId    String?   @unique
+  authorDiscordId    String?
+  authorTag          String?
+  payload            Json?
+  targetName         String?
+  authorRpName       String?
+  evidence           String?
+  summary            String?
+  closedAt           DateTime?
+  closeReason        String?
+  closedByDiscordId  String?
+
+  // Ticket sync fields
+  ticketChannelId       String?
+  lastSyncedMessageId   String?
+  lastSyncedAt          DateTime?
+
+  // Thread fields (new)
+  threadId          String?
+  threadCreatedAt   DateTime?
+  lastSyncAt        DateTime?
+  closedAtDiscord   DateTime?
+
+  // Search optimization
+  searchText String? // Lowercase: targetName + authorRpName + title
+
+  createdById String
+  createdBy   User   @relation("ComplaintCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId, status, createdAt])
+  @@index([authorDiscordId])
+  @@index([ticketKey])
+  @@index([threadId])
+}
+
+model ComplaintTicket {
+  id               String                @id @default(cuid())
+  guildId          String
+  channelId        String                @unique
+  categoryId       String                @default("unknown")
+  createdAtDiscord DateTime              @default(now())
+  closedAtDiscord  DateTime?
+  status           ComplaintTicketStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ComplaintMessage[]
+}
+
+model ComplaintMessage {
+  id       String          @id @default(cuid())
+  ticketId String
+  ticket   ComplaintTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  discordMessageId   String    @unique
+  authorDiscordId    String    @default("unknown")
+  authorNameSnapshot String    @default("Unknown")
+  content            String    @default("")
+  attachmentsJson    Json?
+  createdAtDiscord   DateTime  @default(now())
+  editedAtDiscord    DateTime?
+  deletedAtDiscord   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAtDiscord])
+}
+
+enum MeetingType {
+  WL1
+  WL2
+  WL3
+  WL4
+  GENERAL
+  OTHER
+}
+
+enum MeetingStatus {
+  DRAFT
+  FINAL
+}
+
+enum MeetingDecisionAction {
+  PROMOTE
+  DEMOTE
+  KEEP
+  EXCLUDE
+}
+
+model Meeting {
+  id              String        @id @default(cuid())
+  familyId        String        @default("esperados")
+  title           String?
+  meetingDate     DateTime
+  weekKey         String
+  type            MeetingType   @default(GENERAL)
+  status          MeetingStatus @default(DRAFT)
+  notes           String?
+  summary         String?
+  createdByUserId String?
+  finalizedAt     DateTime?
+  finalizedByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  decisions   MeetingDecision[]
+  attendances MeetingAttendance[]
+
+  @@unique([weekKey])
+  @@index([meetingDate])
+  @@index([familyId, meetingDate])
+  @@index([familyId, status])
+}
+
+model MeetingDecision {
+  id              String                @id @default(cuid())
+  meetingId       String
+  meeting         Meeting               @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  memberDiscordId String
+  oldGrade        String?
+  newGrade        String?
+  action          MeetingDecisionAction @default(KEEP)
+  reason          String?
+  decidedByUserId String?
+  appliedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([meetingId, memberDiscordId])
+  @@index([meetingId])
+  @@index([memberDiscordId])
+}
+
+model MeetingAttendance {
+  id              String  @id @default(cuid())
+  meetingId       String
+  meeting         Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  memberDiscordId String
+  present         Boolean @default(false)
+  note            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([meetingId, memberDiscordId])
+  @@index([meetingId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  familyId   String
+  actorType  String   @default("staff") // "staff" | "worker" | "system" | "member"
+  actorId    String?  // userId, discordId, or null for system
+  actorMemberId String? // memberId if available
+  actorName  String?  // Display name for the actor
+  action     String   // e.g., "CREATED", "UPDATED", "DELETED", "FINALIZED"
+  entity     String   // e.g., "Recruitment", "Sanction", "Meeting", "Member"
+  entityId   String
+  entityName String?  // Display name for the entity
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([familyId, createdAt])
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([actorMemberId, createdAt])
+  @@index([action])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Observability & Metrics
+// ─────────────────────────────────────────────────────────────
+
+model MetricEvent {
+  id        String   @id @default(cuid())
+  familyId  String
+  source    String   // "panel" | "worker"
+  type      String   // "ticket.create", "ticket.close", "ingest.ok", "ingest.ko", etc.
+  ref       String?  // ticketKey, meetingId, sanctionId, etc.
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([familyId, type, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+}
+
+model WorkerHeartbeat {
+  id           String   @id @default(cuid())
+  familyId     String   @unique
+  workerName   String?
+  lastSeenAt   DateTime @default(now())
+  meta         Json?    // version, uptime, etc.
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AlertEvent {
+  id          String    @id @default(cuid())
+  familyId    String
+  type        String    // "ingest.ko.spike", "worker.offline", etc.
+  severity    String    @default("warning") // "info", "warning", "critical"
+  message     String
+  meta        Json?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([familyId, type, createdAt(sort: Desc)])
+  @@index([resolvedAt])
+}
+
+model Absence {
+  id        String        @id @default(cuid())
+  familyId  String
+  discordId String
+  reason    String?
+  startAt   DateTime
+  endAt     DateTime
+  status    AbsenceStatus @default(PENDING)
+  notes     String?
+
+  justifications AbsenceJustification[]
+
+  createdById String
+  createdBy   User   @relation("AbsenceCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId, status, startAt])
+  @@index([discordId])
+}
+
+model Sanction {
+  id            String          @id @default(cuid())
+  familyId      String
+  memberId      String?
+  member        Member?         @relation("SanctionMember", fields: [memberId], references: [id])
+  discordId     String
+  type          SanctionType
+  reason        String?
+  status        SanctionStatus  @default(ACTIVE)
+  source        SanctionSource  @default(MANUAL)
+  startAt       DateTime        @default(now())
+  notes         String?
+  
+  // Discord application status
+  discordStatus    SanctionDiscordStatus @default(PENDING)
+  discordAppliedAt DateTime?
+  discordError     String?
+  outboxJobId      String?
+  
+  // Expiration (for warnings/avertos only)
+  expiresAt DateTime?
+  
+  // Role clearing (for warnings/avertos only)
+  clearedAt DateTime?
+  clearedStatus SanctionClearedStatus?
+  clearedError String?
+  
+  // Legacy fields (kept for backward compatibility)
+  endAt         DateTime?
+  durationHours Int?
+  amount        Int?
+  points        Int?
+  discordMessageId String?
+  closedAt      DateTime?
+  closedById    String?
+  closedBy      User?           @relation("SanctionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  justifications SanctionJustification[]
+
+  createdById String
+  createdBy   User   @relation("SanctionCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId, status, createdAt])
+  @@index([familyId, memberId, createdAt])
+  @@index([discordStatus])
+  @@index([memberId, createdAt])
+  @@index([discordId])
+  @@index([discordId, status])
+  @@index([expiresAt])
+}
+
+model AbsenceJustification {
+  id        String  @id @default(cuid())
+  familyId  String
+  absenceId String
+  absence   Absence @relation(fields: [absenceId], references: [id], onDelete: Cascade)
+
+  authorDiscordId String
+  message         String
+  status          JustificationStatus @default(SUBMITTED)
+  staffReply      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId, createdAt])
+  @@index([absenceId])
+}
+
+model SanctionJustification {
+  id         String   @id @default(cuid())
+  familyId   String
+  sanctionId String
+  sanction   Sanction @relation(fields: [sanctionId], references: [id], onDelete: Cascade)
+
+  authorDiscordId String
+  message         String
+  status          JustificationStatus @default(SUBMITTED)
+  staffReply      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([familyId, createdAt])
+  @@index([sanctionId])
+}
+
+model RateLimit {
+  id          String   @id @default(cuid())
+  discordId   String
+  key         String
+  windowStart DateTime
+  count       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([discordId, key])
+  @@index([key])
+}
+
+enum DiscordJobStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELED
+  RUNNING    // Added for role jobs
+  SUCCEEDED  // Added for role jobs
+}
+
+enum DiscordJobType {
+  SEND_MESSAGE
+  ASSIGN_ROLE
+  REMOVE_ROLE
+  ME_ABSENCE_CREATED
+  ME_ABSENCE_JUSTIFIED
+  ME_SANCTION_JUSTIFIED
+  SANCTION_NOTIFY
+  SANCTION_APPLY
+  BANK_DEBT_PING_SINGLE
+  BANK_DEBT_PING_BATCH
+  RECRUITMENT_DECISION
+  COMPLAINT_DECISION
+  MEETING_NOTIFY_UPSERT
+  MEETING_NOTIFY_RECAP
+  ACTIVITY_ALERT_INACTIVE
+  ACTIVITY_ALERT_LOW
+  ACTIVITY_ALERT_RECOMMEND_KICK
+  ACTIVITY_ACTION_NOTIFY
+  ACTIVITY_DIGEST
+  ABSENCE_JUSTIFICATION_CREATED
+  SANCTION_JUSTIFICATION_CREATED
+  APPLY_ROLES   // Added for batch role application
+  REMOVE_ROLES  // Added for batch role removal (duplicate with REMOVE_ROLE but different context)
+  SYNC_MEMBER   // Added for member sync
+}
+
+// ─────────────────────────────────────────────────────────────
+// Application Configuration & Feature Flags
+// ─────────────────────────────────────────────────────────────
+
+model AppConfig {
+  id        String   @id @default(cuid())
+  familyId  String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([familyId, key])
+  @@index([familyId])
+}
+
+model DiscordConfig {
+  id                          String   @id @default(cuid())
+  familyId                    String   @unique
+  recruitmentChannelId        String?
+  complaintsChannelId         String?
+  complaintCategoryId         String?
+  meetingsChannelId           String?
+  absencesChannelId           String?
+  sanctionsChannelId          String?
+  logsChannelId               String?
+  bankAlertsChannelId         String?
+  bankDebtPingThreshold       Int?
+  bankDebtPingEnabled         Boolean  @default(false)
+  bankDebtPingCooldownMinutes Int      @default(60)
+  staffRoleId                 String?
+  // Log channels for specific entity types
+  ticketsLogChannelId         String?
+  sanctionsLogChannelId       String?
+  meetingsLogChannelId        String?
+  activityLogChannelId        String?
+  // DM notifications
+  dmNotificationsEnabled      Boolean  @default(false)
+  dmSanctionsEnabled          Boolean  @default(false)
+  dmGradeChangesEnabled       Boolean  @default(false)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
+
+model DiscordTemplate {
+  id        String   @id @default(cuid())
+  familyId  String
+  key       String
+  title     String?
+  content   String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([familyId, key])
+  @@index([familyId])
+}
+
+model DiscordOutbox {
+  id       String           @id @default(cuid())
+  familyId String
+  type     DiscordJobType
+  status   DiscordJobStatus @default(PENDING)
+
+  dedupeKey String?
+  channelId String?
+  content   String?
+
+  guildId       String?
+  userDiscordId String?
+  roleId        String?
+
+  attempt       Int      @default(0)
+  maxAttempts   Int      @default(10)
+  nextAttemptAt DateTime @default(now())
+  lastError     String?
+
+  entity   String?
+  entityId String?
+  meta     Json?
+
+  discordMessageId String?
+  sentAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([familyId, createdAt])
+  @@unique([dedupeKey], map: "DiscordOutbox_dedupeKey_unique")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Member Import System
+// ─────────────────────────────────────────────────────────────
+
+enum ImportSource {
+  CSV
+  MANUAL
+  API
+  BACKFILL
+}
+
+enum ImportRowAction {
+  INSERT
+  UPDATE
+  SKIP
+  ERROR
+}
+
+model ImportRun {
+  id              String       @id @default(cuid())
+  familyId        String
+  source          ImportSource @default(CSV)
+  createdByUserId String?
+
+  totalRows     Int @default(0)
+  insertedCount Int @default(0)
+  updatedCount  Int @default(0)
+  skippedCount  Int @default(0)
+  errorCount    Int @default(0)
+
+  errors   Json? // Array of error summaries
+  fileName String?
+
+  createdAt DateTime @default(now())
+
+  rows ImportRowLog[]
+
+  @@index([familyId, createdAt])
+  @@index([createdByUserId])
+}
+
+model ImportRowLog {
+  id          String          @id @default(cuid())
+  importRunId String
+  importRun   ImportRun       @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+  rowNumber   Int
+  discordId   String?
+  steamId     String?
+  rpName      String?
+  grade       String?
+  action      ImportRowAction
+  message     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([importRunId, rowNumber])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Activity Core System
+// ─────────────────────────────────────────────────────────────
+
+enum ActivityStatus {
+  OK
+  WARN
+  KO
+}
+
+model ActivitySnapshot {
+  id              String         @id @default(cuid())
+  familyId        String
+  memberDiscordId String
+  periodStart     DateTime
+  periodEnd       DateTime
+  playtimeMinutes Int            @default(0)
+  meetingsTotal   Int            @default(0)
+  meetingsAttended Int           @default(0)
+  meetingsMissed  Int            @default(0)
+  justifiedAbsences Int          @default(0)
+  status          ActivityStatus @default(OK)
+  flags           Json?          // Detailed flags from rule engine
+  computedAt      DateTime       @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([familyId, memberDiscordId, periodStart, periodEnd])
+  @@index([familyId, periodStart])
+  @@index([memberDiscordId])
+  @@index([status])
+}
+
+model ActivityRule {
+  id        String  @id @default(cuid())
+  familyId  String
+  code      String  // e.g., INACTIVITY_2WEEKS, MEETING_ABSENCE_WARN
+  name      String
+  description String?
+  isEnabled Boolean @default(true)
+  priority  Int     @default(0)
+  params    Json    // Rule-specific parameters
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([familyId, code])
+  @@index([familyId, isEnabled])
+}
+
+model ActivityLog {
+  id              String   @id @default(cuid())
+  familyId        String
+  memberDiscordId String?
+  ruleCode        String?
+  action          String   // COMPUTED, RULE_TRIGGERED, SANCTION_CREATED, etc.
+  details         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([familyId, createdAt])
+  @@index([memberDiscordId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// RBAC - Role-Based Access Control
+// ─────────────────────────────────────────────────────────────
+
+model StaffRole {
+  id            String   @id @default(cuid())
+  familyId      String
+  code          String   // e.g., ADMIN, WL1, WL2, RECRUITER, MOD
+  name          String
+  description   String?
+  priority      Int      @default(0) // Higher = more privileged
+  discordRoleId String?  // Discord role ID for auto-mapping
+  color         String?  // Hex color for UI
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  permissions StaffRolePermission[]
+  staffUsers  StaffUser[]
+
+  @@unique([familyId, code])
+  @@index([familyId, discordRoleId])
+  @@index([familyId, priority])
+}
+
+model StaffPermission {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g., TICKETS_VIEW, SANCTIONS_CREATE
+  name        String
+  description String?
+  category    String?  // e.g., "tickets", "sanctions", "meetings"
+  createdAt   DateTime @default(now())
+
+  roles StaffRolePermission[]
+}
+
+model StaffRolePermission {
+  id           String          @id @default(cuid())
+  roleId       String
+  role         StaffRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   StaffPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now())
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model StaffUser {
+  id        String   @id @default(cuid())
+  familyId  String
+  userId    String?
+  discordId String
+  roleId    String
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  role   StaffRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([familyId, roleId])
+  @@index([userId])
+  @@unique([familyId, discordId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Link Request (Liaison) - User to Staff workflow
+// ─────────────────────────────────────────────────────────────
+
+enum LinkRequestStatus {
+  PENDING
+  OPENED
+  ACCEPTED
+  REFUSED
+  ARCHIVED
+}
+
+model LinkRequest {
+  id                    String              @id @default(cuid())
+  familyId              String              @default("esperados")
+  requesterDiscordId    String
+  requesterName         String?
+  steamId               String?             // SteamID64 provided by member or staff override
+  status                LinkRequestStatus   @default(PENDING)
+  discordMessageId      String?             @unique
+  
+  // Lock mechanism (anti-conflict)
+  lockedByDiscordId     String?             // Staff who locked this request
+  lockedByUsername      String?
+  lockedAt              DateTime?           // When locked
+  
+  // Final action
+  actionByDiscordId     String?             // Staff who finalized (refuse/archive)
+  actionByName          String?
+  notes                 String?             // Reason for refusal, etc.
+  
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  lastActionAt          DateTime?
+
+  @@index([familyId, status, createdAt])
+  @@index([requesterDiscordId, createdAt])
+  @@index([discordMessageId])
+  @@index([steamId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Discord Snapshot - Persistent Discord verification state
+// ─────────────────────────────────────────────────────────────
+
+model DiscordSnapshot {
+  id            Int       @id @default(autoincrement())
+  discordId     String    @unique
+  inGuild       Boolean?
+  roles         String[]  // Array of role IDs
+  fetchedAt     DateTime  @default(now())
+  lastOkAt      DateTime? // Last successful fetch
+  lastErrorCode String?   // RATE_LIMIT | UNAVAILABLE | CONFIG_MISSING
+  lastErrorAt   DateTime?
+  source        String    @default("unknown") // 'live' | 'cache' | 'historical'
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([discordId])
+  @@index([fetchedAt])
+  @@index([lastOkAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Discord Role Job Queue - Reliable role application
+// ─────────────────────────────────────────────────────────────
+
+model DiscordRoleJob {
+  id            Int                @id @default(autoincrement())
+  type          DiscordJobType
+  discordId     String
+  guildId       String
+  payload       Json               // { addRoleIds: [], removeRoleIds: [], reason: "..." }
+  status        DiscordJobStatus   @default(PENDING)
+  attempts      Int                @default(0)
+  maxAttempts   Int                @default(5)
+  lastError     String?
+  lastErrorAt   DateTime?
+  runAt         DateTime           @default(now())
+  executedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([discordId])
+  @@index([status])
+  @@index([runAt])
+}
+// -------------------------------------------------------------
+// Global Cache KV - Prevents LYG rate limits (150 req/15min)
+// -------------------------------------------------------------
+
+model CacheKV {
+  key       String   @id // e.g., \"lyg:esperados:members\", \"lyg:esperados:banklogs\"
+  value     Json     // Cached response
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // Explicit expiry time for TTL check
+
+  @@index([expiresAt])
+}
+
+// -------------------------------------------------------------
+// Distributed Lock - Prevents concurrent API calls
+// -------------------------------------------------------------
+
+model Lock {
+  key       String   @id // e.g., \"lock:lyg:esperados:members\"
+  holder    String   // Process/request ID
+  expiresAt DateTime // Auto-release after TTL
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

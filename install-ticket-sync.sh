@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# 🚀 Script d'installation Discord Ticket Sync MVP
+# Exécutez ces commandes dans l'ordre
+
+echo "=================================================="
+echo "  Discord Ticket Sync MVP - Installation"
+echo "=================================================="
+echo ""
+
+# ÉTAPE 1: Migration DB
+echo "ÉTAPE 1: Migration de la base de données..."
+echo ""
+echo "Commande à exécuter:"
+echo "  npx prisma migrate dev --name ticket_sync"
+echo ""
+read -p "Appuyez sur ENTRÉE après avoir exécuté la commande..."
+
+# ÉTAPE 2: Génération client Prisma
+echo ""
+echo "ÉTAPE 2: Génération du client Prisma..."
+echo ""
+echo "Commande à exécuter:"
+echo "  npx prisma generate"
+echo ""
+read -p "Appuyez sur ENTRÉE après avoir exécuté la commande..."
+
+# ÉTAPE 3: Vérification config Discord
+echo ""
+echo "ÉTAPE 3: Vérification de la configuration Discord..."
+echo ""
+echo "Commande SQL à exécuter dans votre DB:"
+echo ""
+echo "SELECT complaintsChannelId, recruitmentChannelId"
+echo "FROM \"DiscordConfig\""
+echo "WHERE \"familyId\" = 'esperados';"
+echo ""
+echo "Si NULL, exécutez:"
+echo ""
+echo "UPDATE \"DiscordConfig\""
+echo "SET"
+echo "  \"complaintsChannelId\" = 'VOTRE_CHANNEL_ID_PLAINTES',"
+echo "  \"recruitmentChannelId\" = 'VOTRE_CHANNEL_ID_RECRUTEMENTS'"
+echo "WHERE \"familyId\" = 'esperados';"
+echo ""
+read -p "Appuyez sur ENTRÉE après avoir vérifié/mis à jour..."
+
+# ÉTAPE 4: Démarrage services
+echo ""
+echo "ÉTAPE 4: Démarrage des services..."
+echo ""
+echo "TERMINAL 1 (Next.js):"
+echo "  npm run dev"
+echo ""
+echo "TERMINAL 2 (Discord Worker):"
+echo "  npm run discord:worker"
+echo ""
+echo "Logs attendus du worker:"
+echo "  [discord-worker] ready as YourBot#1234"
+echo ""
+
+echo "=================================================="
+echo "  ✅ Installation terminée !"
+echo "=================================================="
+echo ""
+echo "Prochaines étapes:"
+echo "1. Créer une plainte ou un recrutement via l'UI"
+echo "2. Aller sur la page de détail"
+echo "3. Cliquer 'Charger' dans 'Conversation Discord'"
+echo "4. Ajouter messages dans le thread Discord"
+echo "5. Cliquer '🔄 Rafraîchir'"
+echo "6. Vérifier que les messages apparaissent"
+echo ""
+echo "Documentation complète:"
+echo "  - docs/SETUP-TICKET-SYNC.md"
+echo "  - docs/discord-ticket-sync-mvp.md"
+echo "  - TICKET-SYNC-SUMMARY.md"
+echo ""

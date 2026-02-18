@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview Logos - Los Esperados Panel</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      color: white;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      background: linear-gradient(to right, #ffffff, #c084fc, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 40px;
+      font-size: 14px;
+    }
+
+    .warning {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 40px;
+      font-size: 14px;
+      color: #fca5a5;
+    }
+
+    .warning strong {
+      color: #ef4444;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(20px);
+    }
+
+    .card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #c084fc;
+    }
+
+    .logo-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 24px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+
+    .logo-preview img {
+      transition: transform 0.3s ease;
+    }
+
+    .logo-preview:hover img {
+      transform: scale(1.05);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-member {
+      background: linear-gradient(to right, rgba(16, 185, 129, 0.2), rgba(6, 182, 212, 0.2));
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #10b981;
+    }
+
+    .badge-staff {
+      background: linear-gradient(to right, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: #a78bfa;
+    }
+
+    .specs {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+
+    .specs strong {
+      color: white;
+      font-weight: 600;
+    }
+
+    .favicon-preview {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .favicon-example {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .favicon-example img {
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+
+    .favicon-example span {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: linear-gradient(to right, #8b5cf6, #ec4899);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(139, 92, 246, 0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 Preview Logos - Los Esperados Panel</h1>
+    <p class="subtitle">Vérification visuelle des assets de branding</p>
+
+    <div class="warning">
+      <strong>⚠️ PLACEHOLDERS</strong> - Les logos affichés ci-dessous sont des placeholders temporaires. 
+      Remplacez-les par vos vrais logos Los Esperados. Voir <strong>docs/REMPLACER-LOGOS.md</strong> pour les instructions.
+    </div>
+
+    <div class="grid">
+      <!-- Logo Principal -->
+      <div class="card">
+        <h2>Logo Principal</h2>
+        <div class="logo-preview">
+          <img src="/logo-esperados.svg" alt="Logo Los Esperados" width="120" height="120">
+          <div class="badge badge-member">200×200px</div>
+        </div>
+        <div class="specs">
+          <strong>Fichier:</strong> /public/logo-esperados.svg<br>
+          <strong>Usage:</strong> Sidebar Desktop (64×64)<br>
+          <strong>Format:</strong> SVG recommandé<br>
+          <strong>Ratio:</strong> 1:1 (carré)
+        </div>
+      </div>
+
+      <!-- Logo Icon -->
+      <div class="card">
+        <h2>Logo Icon Compact</h2>
+        <div class="logo-preview">
+          <img src="/logo-icon.svg" alt="Logo Icon" width="80" height="80">
+          <div class="badge badge-staff">64×64px</div>
+        </div>
+        <div class="specs">
+          <strong>Fichier:</strong> /public/logo-icon.svg<br>
+          <strong>Usage:</strong> Favicon, Mobile Header<br>
+          <strong>Format:</strong> SVG<br>
+          <strong>Ratio:</strong> 1:1 (carré)
+        </div>
+      </div>
+
+      <!-- Member Sidebar Preview -->
+      <div class="card">
+        <h2>Member Sidebar</h2>
+        <div class="logo-preview" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(6, 182, 212, 0.05));">
+          <div style="position: relative; width: 64px; height: 64px; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.1);">
+            <img src="/logo-esperados.svg" alt="Member Logo" width="64" height="64" style="object-fit: contain;">
+          </div>
+          <div class="badge badge-member">Member Panel</div>
+        </div>
+        <div class="specs">
+          <strong>Size:</strong> 64×64px<br>
+          <strong>Border:</strong> ring-2 ring-white/10<br>
+          <strong>Hover:</strong> ring-emerald-500/30<br>
+          <strong>Link:</strong> /member/dashboard
+        </div>
+      </div>
+
+      <!-- Staff Sidebar Preview -->
+      <div class="card">
+        <h2>Staff Sidebar</h2>
+        <div class="logo-preview" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.05));">
+          <div style="position: relative; width: 64px; height: 64px; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.1);">
+            <img src="/logo-esperados.svg" alt="Staff Logo" width="64" height="64" style="object-fit: contain;">
+          </div>
+          <div class="badge badge-staff">Staff Panel</div>
+        </div>
+        <div class="specs">
+          <strong>Size:</strong> 64×64px<br>
+          <strong>Border:</strong> ring-2 ring-white/10<br>
+          <strong>Hover:</strong> ring-purple-500/30<br>
+          <strong>Link:</strong> /staff/dashboard
+        </div>
+      </div>
+
+      <!-- Favicon Sizes -->
+      <div class="card">
+        <h2>Favicon Sizes</h2>
+        <div class="favicon-preview">
+          <div class="favicon-example">
+            <img src="/logo-icon.svg" alt="Favicon 16" width="16" height="16">
+            <span>16×16</span>
+          </div>
+          <div class="favicon-example">
+            <img src="/logo-icon.svg" alt="Favicon 32" width="32" height="32">
+            <span>32×32</span>
+          </div>
+          <div class="favicon-example">
+            <img src="/logo-icon.svg" alt="Favicon 64" width="64" height="64">
+            <span>64×64</span>
+          </div>
+        </div>
+        <div class="specs" style="margin-top: 16px;">
+          <strong>Fichier:</strong> /public/favicon.ico<br>
+          <strong>Formats:</strong> 16×16, 32×32, 64×64<br>
+          <strong>Génération:</strong> realfavicongenerator.net
+        </div>
+      </div>
+
+      <!-- Mobile Preview -->
+      <div class="card">
+        <h2>Mobile Header (40px)</h2>
+        <div class="logo-preview">
+          <div style="position: relative; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; border: 2px solid rgba(255,255,255,0.1);">
+            <img src="/logo-esperados.svg" alt="Mobile Logo" width="40" height="40" style="object-fit: contain;">
+          </div>
+          <div style="font-size: 12px; color: #94a3b8;">
+            <strong style="color: white;">Los Esperados</strong><br>
+            <span style="color: #a78bfa; font-size: 11px;">Staff Panel</span>
+          </div>
+        </div>
+        <div class="specs">
+          <strong>Size:</strong> 40×40px<br>
+          <strong>Context:</strong> Mobile Sidebar Header<br>
+          <strong>Border:</strong> ring-2 ring-white/10
+        </div>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <a href="https://realfavicongenerator.net/" target="_blank" class="btn btn-primary">
+        Générer Favicon →
+      </a>
+      <a href="/docs/REMPLACER-LOGOS.md" class="btn btn-secondary">
+        Guide de Remplacement
+      </a>
+    </div>
+
+    <div style="margin-top: 60px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center; color: #64748b; font-size: 13px;">
+      <p>Los Esperados Panel v2.1 - Branding Premium</p>
+      <p style="margin-top: 8px;">Pour tester : <strong style="color: white;">npm run dev</strong> puis visitez <strong style="color: white;">/member/dashboard</strong> ou <strong style="color: white;">/staff/dashboard</strong></p>
+    </div>
+  </div>
+</body>
+</html>

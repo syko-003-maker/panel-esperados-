@@ -1,0 +1,369 @@
+﻿===== MISSING: app\api\staff\members\[memberId]\timeline\route.ts =====
+===== MISSING: app\staff\members\by-id\[id]\TimelineClient.tsx =====
+===== FILE: app\staff\dashboard\dashboard-client.tsx =====
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge-new";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertCircle,
+  Users,
+  FileText,
+  Ban,
+  ArrowRight,
+  TrendingUp,
+} from "lucide-react";
+import { PageHeader, StatCard, Section } from "@/components/staff/ui-components";
+
+type Complaint = {
+  id: string;
+  channelId: string;
+  status: "OPEN" | "TREATED" | "UNTREATED" | "CLOSED";
+  createdAtDiscord: string;
+};
+
+type Recruitment = {
+  id: string;
+  ticketKey: string;
+  status: "OPEN" | "FINI";
+  rpName: string | null;
+  authorTag: string | null;
+  createdAt: string;
+};
+
+type Sanction = {
+  id: string;
+  memberId: string;
+  type: string;
+  status: "ACTIVE" | "EXPIRED" | "CLOSED";
+  reason: string | null;
+  createdAt: string;
+};
+
+type Member = {
+  steamId: string;
+  name: string | null;
+};
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("fr-FR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function getComplaintBadge(status: string) {
+  const styles: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+    OPEN: { variant: "destructive", label: "ðŸ”´ Ouvert" },
+    TREATED: { variant: "secondary", label: "âœ… TraitÃ©" },
+    UNTREATED: { variant: "destructive", label: "âŒ RefusÃ©" },
+    CLOSED: { variant: "outline", label: "âŠ˜ ClÃ´turÃ©" },
+  };
+  return styles[status] || styles.OPEN;
+}
+
+function getRecruitmentBadge(status: string) {
+  return status === "OPEN"
+    ? { variant: "outline" as const, label: "â³ En attente" }
+    : { variant: "secondary" as const, label: "âœ“ ClÃ´turÃ©" };
+}
+
+function getSanctionBadge(status: string) {
+  const styles: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+    ACTIVE: { variant: "destructive", label: "âš ï¸ Active" },
+    EXPIRED: { variant: "outline", label: "â±ï¸ ExpirÃ©e" },
+    CLOSED: { variant: "secondary", label: "âœ“ ClÃ´turÃ©e" },
+  };
+  return styles[status] || styles.ACTIVE;
+}
+
+export default function StaffDashboardClient() {
+  const [loading, setLoading] = useState(true);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [recruitments, setRecruitments] = useState<Recruitment[]>([]);
+  const [sanctions, setSanctions] = useState<Sanction[]>([]);
+  const [membersCount, setMembersCount] = useState(0);
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [complaintsRes, recruitmentsRes, sanctionsRes, membersRes] = await Promise.all([
+        fetch("/api/staff/complaints?status=OPEN", { cache: "no-store" }),
+        fetch("/api/staff/list/recruitments?status=OPEN&limit=5", { cache: "no-store" }),
+        fetch("/api/staff/sanctions?status=ACTIVE&pageSize=5", { cache: "no-store" }),
+        fetch("/api/staff/members", { cache: "no-store" }),
+      ]);
+
+      if (complaintsRes.ok) setComplaints(((await complaintsRes.json())?.data || []).slice(0, 5));
+      if (recruitmentsRes.ok) setRecruitments((await recruitmentsRes.json())?.data || []);
+      if (sanctionsRes.ok) setSanctions((await sanctionsRes.json())?.data || []);
+      if (membersRes.ok) setMembersCount(((await membersRes.json())?.members || []).length);
+    } catch (err) {
+      console.error("Dashboard error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const stats = [
+    { icon: AlertCircle, label: "Plaintes ouvertes", value: complaints.length, color: "text-amber-600" },
+    { icon: FileText, label: "Recrutements en attente", value: recruitments.length, color: "text-blue-600" },
+    { icon: Ban, label: "Sanctions actives", value: sanctions.length, color: "text-red-600" },
+    { icon: Users, label: "Membres actifs", value: membersCount, color: "text-green-600" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* Page Header */}
+      <PageHeader 
+        title="Dashboard"
+        description="Vue d'ensemble complÃ¨te de votre serveur en temps rÃ©el"
+      />
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, idx) => {
+          const Icon = stat.icon;
+          return (
+            <StatCard
+              key={idx}
+              label={stat.label}
+              value={
+                loading ? (
+                  <Skeleton className="h-8 w-12" />
+                ) : (
+                  <span className={stat.color}>{stat.value}</span>
+                )
+              }
+              icon={<Icon className="h-5 w-5" />}
+            />
+          );
+        })}
+      </div>
+
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Urgent Actions */}
+        <Section 
+          title="ðŸš¨ Actions urgentes"
+          description="Choses Ã  faire en prioritÃ©"
+        >
+          <div className="space-y-2">
+            {complaints.filter(c => c.status === "OPEN").length > 0 && (
+              <Link
+                href="/staff/complaints"
+                className="block p-4 rounded-lg border border-red-300/50 bg-red-50/20 hover:bg-red-100/30 transition text-red-900 dark:text-red-200 dark:border-red-800/50 dark:bg-red-900/10"
+              >
+                <div className="font-semibold">ðŸ“ {complaints.filter(c => c.status === "OPEN").length} plainte(s) ouverte(s)</div>
+                <div className="text-sm">Cliquez pour traiter les plaintes en attente</div>
+              </Link>
+            )}
+            {recruitments.filter(r => r.status === "OPEN").length > 0 && (
+              <Link
+                href="/staff/recruitment"
+                className="block p-4 rounded-lg border border-blue-300/50 bg-blue-50/20 hover:bg-blue-100/30 transition text-blue-900 dark:text-blue-200 dark:border-blue-800/50 dark:bg-blue-900/10"
+              >
+                <div className="font-semibold">ðŸ‘¥ {recruitments.filter(r => r.status === "OPEN").length} recrutement(s) Ã  dÃ©cider</div>
+                <div className="text-sm">Cliquez pour voir les candidatures en attente</div>
+              </Link>
+            )}
+            {sanctions.filter(s => s.status === "ACTIVE").length > 0 && (
+              <Link
+                href="/staff/sanctions"
+                className="block p-4 rounded-lg border border-amber-300/50 bg-amber-50/20 hover:bg-amber-100/30 transition text-amber-900 dark:text-amber-200 dark:border-amber-800/50 dark:bg-amber-900/10"
+              >
+                <div className="font-semibold">âš–ï¸ {sanctions.filter(s => s.status === "ACTIVE").length} sanction(s) Ã  surveiller</div>
+                <div className="text-sm">Cliquez pour gÃ©rer les sanctions actives</div>
+              </Link>
+            )}
+            {complaints.length === 0 && recruitments.length === 0 && sanctions.length === 0 && (
+              <div className="p-4 rounded-lg border border-green-300/50 bg-green-50/20 text-green-900 dark:text-green-200 dark:border-green-800/50 dark:bg-green-900/10">
+                <div className="font-semibold">âœ… Tout est Ã  jour!</div>
+                <div className="text-sm">Aucune action urgente nÃ©cessaire en ce moment.</div>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* Recent Recruitments */}
+        <Section 
+          title="Recrutements en attente"
+          description="DerniÃ¨res demandes d'intÃ©gration"
+        >
+          <div className="rounded-lg border border-border overflow-hidden bg-card/30">
+            <div className="divide-y divide-border">
+              {loading ? (
+                <div className="p-6 space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full" />
+                  ))}
+                </div>
+              ) : recruitments.length > 0 ? (
+                <>
+                  {recruitments.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">
+                          {rec.rpName || rec.ticketKey}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {fmtDate(rec.createdAt)}
+                        </p>
+                      </div>
+                      <Badge
+                        variant={getRecruitmentBadge(rec.status).variant}
+                        className="ml-2 flex-shrink-0"
+                      >
+                        {getRecruitmentBadge(rec.status).label}
+                      </Badge>
+                    </div>
+                  ))}
+                  <div className="px-4 py-3 border-t border-border bg-muted/20">
+                    <Button variant="ghost" size="sm" className="w-full" asChild>
+                      <Link href="/staff/recruitment">
+                        Voir tous les recrutements
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Link>
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  Aucun recrutement en attente
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
+
+        {/* Recent Sanctions */}
+        <Section 
+          title="Sanctions actives"
+          description="Sanctions en cours et Ã  surveiller"
+        >
+          <div className="rounded-lg border border-border overflow-hidden bg-card/30">
+            <div className="divide-y divide-border">
+              {loading ? (
+                <div className="p-6 space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full" />
+                  ))}
+                </div>
+              ) : sanctions.length > 0 ? (
+                <>
+                  {sanctions.map((sanc) => (
+                    <div
+                      key={sanc.id}
+                      className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground">
+                          {sanc.type}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                          {sanc.reason || "Aucune raison"}
+                        </p>
+                      </div>
+                      <Badge
+                        variant={getSanctionBadge(sanc.status).variant}
+                        className="ml-2 flex-shrink-0"
+                      >
+                        {getSanctionBadge(sanc.status).label}
+                      </Badge>
+                    </div>
+                  ))}
+                  <div className="px-4 py-3 border-t border-border bg-muted/20">
+                    <Button variant="ghost" size="sm" className="w-full" asChild>
+                      <Link href="/staff/sanctions">
+                        Voir toutes les sanctions
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Link>
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  Aucune sanction active
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      {/* Complaints Section */}
+      <Section
+        title="Plaintes ouvertes"
+        description="Plaintes en attente de traitement"
+      >
+        <div className="rounded-lg border border-border overflow-hidden bg-card/30">
+          <div className="divide-y divide-border">
+            {loading ? (
+              <div className="p-6 space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : complaints.length > 0 ? (
+              <>
+                {complaints.map((comp) => (
+                  <div
+                    key={comp.id}
+                    className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground">
+                        Plainte #{comp.channelId.slice(-4)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {fmtDate(comp.createdAtDiscord)}
+                      </p>
+                    </div>
+                    <Badge variant={getComplaintBadge(comp.status).variant}>
+                      {getComplaintBadge(comp.status).label}
+                    </Badge>
+                  </div>
+                ))}
+                <div className="px-4 py-3 border-t border-border bg-muted/20">
+                  <Button variant="ghost" size="sm" className="w-full" asChild>
+                    <Link href="/staff/complaints">
+                      Voir toutes les plaintes
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Link>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="p-8 text-center text-muted-foreground">
+                Aucune plainte ouverte
+              </div>
+            )}
+          </div>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+===== MISSING: app\staff\members\by-id\[id]\page.tsx =====
+===== FILE: src\lib\app-date-formatter.ts =====
+/**
+ * Unified date formatter for the entire app
+ * Uses Europe/Brussels timezone
+ * Alias for formatBanklogTime - consistency across the codebase
+ */
+
+export { formatBanklogTime as formatAppDate } from "./banklogs-formatter";
+
+===== MISSING: src\lib\banklog-time.ts =====

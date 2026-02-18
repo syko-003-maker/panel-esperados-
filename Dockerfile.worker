@@ -1,0 +1,17 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Generate Prisma client
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# Copy source code
+COPY . .
+
+# Run Discord worker
+CMD ["npm", "run", "discord:worker"]

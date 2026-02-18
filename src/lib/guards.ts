@@ -1,0 +1,642 @@
+import { getSession } from "@/auth";
+import { prisma } from "@/lib/db";
+import { getUserDiscordIdFromSession } from "@/server/auth/discord";
+import { createAuditLog } from "@/lib/audit";
+import { debug } from "@/lib/logger";
+import { headers } from "next/headers";
+import {
+  CHEF_FAMILLE_ROLE_ID,
+  ETAT_MAJOR_ROLE_ID,
+  RECRUTEUR_ROLE_ID,
+  getDiscordRolesForUser,
+  getDiscordRolesForUserWithStatus,
+  hasAnyRole,
+  logDiscordRoleConfig,
+  getRecruiterRoleIds,
+  getStaffFullRoleIds,
+  isRecruiter,
+  isStaffFull,
+  type DiscordRoleResult,
+} from "@/lib/discord-roles";
+import { getStaffRoleIds } from "@/lib/discord-rbac";
+
+type GuardOk = {
+  session: any;
+};
+
+type GuardResult = GuardOk | Response;
+
+// Grade levels
+export const GRADE_LEVELS = {
+  MEMBER: 0,
+  STAFF: 10,
+  CHEF: 20,
+} as const;
+
+// Request-scoped role cache to prevent multiple API calls per request
+const requestRoleCache = new Map<string, { roles: string[]; timestamp: number }>();
+const REQUEST_CACHE_TTL_MS = 5_000; // Very short TTL, just for single request lifecycle
+
+/**
+ * Helper: Retourne une réponse d'erreur JSON
+ * Format: { ok: false, error: "message" }
+ */
+function jsonError(status: number, error: string, message?: string): Response {
+  return new Response(JSON.stringify({ ok: false, error, message }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function discordUnavailableResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      ok: false,
+      error: "DISCORD_API_UNAVAILABLE",
+      message: "Discord API indisponible, réessayez.",
+    }),
+    {
+      status: 503,
+      headers: {
+        "content-type": "application/json",
+        Location: "/staff/forbidden?reason=discord",
+      },
+    }
+  );
+}
+
+const AUDIT_TTL_MS = 60_000;
+const auditCache = new Map<string, number>();
+
+function shouldAudit(key: string, ttlMs = AUDIT_TTL_MS): boolean {
+  const now = Date.now();
+  const last = auditCache.get(key) ?? 0;
+  if (now - last < ttlMs) return false;
+  auditCache.set(key, now);
+  return true;
+}
+
+async function getRequestPath(): Promise<string> {
+  try {
+    const h = await headers();
+    return (
+      h.get("x-original-url") ||
+      h.get("x-rewrite-url") ||
+      h.get("x-forwarded-uri") ||
+      h.get("x-forwarded-path") ||
+      h.get("x-url") ||
+      h.get("referer") ||
+      "unknown"
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
+
+async function getRolesForSession(session: any): Promise<DiscordRoleResult> {
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) return { roles: [] };
+  
+  // Check request-scoped cache first
+  const now = Date.now();
+  const cached = requestRoleCache.get(discordId);
+  if (cached && (now - cached.timestamp) < REQUEST_CACHE_TTL_MS) {
+    debug("[guards] request_cache_hit", { discordId });
+    return { roles: cached.roles };
+  }
+  
+  // Fetch from Discord (which has its own persistent cache)
+  const result = await getDiscordRolesForUserWithStatus(discordId);
+  
+  // Store in request cache
+  requestRoleCache.set(discordId, { roles: result.roles, timestamp: now });
+  
+  // Clean up old entries (simple cleanup every 10th call)
+  if (Math.random() < 0.1) {
+    for (const [key, value] of requestRoleCache.entries()) {
+      if (now - value.timestamp > REQUEST_CACHE_TTL_MS) {
+        requestRoleCache.delete(key);
+      }
+    }
+  }
+  
+  return result;
+}
+
+export async function requireLosEsperados(): Promise<GuardResult> {
+  const session = await getSession();
+  const userId = (session as any)?.userId ?? (session as any)?.user?.id;
+
+  if (!userId) return jsonError(401, "Unauthorized");
+  return { session };
+}
+
+/**
+ * ✅ Require authenticated session (redirect to /login)
+ */
+export async function requireAuth(): Promise<GuardResult> {
+  const session = await getSession();
+  if (!session) {
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/login" },
+    });
+  }
+
+  return { session };
+}
+
+export async function requirePrivileged(): Promise<GuardResult> {
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) return jsonError(403, "Missing discordId");
+
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  const isOwner = ownerDiscordId && discordId === ownerDiscordId;
+
+  const rolesResult = await getDiscordRolesForUserWithStatus(discordId);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+  const staffRoleIds = getStaffRoleIds();
+  const hasStaffRole = hasAnyRole(rolesResult.roles, staffRoleIds);
+
+  if (!isOwner && !hasStaffRole) {
+    const path = await getRequestPath();
+    const denyKey = `ACCESS_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        actorMemberId: null,
+        action: "ACCESS_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "staff",
+        meta: { reason: "not_owner_nor_staff", path },
+      });
+    }
+
+    return jsonError(403, "UNAUTHORIZED");
+  }
+
+  const path = await getRequestPath();
+  const allowKey = `ACCESS_ALLOWED:staff:${discordId}:${path}`;
+  if (shouldAudit(allowKey)) {
+    void createAuditLog({
+      actorType: "member",
+      actorId: discordId,
+      actorMemberId: null,
+      action: "ACCESS_ALLOWED",
+      entity: "Auth",
+      entityId: discordId,
+      entityName: "staff",
+      meta: { reason: isOwner ? "owner" : "role", path },
+    });
+  }
+
+  return {
+    session: {
+      ...session,
+      discordId,
+      _auth: { isOwner, hasChefRole: hasStaffRole },
+    },
+  };
+}
+
+export async function requireAdmin(): Promise<GuardResult> {
+  const guard = await requirePrivileged();
+  if (guard instanceof Response) return guard;
+
+  const s: any = guard.session;
+  const u: any = guard.session.user ?? {};
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  const discordId = s?.discordId ?? u?.discordId;
+
+  const isAdmin =
+    Boolean(u?.isAdmin ?? s?.isAdmin) ||
+    (discordId ? adminIds.includes(String(discordId)) : false);
+
+  if (!isAdmin) return jsonError(403, "Forbidden");
+  return guard;
+}
+
+export async function requireChef(): Promise<GuardResult> {
+  logDiscordRoleConfig("requireChef");
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+  const hasAccess = hasAnyRole(rolesResult.roles, [CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID]);
+
+  if (!hasAccess) return jsonError(403, "Forbidden");
+  return { session };
+}
+
+/**
+ * ✅ PATCH: Require specific role from Member
+ * Checks: session + isStaff + Member.grade matches role
+ * Usage: await requireRole("CHEF") or await requireRole("COCHEF")
+ */
+export async function requireRole(
+  role: "CHEF" | "COCHEF" | "STAFF"
+): Promise<GuardResult> {
+  const guard = await requirePrivileged();
+  if (guard instanceof Response) return guard;
+
+  const member = (guard.session as any)?.member;
+  if (!member?.grade) return jsonError(403, "Member grade not found");
+
+  const memberGrade = String(member.grade).toUpperCase();
+
+  // CHEF can access everything
+  if (memberGrade === "CHEF") return guard;
+
+  // COCHEF can access COCHEF and STAFF
+  if (role === "COCHEF" && memberGrade === "COCHEF") return guard;
+
+  // STAFF can only access STAFF
+  if (role === "STAFF") return guard;
+
+  return jsonError(403, `Role ${role} required`);
+}
+
+/**
+ * ✅ Guard staff (RBAC)
+ * Logique:
+ *   1. Vérifie session existe
+ *   2. Vérifie rôle staff actif via RBAC (staffUser)
+ *   3. NE dépend PAS d'un member lié
+ * Utilisé par /staff/* (sauf /staff/link et /staff/debug/auth)
+ */
+/**
+ * ⚠️ DEPRECATED: Use requireStaffFull() instead
+ * Kept for backward compatibility
+ */
+export const requireChefOrEtatMajor = requireStaffFull;
+
+/**
+ * ✅ Guard: Require STAFF_FULL role (complete staff panel access)
+ * 
+ * Allowed:
+ * - User is OWNER_DISCORD_ID
+ * - User is in ADMIN_DISCORD_IDS
+ * - User has any of: CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID, HAUT_GRADE_ROLE_ID, JEFE_DE_JEFES_ROLE_ID, EL_PADRINO_ROLE_ID
+ * - User has any DISCORD_STAFF_FULL_ROLE_IDS role
+ * 
+ * Denied: Redirect to /staff/forbidden
+ */
+export async function requireStaffFull(): Promise<GuardResult> {
+  logDiscordRoleConfig("requireStaffFull");
+  const session = await getSession();
+  if (!session) {
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/login" },
+    });
+  }
+
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) {
+    debug("[staffGuard] no Discord ID found");
+    return jsonError(403, "Missing discordId");
+  }
+
+  // Check owner override
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  if (ownerDiscordId && discordId === ownerDiscordId) {
+    debug("[staffGuard]", { discordId, roleActive: true, reason: "owner" });
+    return { session };
+  }
+
+  // Check admin allowlist
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (adminIds.includes(discordId)) {
+    debug("[staffGuard]", { discordId, roleActive: true, reason: "admin" });
+    return { session };
+  }
+
+  // Check staff full roles from Discord
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+
+  const userRoles = rolesResult.roles ?? [];
+  
+  // Build list of full-staff role IDs: CHEF_FAMILLE + ETAT_MAJOR + HAUT_GRADE + JEFE_DE_JEFES + EL_PADRINO + DISCORD_STAFF_FULL_ROLE_IDS
+  const fullStaffRoleIds = [
+    CHEF_FAMILLE_ROLE_ID,
+    ETAT_MAJOR_ROLE_ID,
+    process.env.HAUT_GRADE_ROLE_ID ?? "",
+    process.env.JEFE_DE_JEFES_ROLE_ID ?? "",
+    process.env.EL_PADRINO_ROLE_ID ?? "",
+    ...getStaffFullRoleIds(),
+  ].filter(Boolean);
+  
+  const hasStaffFullRole = hasAnyRole(userRoles, fullStaffRoleIds);
+
+  if (!hasStaffFullRole) {
+    debug("[staffGuard]", { discordId, roleActive: false, reason: "no_staff_role" });
+
+    const path = await getRequestPath();
+    const denyKey = `STAFF_FULL_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        action: "STAFF_FULL_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "staff",
+        meta: { reason: "missing_staff_full_role", path },
+      });
+    }
+
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/staff/forbidden" },
+    });
+  }
+
+  debug("[staffGuard]", { discordId, roleActive: true, reason: "has_staff_role" });
+  return { session };
+}
+
+/**
+ * ✅ Guard: Require RECRUITER OR STAFF_FULL role
+ * 
+ * Allowed:
+ * - All requireStaffFull() conditions
+ * - User has any DISCORD_RECRUITER_ROLE_IDS role
+ * 
+ * Denied: Redirect to /staff/forbidden
+ */
+export async function requireRecruiterOrAbove(): Promise<GuardResult> {
+  logDiscordRoleConfig("requireRecruiterOrAbove");
+  const session = await getSession();
+  if (!session) {
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/login" },
+    });
+  }
+
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) {
+    return jsonError(403, "Missing discordId");
+  }
+
+  // Check owner override
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  if (ownerDiscordId && discordId === ownerDiscordId) {
+    debug("[guards] requireRecruiterOrAbove: granted (owner)");
+    return { session };
+  }
+
+  // Check admin allowlist
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (adminIds.includes(discordId)) {
+    debug("[guards] requireRecruiterOrAbove: granted (admin)");
+    return { session };
+  }
+
+  // Check recruiter or staff full roles
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+
+  const userRoles = rolesResult.roles ?? [];
+  const hasRecruiterRole = isRecruiter(userRoles);
+  const hasStaffFullRole = isStaffFull(userRoles);
+  const hasAccess = hasRecruiterRole || hasStaffFullRole;
+
+  if (!hasAccess) {
+    const path = await getRequestPath();
+    debug("[guards] requireRecruiterOrAbove: denied", {
+      discordId,
+      userRoles: userRoles.slice(0, 3),
+      path,
+    });
+
+    const denyKey = `RECRUITER_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        action: "RECRUITER_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "recruitment",
+        meta: { reason: "missing_recruiter_or_staff_role", path },
+      });
+    }
+
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/staff/forbidden" },
+    });
+  }
+
+  const grantReason = hasStaffFullRole ? "staff_full" : "recruiter";
+  debug("[guards] requireRecruiterOrAbove: granted", { discordId, grantReason });
+  return { session };
+}
+
+/**
+ * ✅ MVP guard "membre actif + permissions"
+ * - Récupère discordId depuis la session (anti spoof)
+ * - Vérifie isActive et gradeLevel
+ * - Réponses JSON uniquement
+ */
+export async function requireActiveMember(
+  minGradeLevel: number = GRADE_LEVELS.MEMBER
+): Promise<GuardResult> {
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+  const s: any = session;
+  const u: any = session?.user ?? {};
+  const discordId = s?.discordId ?? u?.discordId;
+
+  if (!discordId) return jsonError(403, "Missing discordId");
+
+  const member = await prisma.member.findUnique({
+    where: { familyId_discordId: { familyId: "esperados", discordId } },
+    select: { id: true, isActive: true, gradeLevel: true, grade: true },
+  });
+
+  if (!member) return jsonError(403, "Member not found");
+
+  if (!member.isActive) return jsonError(403, "Member inactive");
+
+  if ((member.gradeLevel ?? 0) < minGradeLevel) {
+    return jsonError(403, "Insufficient permissions");
+  }
+
+  return { session: { ...session, member, discordId } };
+}
+
+/**
+ * ✅ MEMBER GUARD: Verify user is linked to a Member in database
+ * 
+ * Used on member-only routes: /dashboard, /banque, /activité, /me
+ * 
+ * Process:
+ * 1. Get Discord ID from OAuth Account (providerAccountId) - source of truth
+ * 2. Query Member by familyId + discordId
+ * 3. If not found -> redirect to /login or show "Compte non lié"
+ * 4. If found -> return OK with member scope
+ * 
+ * Returns:
+ * - Response (redirect to /login): Not authenticated
+ * - Response (redirect to /login?reason=not_linked): Not linked to Member
+ * - GuardOk with session: Linked member with access granted
+ */
+export async function requireLinkedMember(): Promise<GuardResult> {
+  const session = await getSession();
+  
+  if (!session) {
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/login" },
+    });
+  }
+
+  // Get Discord ID from OAuth Account (source of truth)
+  const discordId = await getUserDiscordIdFromSession(session);
+
+  if (!discordId) {
+    debug("[memberGuard] no Discord ID found", {
+      userId: (session as any)?.user?.id,
+    });
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/login" },
+    });
+  }
+
+  // Query member by Discord ID (compound unique constraint)
+  const member = await prisma.member.findUnique({
+    where: { familyId_discordId: { familyId: "esperados", discordId } },
+    select: { id: true, discordId: true, rpName: true, steamId: true },
+  });
+
+  if (!member) {
+    debug("[memberGuard] member not found", {
+      discordId: discordId.substring(0, 6) + "...",
+      memberFound: false,
+    });
+    return new Response(null, {
+      status: 307,
+      headers: { Location: "/login?reason=not_linked" },
+    });
+  }
+
+  debug("[memberGuard] member found", {
+    discordId: discordId.substring(0, 6) + "...",
+    memberFound: true,
+    rpName: member.rpName,
+  });
+
+  return { session };
+}
+
+/**
+ * ✅ SECURITY: /staff/link access control
+ * 
+ * Rules:
+ * 1. Must be Chef Famille (CHEF_FAMILLE_ROLE_ID) OR État-Major (ETAT_MAJOR_ROLE_ID)
+ * 2. Must NOT be already linked (no steamId)
+ * 3. Will check targetDiscordId !== sessionDiscordId in API (prevent self-linking)
+ * 
+ * Returns:
+ * - 401: Not authenticated
+ * - 403: Not Chef/État-Major OR already linked
+ * - GuardOk with session if authorized
+ */
+export async function requireLinkAccess(): Promise<GuardResult> {
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+
+  const s: any = session;
+  const u: any = session?.user ?? {};
+  const discordId = s?.discordId ?? u?.discordId;
+  const userId = s?.userId ?? u?.id;
+
+  if (!discordId || !userId) {
+    return jsonError(401, "Missing authentication data");
+  }
+
+  // Check if user is already linked
+  const member = await prisma.member.findUnique({
+    where: { familyId_discordId: { familyId: "esperados", discordId } },
+    select: { id: true, steamId: true, discordId: true },
+  });
+
+  if (member && member.steamId) {
+    // Already linked, deny access
+    return jsonError(403, "ALREADY_LINKED");
+  }
+
+  const roles = await getDiscordRolesForUser(discordId);
+  const hasChefRole = hasAnyRole(roles, [CHEF_FAMILLE_ROLE_ID]);
+  const hasEtatMajorRole = hasAnyRole(roles, [ETAT_MAJOR_ROLE_ID]);
+  const hasAccess = hasChefRole || hasEtatMajorRole;
+
+  if (!hasAccess) {
+    const path = await getRequestPath();
+    const denyKey = `LINK_ACCESS_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        action: "LINK_ACCESS_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "staff/link",
+        meta: { reason: "missing_role", path },
+      });
+    }
+
+    return jsonError(403, "FORBIDDEN_NO_ROLE");
+  }
+
+  const path = await getRequestPath();
+  const allowKey = `LINK_ACCESS_ALLOWED:${discordId}:${path}`;
+  if (shouldAudit(allowKey)) {
+    void createAuditLog({
+      actorType: "member",
+      actorId: discordId,
+      action: "LINK_ACCESS_ALLOWED",
+      entity: "Auth",
+      entityId: discordId,
+      entityName: "staff/link",
+      meta: { reason: hasChefRole ? "chef_role" : "etat_major_role", path },
+    });
+  }
+
+  return {
+    session: {
+      ...session,
+      discordId,
+      _auth: { hasChefRole, hasEtatMajorRole },
+    },
+  };
+}

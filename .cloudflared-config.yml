@@ -1,0 +1,18 @@
+tunnel: cd2a0e2d-f3c1-4866-ae84-8115817b154a
+credentials-file: ~/.cloudflared/cd2a0e2d-f3c1-4866-ae84-8115817b154a.json
+
+ingress:
+  # Main domain
+  - hostname: losesperados.xyz
+    service: http://localhost:3000
+    originRequest:
+      httpHostHeader: losesperados.xyz
+
+  # WWW subdomain
+  - hostname: www.losesperados.xyz
+    service: http://localhost:3000
+    originRequest:
+      httpHostHeader: losesperados.xyz
+
+  # Catch-all (404)
+  - service: http_status:404
