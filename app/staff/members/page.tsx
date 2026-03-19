@@ -5,21 +5,32 @@ import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { checkBootstrapState } from "@/lib/bootstrap";
 import { enrichMembersWithRanks } from "@/lib/discord-rank-batch";
-import { CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
-import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 import { debug as logDebug } from "@/lib/logger";
 import { MembersListClient } from "./members-list-client";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
+import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
 
-// Type for member status derived from Discord verification
-type MemberStatus = "active" | "former" | "not-found" | "unavailable" | "unknown";
+type DiscordSnapshotStatus = "OK" | "HORS_DISCORD" | "NON_VERIFIE" | "STALE";
 
-type DiscordMemberStatus = {
-  ok: boolean;
-  inGuild?: boolean;
-  roles?: string[];
-  errorCode?: "RATE_LIMIT" | "CONFIG_MISSING" | "UNAVAILABLE";
-};
+function getSnapshotStaleMinutes(): number {
+  const raw = Number(process.env.DISCORD_SNAPSHOT_STALE_MINUTES ?? "120");
+  if (!Number.isFinite(raw) || raw <= 0) return 120;
+  return Math.floor(raw);
+}
+
+function computeDiscordStatus(snapshot: {
+  isInGuild: boolean;
+  lastCheckedAt: Date;
+} | null): DiscordSnapshotStatus {
+  if (!snapshot) return "NON_VERIFIE";
+
+  const staleMinutes = getSnapshotStaleMinutes();
+  const staleMs = staleMinutes * 60 * 1000;
+  const isStale = Date.now() - snapshot.lastCheckedAt.getTime() > staleMs;
+
+  if (isStale) return "STALE";
+  return snapshot.isInGuild ? "OK" : "HORS_DISCORD";
+}
 
 export default async function MembersPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -60,6 +71,8 @@ export default async function MembersPage(props: {
       discordId: true,
       steamId: true,
       rpName: true,
+      discordDisplayName: true,
+      discordUsername: true,
       grade: true,
       gradeLevel: true,
       rankLabel: true,
@@ -72,60 +85,104 @@ export default async function MembersPage(props: {
       discordRoleIds: true,
       discordRolesUpdatedAt: true,
       discordLastError: true,
+      playtime7d: true,
+      playtime7dUpdatedAt: true,
+      discordSnapshot: {
+        select: {
+          isInGuild: true,
+          rolesJson: true,
+          nickname: true,
+          username: true,
+          lastCheckedAt: true,
+          lastSuccessAt: true,
+          lastError: true,
+          source: true,
+        },
+      },
     },
   });
 
-  // ✅ Batch enrich members with Discord ranks
+  // ✅ Batch enrich members with Discord ranks (DB-only on UI render)
   // For each member with discordId but no rankLabel in DB:
   // - Fetch their Discord roles
   // - Resolve rank (1 of 15 managed roles)
   // - Return enriched member with rankLabel populated
-  const enriched = await enrichMembersWithRanks(members, { debug });
+  const debugDiscord = process.env.DEBUG_DISCORD === "1";
+  if (debugDiscord) {
+    console.log("[members-page] DB-only Discord path: skipping live Discord API calls");
+  }
+  const enriched = await enrichMembersWithRanks(members, {
+    debug,
+    allowDiscordFetch: false,
+  });
 
-  // ✅ DISCORD STATUS FROM DB (not API - prevents 429 spam)
-  // Member.discordInGuild + discordRoleIds are updated by worker
-  const memberStatusMap = new Map<string, MemberStatus>();
-
-  const VALID_ACTIVE_ROLES = new Set(
-    [CHEF_FAMILLE_ROLE_ID, ...GRADE_ROLE_IDS_ORDERED].filter(Boolean)
+  const discordIds = Array.from(
+    new Set(
+      enriched
+        .map((m) => m.discordId)
+        .filter((discordId): discordId is string => Boolean(discordId))
+    )
   );
 
-  for (const member of enriched) {
-    if (!member.discordId) {
-      memberStatusMap.set(member.id, "unavailable"); // No discordId = not linked
-      continue;
-    }
+  const avatarHashByDiscordId = new Map<string, string>();
+  if (discordIds.length > 0) {
+    const linkedAccounts = await prisma.account.findMany({
+      where: {
+        provider: "discord",
+        providerAccountId: { in: discordIds },
+      },
+      select: {
+        providerAccountId: true,
+        user: {
+          select: {
+            image: true,
+          },
+        },
+      },
+    });
 
-    // Use DB mirror (updated by worker/resync)
-    if (member.discordInGuild === null || member.discordInGuild === undefined) {
-      // Never synced
-      memberStatusMap.set(member.discordId, "unknown");
-    } else if (member.discordInGuild === false) {
-      // Left Discord
-      memberStatusMap.set(member.discordId, "not-found");
-    } else {
-      // In Discord, check roles
-      const roles = member.discordRoleIds || [];
-      const hasValidRole = roles.some((roleId: string) => VALID_ACTIVE_ROLES.has(roleId));
-      memberStatusMap.set(member.discordId, hasValidRole ? "active" : "former");
+    for (const account of linkedAccounts) {
+      const hash = extractDiscordAvatarHash(account.user?.image);
+      if (hash) avatarHashByDiscordId.set(account.providerAccountId, hash);
     }
   }
 
-  if (debug) {
-    logDebug("[members-page] Discord statuses from DB mirror", {
-      total: enriched.filter((m) => m.discordId).length,
-      active: Array.from(memberStatusMap.values()).filter((s) => s === "active").length,
-      former: Array.from(memberStatusMap.values()).filter((s) => s === "former").length,
-      notFound: Array.from(memberStatusMap.values()).filter((s) => s === "not-found").length,
-      unavailable: Array.from(memberStatusMap.values()).filter((s) => s === "unavailable").length,
-      unknown: Array.from(memberStatusMap.values()).filter((s) => s === "unknown").length,
+  if (debug || process.env.DEBUG_DISCORD === "1") {
+    const statusCounts = {
+      ok: 0,
+      horsDiscord: 0,
+      nonVerifie: 0,
+      stale: 0,
+    };
+
+    enriched.forEach((m) => {
+      const status = computeDiscordStatus(m.discordSnapshot ?? null);
+      if (status === "OK") statusCounts.ok += 1;
+      if (status === "HORS_DISCORD") statusCounts.horsDiscord += 1;
+      if (status === "NON_VERIFIE") statusCounts.nonVerifie += 1;
+      if (status === "STALE") statusCounts.stale += 1;
+    });
+
+    logDebug("[members-page] Discord snapshot statuses", {
+      total: enriched.length,
+      ...statusCounts,
+      staleMinutes: getSnapshotStaleMinutes(),
     });
   }
 
   // 📝 Persist any rankLabel/gradeLevel changes back to database
   // This ensures future page loads have correct sort order
   const updates = enriched
-    .filter((m) => m.rankLabel && (m.rankLabel !== m.rankLabel || m.gradeLevel !== members.find(orig => orig.id === m.id)?.gradeLevel))
+    .filter((m) => {
+      const original = members.find((orig) => orig.id === m.id);
+      if (!original) return false;
+
+      return (
+        (m.rankLabel ?? null) !== (original.rankLabel ?? null) ||
+        (m.rankRoleId ?? null) !== (original.rankRoleId ?? null) ||
+        (m.gradeLevel ?? 0) !== (original.gradeLevel ?? 0)
+      );
+    })
     .map((m) => 
       prisma.member.update({
         where: { id: m.id },
@@ -160,12 +217,16 @@ export default async function MembersPage(props: {
     // ✅ Calculate effectiveActive: session user is ALWAYS active (can't be marked ancien)
     const isSessionUser = !!(sessionDiscordId && m.discordId === sessionDiscordId);
     const effectiveActive = isSessionUser ? true : m.isActive;
+    const discordStatus = computeDiscordStatus(m.discordSnapshot ?? null);
 
     return {
       ...m,
       joinedAt: m.joinedAt?.toISOString() ?? null,
       updatedAt: m.updatedAt.toISOString(),
-      memberStatus: (m.discordId ? memberStatusMap.get(m.discordId) ?? "unavailable" : "unavailable") as MemberStatus,
+      playtime7d: m.playtime7d ?? 0,
+      playtime7dUpdatedAt: m.playtime7dUpdatedAt?.toISOString() ?? null,
+      discordAvatarHash: m.discordId ? avatarHashByDiscordId.get(m.discordId) ?? null : null,
+      discordStatus,
       effectiveActive, // ✅ Use for filtering/sorting instead of isActive
       isSessionUser,   // ✅ For client-side pinning at top
     };

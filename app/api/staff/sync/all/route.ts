@@ -24,6 +24,7 @@ import { resolveRankFromDiscord } from "@/lib/discord-rank";
 import { checkBatchDiscordActivity } from "@/lib/discord-member-activity";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import { acquireSyncLock, releaseSyncLock } from "@/lib/sync-lock";
+import { syncMemberPlaytime7d } from "@/lib/sync/syncMemberPlaytime7d";
 
 interface SyncResult {
   ok: boolean;
@@ -64,13 +65,25 @@ interface SyncResult {
     duration?: number;
     resolvedEndpoint?: string;
   };
+  playtimeResult?: {
+    ok: boolean;
+    fetched?: number;
+    scanned?: number;
+    updated?: number;
+    resetToZero?: number;
+    skippedWithoutSteamId?: number;
+    unchanged?: number;
+    missingFromSnapshot?: number;
+    error?: string;
+  };
   warnings?: Array<{ type: string; error: string; hint?: string }>;
   message: string;
 }
 
 export async function POST(req: Request) {
   const startTime = Date.now();
-  let lockKey: string = ""; // Initialize before try
+  let lockKey = "";
+  let lockAcquired = false;
   
   try {
     // ✅ Check authorization
@@ -82,6 +95,19 @@ export async function POST(req: Request) {
 
 
     const session = (guard as any).session;
+    const lygToken = process.env.LYG_TOKEN?.trim();
+    if (!lygToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing LYG token",
+          members: { ok: false },
+          infos: { ok: false },
+          message: "LYG_TOKEN is not configured",
+        },
+        { status: 500 }
+      );
+    }
     
     // ✅ Get session Discord ID for active user override
     const sessionDiscordId = await getUserDiscordIdFromSession(session);
@@ -108,7 +134,6 @@ export async function POST(req: Request) {
     });
 
     // ✅ SYNC LOCK: Prevent concurrent syncs for same family
-    let lockKey: string;
     lockKey = `sync:all:${familySlug}`;
     const lock = acquireSyncLock(lockKey, 60000); // 60s TTL
 
@@ -120,13 +145,14 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "SYNC_IN_PROGRESS",
+          error: "SYNC_ALREADY_RUNNING",
           message: "Une synchronisation est déjà en cours",
           remainingMs: lock.remainingMs,
         },
         { status: 409 }
       );
     }
+    lockAcquired = true;
 
     // Initialize result BEFORE try block so catch can access it
     const result: SyncResult = {
@@ -169,40 +195,6 @@ export async function POST(req: Request) {
       count: extractedMembers.length,
       meta: membersResponse.meta,
     });
-
-    // ✅ DIAGNOSTIC A: Log first 10 member names to verify Denis is received
-    const rpNames = extractedMembers
-      .slice(0, 10)
-      .map((m: any) => m.rpName || m.name || m.nomRP || "<unnamed>")
-      .join(", ");
-    console.log("[sync/all] DIAGNOSTIC: First 10 members received from LYG:", {
-      count: extractedMembers.length,
-      first10: rpNames,
-    });
-    debug("[sync/all] DIAGNOSTIC: LYG member names", {
-      count: extractedMembers.length,
-      first10: rpNames,
-    });
-
-    // ✅ DIAGNOSTIC A: Check if Denis/Brouillard is in raw LYG response
-    const denisCandidates = extractedMembers.filter((m: any) => {
-      const name = (m.rpName || m.name || m.nomRP || "").toLowerCase();
-      return name.includes("denis") || name.includes("brouillard");
-    });
-    if (denisCandidates.length > 0) {
-      console.log("[sync/all] DIAGNOSTIC: Found Denis/Brouillard in LYG raw data:", {
-        count: denisCandidates.length,
-        items: denisCandidates.map((m: any) => ({
-          rpName: m.rpName || m.name || m.nomRP,
-          steamId64: m.steamId64 || m.steamid64 || m.steamID64 || m.steamid,
-          rank: m.rank || m.grade || m.class,
-          owner: m.owner || m.isOwner,
-          keys: Object.keys(m),
-        })),
-      });
-    } else {
-      console.log("[sync/all] DIAGNOSTIC: Denis/Brouillard NOT found in LYG raw data");
-    }
 
     // Import members into DB
     let upsertCount = 0;
@@ -248,19 +240,6 @@ export async function POST(req: Request) {
         const normalizedMembers = extractedMembers
           .map((item: any) => {
             const normalized = normalizeLygMember(item, "esperados");
-            
-            // ✅ DIAGNOSTIC A: Log if Denis/Brouillard is rejected during normalization
-            if (normalized === null) {
-              const name = (item.rpName || item.name || item.nomRP || "").toLowerCase();
-              if (name.includes("denis") || name.includes("brouillard")) {
-                console.log("[sync/all] DIAGNOSTIC: Denis/Brouillard REJECTED in normalizeLygMember", {
-                  rpName: item.rpName || item.name || item.nomRP,
-                  steamIdRaw: item.steamId64 || item.steamid64 || item.steamID64 || item.steamid,
-                  typeOf: typeof (item.steamId64 || item.steamid64 || item.steamID64 || item.steamid),
-                  keys: Object.keys(item).filter(k => k.toLowerCase().includes("steam") || k.toLowerCase().includes("id")),
-                });
-              }
-            }
             return normalized;
           })
           .filter(member => member !== null);
@@ -287,10 +266,6 @@ export async function POST(req: Request) {
             continue;
           }
 
-          // ✅ CHECK: Is this Denis or Nelson?
-          const isDenis = validatedSteamId === "76561198151991209";
-          const isNelson = validatedSteamId === "76561199210507619";
-          
           // ✅ CHECK: Is this the logged-in user?
           const isSessionUser = normalized.discordId && sessionDiscordId && normalized.discordId === sessionDiscordId;
 
@@ -304,6 +279,7 @@ export async function POST(req: Request) {
             source: "LYG" as const, // ✅ Provenance: LYG API sync
             lastSeenAt: syncNow,
             missingSince: null,
+            missingFromLygSince: null,
           };
           
           // ✅ OVERRIDE: Session user can NOT be marked as ancien
@@ -340,24 +316,53 @@ export async function POST(req: Request) {
           if (existingMember) {
             // Update existing member (don't override source)
             const { source, ...dataWithoutSource } = memberData;
-            await prisma.member.update({
-              where: { id: existingMember.id },
-              data: dataWithoutSource,
-            });
-            updateCount++;
-
-            // ✅ LOG Denis/Nelson explicitly
-            if (isDenis || isNelson) {
-              const name = normalized.rpName || "Unknown";
-              console.log("[SYNC CHECK]", {
-                member: isDenis ? "DENIS Brouillard" : "NELSON Meledo",
-                rpName: name,
-                steamId: validatedSteamId,
-                found: "YES_UPDATED",
-                isActive: memberData.isActive,
-                discordId: memberData.discordId,
+            
+            // ✅ PRESERVE EXISTING DISCORD ID: Never overwrite with null/undefined
+            // Only update discordId if a NEW valid discordId is provided
+            const updateData: any = { ...dataWithoutSource };
+            
+            if (!updateData.discordId && existingMember.discordId) {
+              // Preserve existing discordId - don't nullify it
+              delete updateData.discordId;
+              console.log("[sync/all] Preserving existing discordId", {
+                memberId: existingMember.id,
+                rpName: normalized.rpName,
+                existingDiscordId: existingMember.discordId.substring(0, 8) + "...",
+                lygHadDiscordId: !!normalized.discordId,
               });
             }
+            
+            // ✅ PRESERVE EXISTING STEAM ID: Never overwrite with null/undefined
+            // Only update steamId if a NEW valid steamId is provided
+            if (!updateData.steamId && existingMember.steamId) {
+              // Preserve existing steamId - don't nullify it
+              delete updateData.steamId;
+              console.log("[sync/all] Preserving existing steamId", {
+                memberId: existingMember.id,
+                rpName: normalized.rpName,
+                existingSteamId: existingMember.steamId.substring(0, 12) + "...",
+                lygHadSteamId: !!validatedSteamId,
+              });
+            }
+            
+            // ✅ PRESERVE EXISTING RP NAME: Never overwrite with null/undefined
+            // Only update rpName if a NEW valid rpName is provided
+            if (!updateData.rpName && existingMember.rpName) {
+              // Preserve existing rpName - don't nullify it
+              delete updateData.rpName;
+              console.log("[sync/all] Preserving existing rpName", {
+                memberId: existingMember.id,
+                existingRpName: existingMember.rpName,
+                lygHadRpName: !!normalized.rpName,
+                steamId: existingMember.steamId?.substring(0, 12) + "...",
+              });
+            }
+            
+            await prisma.member.update({
+              where: { id: existingMember.id },
+              data: updateData,
+            });
+            updateCount++;
 
             // Resolve rank if discordId available
             if (memberData.discordId) {
@@ -390,19 +395,6 @@ export async function POST(req: Request) {
               select: { id: true },
             });
             upsertCount++;
-
-            // ✅ LOG Denis/Nelson explicitly
-            if (isDenis || isNelson) {
-              const name = normalized.rpName || "Unknown";
-              console.log("[SYNC CHECK]", {
-                member: isDenis ? "DENIS Brouillard" : "NELSON Meledo",
-                rpName: name,
-                steamId: validatedSteamId,
-                found: "YES_CREATED",
-                isActive: memberData.isActive,
-                discordId: memberData.discordId,
-              });
-            }
 
             // Resolve rank if discordId available
             if (memberData.discordId) {
@@ -503,6 +495,10 @@ export async function POST(req: Request) {
             id: true,
             steamId: true,
             rpName: true,
+            grade: true,
+            rankLabel: true,
+            isActive: true,
+            missingFromLygSince: true,
           },
         });
 
@@ -512,42 +508,18 @@ export async function POST(req: Request) {
         for (const member of membersForCheck) {
           const steamId = String(member.steamId ?? "").trim();
           const isValidFormat = /^\d{17}$/.test(steamId);
-          const foundInLyg = isValidFormat ? lygSet.has(steamId) : false;
-          
-          // ✅ LOG Denis/Nelson explicitly
-          const isDenis = steamId === "76561198151991209";
-          const isNelson = steamId === "76561199210507619";
-          
-          if (isDenis || isNelson) {
-            console.log("[SYNC CHECK]", {
-              member: isDenis ? "DENIS Brouillard" : "NELSON Meledo",
-              rpName: member.rpName,
-              steamId,
-              isValidFormat,
-              foundInLyg,
-              willBe: foundInLyg ? "ACTIVE" : "ANCIENT",
-            });
-          }
           
           if (!isValidFormat) {
             invalidSteamIds++;
-            console.warn("[SYNC CHECK] Invalid steamId format", {
-              steamId,
-              rpName: member.rpName,
-              length: steamId.length,
-              format: /^\d+$/.test(steamId) ? "numeric but not 17 digits" : "non-numeric",
-            });
           } else {
             validSteamIds++;
           }
-          
-          console.log("[SYNC CHECK]", {
-            rpName: member.rpName,
-            steamId,
-            isValid: isValidFormat,
-            foundInLyg,
-          });
         }
+
+        const debugLyg = process.env.DEBUG_LYG_SYNC === "1";
+        const graceDaysRaw = Number(process.env.LYG_MISSING_GRACE_DAYS ?? "14");
+        const graceDays = Number.isFinite(graceDaysRaw) && graceDaysRaw > 0 ? graceDaysRaw : 14;
+        const graceCutoff = new Date(Date.now() - graceDays * 24 * 60 * 60 * 1000);
 
         // Use transaction for atomicity
         const reconcileResult = await prisma.$transaction(async (tx) => {
@@ -556,6 +528,8 @@ export async function POST(req: Request) {
             return {
               listed: 0,
               deactivated: 0,
+              missingSet: 0,
+              missingReset: 0,
             };
           }
 
@@ -578,6 +552,7 @@ export async function POST(req: Request) {
               isActive: true,
               lastSeenAt: now,
               missingSince: null,
+              missingFromLygSince: null,
             },
           });
 
@@ -585,8 +560,45 @@ export async function POST(req: Request) {
             return {
               listed: listReconciled.count,
               deactivated: 0,
+              missingSet: 0,
+              missingReset: listReconciled.count,
             };
           }
+
+          const protectedChef = {
+            OR: [
+              { grade: { in: ["CHEF", "COCHEF"] } },
+              { rankLabel: { contains: "Chef" } },
+            ],
+          };
+
+          const resetProtectedChef = await tx.member.updateMany({
+            where: {
+              familyId: familyDbId,
+              steamId: { not: null },
+              NOT: { steamId: { in: activeSteamIds } },
+              ...protectedChef,
+            },
+            data: {
+              missingFromLygSince: null,
+            },
+          });
+
+          const missingSet = await tx.member.updateMany({
+            where: {
+              familyId: familyDbId,
+              steamId: { not: null },
+              missingFromLygSince: null,
+              AND: [
+                { NOT: { steamId: { in: activeSteamIds } } },
+                { NOT: protectedChef },
+              ],
+            },
+            data: {
+              missingFromLygSince: now,
+              missingSince: now,
+            },
+          });
 
           // ✅ CRITICAL: Only deactivate members with valid 17-digit steamIds NOT in LYG
           // Members with invalid steamIds stay untouched (they may have precision loss)
@@ -594,9 +606,11 @@ export async function POST(req: Request) {
             where: {
               familyId: familyDbId,
               steamId: { not: null },
-              NOT: {
-                steamId: { in: activeSteamIds },
-              },
+              missingFromLygSince: { lte: graceCutoff },
+              AND: [
+                { NOT: { steamId: { in: activeSteamIds } } },
+                { NOT: protectedChef },
+              ],
             },
             data: {
               isActive: false,
@@ -607,6 +621,8 @@ export async function POST(req: Request) {
           return {
             listed: listReconciled.count,
             deactivated: deactivated.count,
+            missingSet: missingSet.count,
+            missingReset: listReconciled.count + resetProtectedChef.count,
           };
         });
 
@@ -623,9 +639,23 @@ export async function POST(req: Request) {
           lygSteamIdsCount: activeSteamIds.length,
           listedInLyg: reconcileResult.listed,
           deactivated: reconcileResult.deactivated,
+          missingSet: reconcileResult.missingSet,
+          missingReset: reconcileResult.missingReset,
+          graceDays,
           activeCountAfter: countAfterReconcile,
           summary: `${activeSteamIds.length} listed in LYG, ${reconcileResult.deactivated} deactivated`,
         });
+
+        if (debugLyg) {
+          console.log("[sync/all] LYG sync summary", {
+            partialSync: isPartialSync,
+            graceDays,
+            listed: reconcileResult.listed,
+            deactivated: reconcileResult.deactivated,
+            missingSet: reconcileResult.missingSet,
+            missingReset: reconcileResult.missingReset,
+          });
+        }
 
         // ✅ SESSION USER OVERRIDE: Ensure logged-in user is ALWAYS active (cannot become "ancien")
         if (sessionDiscordId) {
@@ -650,6 +680,7 @@ export async function POST(req: Request) {
                 data: {
                   isActive: true,
                   missingSince: null,
+                  missingFromLygSince: null,
                 },
               });
               console.log("[ACTIVE_OVERRIDE] Session user reactivated after reconciliation", {
@@ -869,7 +900,37 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2️⃣ INFOS (OPTIONAL - with endpoint probing)
+    // 2️⃣ PLAYTIME 7D (OPTIONAL)
+    try {
+      const playtime = await syncMemberPlaytime7d({
+        familyId: familySlug,
+        token: lygToken,
+      });
+
+      result.playtimeResult = {
+        ok: true,
+        fetched: playtime.fetched,
+        scanned: playtime.scanned,
+        updated: playtime.updated,
+        resetToZero: playtime.resetToZero,
+        skippedWithoutSteamId: playtime.skippedWithoutSteamId,
+        unchanged: playtime.unchanged,
+        missingFromSnapshot: playtime.missingFromSnapshot,
+      };
+    } catch (error: any) {
+      result.playtimeResult = {
+        ok: false,
+        error: error?.message ?? String(error),
+      };
+      if (!result.warnings) result.warnings = [];
+      result.warnings.push({
+        type: "playtime7d",
+        error: error?.message ?? "Playtime sync failed",
+        hint: "Members sync succeeded; retry sync after checking LYG /familles/playtimes response.",
+      });
+    }
+
+    // 3️⃣ INFOS (OPTIONAL - with endpoint probing)
     debug("[sync/all] Probing for infos endpoint...");
     const infosProbe = await lygProbeInfos(familySlug, {
       timeoutMs: 60_000,
@@ -903,7 +964,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3️⃣ BANKLOGS (OPTIONAL - single source of truth)
+    // 4️⃣ BANKLOGS (OPTIONAL - single source of truth)
     debug("[sync/all] Fetching banklogs from LYG...", {
       familyId: familySlug,
     });
@@ -999,7 +1060,6 @@ export async function POST(req: Request) {
     const elapsedMs = Date.now() - startTime;
     logError("[sync/all] Unexpected error:", err);
     console.error(`[sync/all] ${new Date().toISOString()} - FAILED after ${elapsedMs}ms:`, err.message);
-    releaseSyncLock(lockKey);
     return NextResponse.json(
       {
         ok: false,
@@ -1012,6 +1072,8 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   } finally {
-    // ✅ Lock already released in catch, but ensure cleanup
+    if (lockAcquired && lockKey) {
+      releaseSyncLock(lockKey);
+    }
   }
 }

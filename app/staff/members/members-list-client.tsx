@@ -10,20 +10,33 @@ import { PageShell, SectionCard, EmptyState } from "@/components/staff/ui";
 import Link from "next/link";
 import { Search, ExternalLink, RefreshCw, Database, AlertTriangle } from "lucide-react";
 import { getGradeBadgeProps } from "@/lib/grade-colors";
+import { getMemberDisplayName, getNeutralRankBadge, resolveStableRank } from "@/lib/member-display";
+import { formatPlaytime } from "@/lib/formatPlaytime";
+import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 
 type Member = {
   id: string;
   discordId: string | null;
   steamId: string | null;
   rpName: string | null;
+  discordDisplayName?: string | null;
+  discordUsername?: string | null;
   grade: string | null;
   rankLabel: string | null;
   rankRoleId?: string | null;
   gradeLevel: number;
+  discordRoleIds?: string[];
+  discordLastError?: string | null;
+  discordAvatarHash?: string | null;
+  discordSnapshot?: {
+    rolesJson?: unknown;
+  } | null;
   isActive: boolean;
   effectiveActive: boolean;  // ✅ Computed: session user is ALWAYS true, otherwise = isActive
   isSessionUser: boolean;    // ✅ Flag for client-side pinning at top
-  memberStatus?: "active" | "former" | "not-found" | "unavailable" | "unknown";
+  discordStatus?: "OK" | "HORS_DISCORD" | "NON_VERIFIE" | "STALE";
+  playtime7d?: number | null;
+  playtime7dUpdatedAt?: string | null;
   updatedAt: string;
   _diag_hasDiscordId?: boolean;
   _diag_discordId?: string | null;
@@ -41,6 +54,23 @@ type SyncWarning = {
   _isInfoOnly?: boolean;
 };
 
+// Activity level thresholds (minutes of playtime in 7 days)
+const ACTIVITY_LEVELS = [
+  { max: 0,   label: "Inactif",     className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-700/40 text-slate-400 border border-slate-700/50" },
+  { max: 99,  label: "Faible",      className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/25" },
+  { max: 299, label: "Actif",       className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/15 text-green-400 border border-green-500/25" },
+  { max: Infinity, label: "Très actif", className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" },
+] as const;
+
+function getActivityBadge(playtime7d: number | null | undefined) {
+  const minutes = playtime7d ?? 0;
+  for (const level of ACTIVITY_LEVELS) {
+    if (minutes <= level.max) return level;
+  }
+  return ACTIVITY_LEVELS[ACTIVITY_LEVELS.length - 1];
+}
+
+
 const GRADE_COLORS: Record<
   string,
   { variant: "default" | "secondary" | "destructive" | "outline"; bgClass: string }
@@ -53,6 +83,35 @@ const GRADE_COLORS: Record<
   WL2: { variant: "secondary", bgClass: "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" },
   WL1: { variant: "secondary", bgClass: "bg-slate-500/20 text-slate-400 border border-slate-500/30" },
 };
+
+function MemberAvatar({
+  discordId,
+  avatarHash,
+  fallback,
+}: {
+  discordId: string | null;
+  avatarHash: string | null | undefined;
+  fallback: string;
+}) {
+  const avatarUrl = getDiscordAvatarUrl(discordId, avatarHash);
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt="Avatar"
+        className="h-8 w-8 rounded-full object-cover border border-slate-700"
+        loading="lazy"
+      />
+    );
+  }
+
+  return (
+    <div className="h-8 w-8 rounded-full border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-center">
+      {fallback.slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
 
 export function MembersListClient({ 
   members, 
@@ -67,7 +126,8 @@ export function MembersListClient({
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "grade">("grade");
+  const [sortBy, setSortBy] = useState<"name" | "grade" | "playtime7d" | "status">("grade");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showInactive, setShowInactive] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -187,6 +247,7 @@ export function MembersListClient({
           [m.rpName, m.discordId, m.steamId]
             .filter(Boolean)
             .some((field) => field!.toLowerCase().includes(term))
+          || getMemberDisplayName(m).toLowerCase().includes(term)
         )
       : members;
 
@@ -209,22 +270,35 @@ export function MembersListClient({
       }
 
       // For members with same activity status, sort by Discord status
-      const statusOrder = { active: 0, former: 1, unknown: 2 };
-      const aStatus = statusOrder[(a.memberStatus || "unknown") as "active" | "former" | "unknown"] ?? 2;
-      const bStatus = statusOrder[(b.memberStatus || "unknown") as "active" | "former" | "unknown"] ?? 2;
+      const statusOrder = { OK: 0, STALE: 1, HORS_DISCORD: 2, NON_VERIFIE: 3 };
+      const aStatus = statusOrder[(a.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
+      const bStatus = statusOrder[(b.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
       if (aStatus !== bStatus) return aStatus - bStatus;
 
       switch (sortBy) {
         case "name":
-          return (a.rpName || "").localeCompare(b.rpName || "");
+          return sortDir === "asc"
+            ? getMemberDisplayName(a).localeCompare(getMemberDisplayName(b))
+            : getMemberDisplayName(b).localeCompare(getMemberDisplayName(a));
+        case "playtime7d":
+          return sortDir === "asc"
+            ? (a.playtime7d ?? 0) - (b.playtime7d ?? 0)
+            : (b.playtime7d ?? 0) - (a.playtime7d ?? 0);
+        case "status": {
+          const statusOrder = { OK: 0, STALE: 1, HORS_DISCORD: 2, NON_VERIFIE: 3 };
+          const aS = statusOrder[(a.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
+          const bS = statusOrder[(b.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
+          const diff = sortDir === "asc" ? aS - bS : bS - aS;
+          return diff !== 0 ? diff : getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
+        }
         case "grade":
         default:
           if (a.gradeLevel !== b.gradeLevel)
-            return b.gradeLevel - a.gradeLevel;
-          return (a.rpName || "").localeCompare(b.rpName || "");
+            return sortDir === "asc" ? a.gradeLevel - b.gradeLevel : b.gradeLevel - a.gradeLevel;
+          return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
       }
     });
-  }, [members, search, sortBy, showInactive]);
+  }, [members, search, sortBy, sortDir, showInactive]);
 
   // Show bootstrap CTA only if DB is truly empty (no members)
   if (members.length === 0) {
@@ -265,11 +339,20 @@ export function MembersListClient({
     formerLyg: members.filter((m) => m.effectiveActive === false).length,     // Effective anciens
     dbTotal: members.length,                                                   // All members in DB
     // Discord breakdown (optional, for reference)
-    discordActive: members.filter((m) => m.effectiveActive === true && (m.memberStatus || "unavailable") === "active").length,
-    discordFormer: members.filter((m) => m.effectiveActive === true && (m.memberStatus || "unavailable") === "former").length,
-    discordNotFound: members.filter((m) => m.effectiveActive === true && (m.memberStatus || "unavailable") === "not-found").length,
-    discordUnavailable: members.filter((m) => m.effectiveActive === true && (m.memberStatus || "unavailable") === "unavailable").length,
+    discordOk: members.filter((m) => m.effectiveActive === true && m.discordStatus === "OK").length,
+    discordHors: members.filter((m) => m.effectiveActive === true && m.discordStatus === "HORS_DISCORD").length,
+    discordStale: members.filter((m) => m.effectiveActive === true && m.discordStatus === "STALE").length,
+    discordNonVerifie: members.filter((m) => m.effectiveActive === true && m.discordStatus === "NON_VERIFIE").length,
   };
+
+  // Summary stats computed from currently filtered view
+  const visibleActive = filtered.filter((m) => m.effectiveActive);
+  const avgPlaytime = visibleActive.length > 0
+    ? Math.round(visibleActive.reduce((sum, m) => sum + (m.playtime7d ?? 0), 0) / visibleActive.length)
+    : 0;
+  const top3 = [...visibleActive]
+    .sort((a, b) => (b.playtime7d ?? 0) - (a.playtime7d ?? 0))
+    .slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -369,24 +452,43 @@ export function MembersListClient({
       {/* Old warning list removal */}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
           <p className="text-sm text-muted-foreground">Actifs (LYG)</p>
           <p className="text-2xl font-bold mt-1 text-green-400">{stats.activeLyg}</p>
-          <p className="text-xs text-green-400/70 mt-1">discord: {stats.discordActive}</p>
+          <p className="text-xs text-green-400/70 mt-1">discord OK: {stats.discordOk}</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
           <p className="text-sm text-muted-foreground">Anciens membres</p>
           <p className="text-2xl font-bold text-slate-400 mt-1">{stats.formerLyg}</p>
         </div>
-        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm text-muted-foreground">Sans rôle Discord</p>
-          <p className="text-2xl font-bold text-slate-600 mt-1">{stats.discordFormer}</p>
+        <div className="rounded-lg border border-red-900/30 bg-slate-900/40 p-4">
+          <p className="text-sm text-muted-foreground">Hors Discord</p>
+          <p className="text-2xl font-bold text-red-400 mt-1">{stats.discordHors}</p>
+          <p className="text-xs text-slate-500 mt-1">non liés: {members.filter(m => m.effectiveActive && !m.discordId).length}</p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
           <p className="text-sm text-muted-foreground">Total BD</p>
           <p className="text-2xl font-bold text-slate-300 mt-1">{stats.dbTotal}</p>
         </div>
+      </div>
+
+      {/* Summary row: visible view stats */}
+      <div className="rounded-lg border border-slate-800 bg-slate-900/20 px-4 py-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+        <span>Vue actuelle : <strong className="text-foreground">{filtered.length}</strong> membres</span>
+        <span>Moy. playtime 7j : <strong className="text-foreground">{formatPlaytime(avgPlaytime)}</strong></span>
+        {top3.length > 0 && (
+          <span>
+            Top {top3.length} :{" "}
+            {top3.map((m, i) => (
+              <span key={m.id}>
+                {i > 0 && " · "}
+                <strong className="text-foreground">{getMemberDisplayName(m)}</strong>{" "}
+                <span className="text-xs">({formatPlaytime(m.playtime7d ?? 0)})</span>
+              </span>
+            ))}
+          </span>
+        )}
       </div>
 
       {/* Search & Filter Section */}
@@ -412,7 +514,16 @@ export function MembersListClient({
           >
             <option value="grade">Grade</option>
             <option value="name">Nom</option>
+            <option value="playtime7d">Playtime 7j</option>
+            <option value="status">Statut Discord</option>
           </select>
+          <button
+            onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
+            className="text-sm bg-slate-900/40 border border-slate-800 rounded-md px-3 py-2 text-foreground hover:bg-slate-800/60 transition-colors"
+            title={sortDir === "asc" ? "Croissant — cliquer pour décroissant" : "Décroissant — cliquer pour croissant"}
+          >
+            {sortDir === "asc" ? "↑" : "↓"}
+          </button>
         </div>
         <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
           <input
@@ -428,7 +539,7 @@ export function MembersListClient({
       {/* Table Section */}
       <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/40">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead className="bg-slate-900/20">
               <tr className="border-b border-slate-800">
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
@@ -443,6 +554,9 @@ export function MembersListClient({
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                   Steam
                 </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">
+                  Playtime 7j
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                   Statut
                 </th>
@@ -455,7 +569,7 @@ export function MembersListClient({
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-12 text-center text-muted-foreground"
                   >
                     <p className="text-sm">Aucun membre trouvé</p>
@@ -463,6 +577,45 @@ export function MembersListClient({
                 </tr>
               ) : (
                 filtered.map((m) => {
+                  const isMyRow = Boolean(sessionDiscordId && m.discordId === sessionDiscordId);
+                  const displayName = getMemberDisplayName(m);
+                  const stableRank = resolveStableRank({
+                    hasDiscordId: Boolean(m.discordId),
+                    rankRoleId: m.rankRoleId || m._diag_matchedRankRoleId,
+                    rankLabel: m.rankLabel || m._diag_matchedRankLabel,
+                    discordRoleIds: m.discordRoleIds,
+                    snapshotRolesJson: m.discordSnapshot?.rolesJson,
+                    discordLastError: m.discordLastError ?? null,
+                  });
+
+                  const roleDebug = (() => {
+                    if (!m._diag_hasDiscordId) {
+                      return { sourceTag: "fallback:NO_DISCORD_ID", branch: "no_discord_id" };
+                    }
+                    if (m._diag_fetchStatus === "NOT_IN_GUILD") {
+                      return { sourceTag: "discord live:NOT_IN_GUILD", branch: "not_in_guild" };
+                    }
+                    if (stableRank.rankRoleId) {
+                      if (Array.isArray(m.discordRoleIds) && m.discordRoleIds.length > 0) {
+                        return { sourceTag: "cache:discordRoleIds", branch: "stable_rank_roleid_from_cache" };
+                      }
+                      if (Array.isArray(m.discordSnapshot?.rolesJson) && m.discordSnapshot.rolesJson.length > 0) {
+                        return { sourceTag: "snapshot:rolesJson", branch: "stable_rank_roleid_from_snapshot" };
+                      }
+                      return { sourceTag: "DB:rankRoleId", branch: "stable_rank_roleid_from_db" };
+                    }
+                    if (stableRank.rankLabel) {
+                      return { sourceTag: "DB:rankLabel", branch: "stable_rank_label_from_db" };
+                    }
+                    if (m._diag_fetchStatus === "FETCH_FAILED" || stableRank.neutralState) {
+                      if (stableRank.neutralState === "DISCORD_UNAVAILABLE") {
+                        return { sourceTag: "fallback:DISCORD_UNAVAILABLE", branch: "discord_unavailable" };
+                      }
+                      return { sourceTag: "fallback:VERIFICATION_DIFFEREE", branch: "verification_differee" };
+                    }
+                    return { sourceTag: "fallback:SANS_GRADE", branch: "sans_grade" };
+                  })();
+
                   // Determine rank badge based on diagnostic status and rank role ID
                   const getRankBadge = () => {
                     // No Discord ID - member not linked
@@ -470,16 +623,6 @@ export function MembersListClient({
                       const badgeProps = getGradeBadgeProps(null, "NO_DISCORD_ID");
                       return (
                         <span className={badgeProps.className} title="Member not linked to Discord">
-                          {badgeProps.label}
-                        </span>
-                      );
-                    }
-
-                    // Fetch failed - API error
-                    if (m._diag_fetchStatus === "FETCH_FAILED") {
-                      const badgeProps = getGradeBadgeProps(null, "FETCH_FAILED");
-                      return (
-                        <span className={badgeProps.className} title="Could not fetch Discord roles">
                           {badgeProps.label}
                         </span>
                       );
@@ -495,12 +638,34 @@ export function MembersListClient({
                       );
                     }
 
-                    // Already in DB cache or resolved - use rank role ID for colors
-                    const rankRoleId = m.rankRoleId || m._diag_matchedRankRoleId;
-                    if (rankRoleId) {
-                      const badgeProps = getGradeBadgeProps(rankRoleId, m._diag_fetchStatus === "ALREADY_IN_DB" ? "ALREADY_IN_DB" : undefined);
+                    // Prefer stable local rank (DB/snapshot/cache) over live fetch status
+                    if (stableRank.rankRoleId) {
+                      const badgeProps = getGradeBadgeProps(
+                        stableRank.rankRoleId,
+                        m._diag_fetchStatus === "ALREADY_IN_DB" ? "ALREADY_IN_DB" : undefined
+                      );
                       return (
                         <span className={badgeProps.className} title={`Grade: ${badgeProps.label}`}>
+                          {badgeProps.label}
+                        </span>
+                      );
+                    }
+
+                    if (stableRank.rankLabel) {
+                      const base = getGradeBadgeProps(null);
+                      return (
+                        <span className={base.className} title={`Grade: ${stableRank.rankLabel}`}>
+                          {stableRank.rankLabel}
+                        </span>
+                      );
+                    }
+
+                    if (m._diag_fetchStatus === "FETCH_FAILED" || stableRank.neutralState) {
+                      const badgeProps = getNeutralRankBadge(
+                        stableRank.neutralState ?? "DISCORD_UNAVAILABLE"
+                      );
+                      return (
+                        <span className={badgeProps.className} title={badgeProps.label}>
                           {badgeProps.label}
                         </span>
                       );
@@ -516,9 +681,39 @@ export function MembersListClient({
                   };
 
                   return (
-                    <tr key={m.id} className="hover:bg-slate-900/30 transition-colors">
+                    <tr
+                      key={m.id}
+                      className={[
+                        "hover:bg-slate-900/30 transition-colors",
+                        !m.effectiveActive ? "opacity-50" : "",
+                        m.effectiveActive && !m.discordId ? "bg-slate-800/20" : "",
+                        m.effectiveActive && m.discordStatus === "HORS_DISCORD" ? "bg-red-950/10" : "",
+                      ].filter(Boolean).join(" ")}
+                    >
                       <td className="px-4 py-4 font-medium text-foreground">
-                        {m.rpName ?? "—"}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <MemberAvatar
+                            discordId={m.discordId}
+                            avatarHash={m.discordAvatarHash}
+                            fallback={displayName}
+                          />
+                          <span className="truncate">{displayName}</span>
+                        </div>
+                        {isMyRow ? (
+                          <div className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[10px] text-amber-200 font-mono leading-4">
+                            DEBUG(MY_ROW) source={roleDebug.sourceTag} branch={roleDebug.branch}
+                            <br />
+                            raw.rpName={String(m.rpName ?? null)}
+                            <br />
+                            raw.discordDisplayName={String(m.discordDisplayName ?? null)}
+                            <br />
+                            raw.discordUsername={String(m.discordUsername ?? null)}
+                            <br />
+                            raw.steamId={String(m.steamId ?? null)}
+                            <br />
+                            raw.rankRoleId={String(m.rankRoleId ?? m._diag_matchedRankRoleId ?? null)} raw.rankLabel={String(m.rankLabel ?? m._diag_matchedRankLabel ?? null)} raw.grade={String(m.grade ?? null)}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4">
                         {getRankBadge()}
@@ -540,6 +735,19 @@ export function MembersListClient({
                         ) : (
                           "—"
                         )}
+                      </td>
+                      <td className="px-4 py-4 text-xs text-muted-foreground text-right">
+                        <div className="font-medium text-slate-200">{formatPlaytime(m.playtime7d ?? 0)}</div>
+                        <div className="mt-1">
+                          <span className={getActivityBadge(m.playtime7d).className}>
+                            {getActivityBadge(m.playtime7d).label}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[10px] text-muted-foreground/70">
+                          {m.playtime7dUpdatedAt
+                            ? new Date(m.playtime7dUpdatedAt).toLocaleDateString("fr-FR")
+                            : "-"}
+                        </div>
                       </td>
                       <td className="px-4 py-4 text-center">
                         {(() => {
@@ -572,49 +780,39 @@ export function MembersListClient({
                             );
                           }
                           
-                          // Member is active in LYG and HAS discordId linked
-                          const status = m.memberStatus || "unavailable";
-                          if (status === "active") {
-                            // Has valid Discord role
+                          const status = m.discordStatus || "NON_VERIFIE";
+                          if (status === "OK") {
                             return (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/30">
-                                ✅ Actif
-                              </span>
-                            );
-                          } else if (status === "former") {
-                            // In LYG but no Discord role
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                ⚠️ Sans rôle
-                              </span>
-                            );
-                          } else if (status === "not-found") {
-                            // Member not in Discord guild (explicit 404)
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
-                                ❌ Hors serveur
-                              </span>
-                            );
-                          } else if (status === "unknown") {
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-300 border border-slate-500/30">
-                                ⏳ Discord: non verifie (rate limit)
-                              </span>
-                            );
-                          } else {
-                            // status === "unavailable" - Discord API error/timeout
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-600/20 text-slate-300 border border-slate-600/40">
-                                ⚠️ Discord indisponible
+                                ✅ OK
                               </span>
                             );
                           }
+                          if (status === "HORS_DISCORD") {
+                            return (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
+                                ❌ Hors Discord
+                              </span>
+                            );
+                          }
+                          if (status === "STALE") {
+                            return (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                ⚠️ Snapshot stale
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-300 border border-slate-500/30">
+                              ⏳ Non verifie
+                            </span>
+                          );
                         })()}
                       </td>
                       <td className="px-4 py-4 text-center">
                         {m.discordId ? (
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" asChild>
-                            <Link href={`/staff/members/by-discord/${m.discordId}`}>
+                            <Link href={`/staff/members/by-discord/${m.discordId}`} prefetch={false}>
                               <ExternalLink className="h-4 w-4" />
                             </Link>
                           </Button>

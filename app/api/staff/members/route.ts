@@ -1,95 +1,28 @@
 import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
-import { lygFetchMembers } from "@/lib/lyg-client";
 import { logInfo, logWarn } from "@/lib/obs";
 import { prisma } from "@/lib/db";
+import { getGradeBadgeProps } from "@/lib/grade-colors";
+import { getMemberDisplayName, resolveStableRank } from "@/lib/member-display";
+import type { StaffMemberDto } from "@/types/staff";
+import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
 
 type MemberItem = {
+  id: string;
   steamId64: string;
-  family?: string;
-  rank?: string;
+  family?: string | null;
+  rank?: string | null;
   discordId: string | null;
+  discordAvatarHash: string | null;
+  discordStatus: "OK" | "HORS_DISCORD" | "NON_VERIFIE";
+  rpName?: string | null;
+  grade?: string | null;
+  gradeLevel?: number;
+  playtime7d: number;
+  playtime7dUpdatedAt: string | null;
+  updatedAt: string;
 };
 
-const MEMBERS_CACHE_TTL_MS = 60_000; // 60s cache
-const membersCache = new Map<string, { expiresAt: number; items: MemberItem[]; source: "lyg" | "db_stale" }>();
-
-/**
- * Build a map of steamId64 -> discordId from DB for efficient lookup.
- */
-async function buildDiscordIdMap(familyId: string): Promise<Map<string, string | null>> {
-  const family = await prisma.family.findUnique({
-    where: { slug: familyId },
-    select: { id: true },
-  });
-
-  if (!family) {
-    return new Map();
-  }
-
-  const members = await prisma.member.findMany({
-    where: {
-      familyId: family.id,
-      isActive: true,
-      source: { not: "BANKLOG_GHOST" },
-    },
-    select: {
-      steamId: true,
-      discordId: true,
-    },
-  });
-
-  const map = new Map<string, string | null>();
-  members.forEach((m) => {
-    if (m.steamId) {
-      map.set(m.steamId, m.discordId ?? null);
-    }
-  });
-
-  return map;
-}
-
-/**
- * Fetch members from LYG and merge with DB discordId.
- * This ensures all LYG members have their Discord IDs linked from DB.
- */
-async function fetchMembersWithDiscordMerge(familyId: string): Promise<MemberItem[]> {
-  // 1. Fetch LYG members
-  const result = await lygFetchMembers(familyId, { timeoutMs: 15_000 });
-  if (!result.ok) {
-    throw new Error(result.error ?? "LYG members fetch failed");
-  }
-
-  const lygMembers = result.data ?? [];
-  if (!Array.isArray(lygMembers)) {
-    throw new Error("LYG members is not an array");
-  }
-
-  // 2. Build Discord ID lookup map from DB
-  const discordIdMap = await buildDiscordIdMap(familyId);
-
-  // 3. Merge: for each LYG member, add discordId from DB
-  const merged: MemberItem[] = lygMembers
-    .filter((m) => m && m.steamId64) // Only valid members with steamId64
-    .map((m) => {
-      const discordId = discordIdMap.get(m.steamId64) ?? null;
-
-      // ✅ Log the merge operation
-      console.log("[members-merge]", {
-        steamId64: m.steamId64,
-        discordId,
-      });
-
-      return {
-        steamId64: m.steamId64,
-        family: m.family,
-        rank: m.rank,
-        discordId,
-      };
-    });
-
-  return merged;
-}
 
 export async function GET(req: Request) {
   const guard = await requireChefOrEtatMajor();
@@ -111,11 +44,14 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const familyId = searchParams.get("familyId") ?? "esperados";
-    const q = (searchParams.get("q") ?? "").trim();
+    // Accept both `search` (documented) and `q` (legacy alias)
+    const q = (searchParams.get("search") ?? searchParams.get("q") ?? "").trim();
+    const sortBy = searchParams.get("sortBy") ?? "name";
+    const sortDir = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
     const limit = Math.min(Number(searchParams.get("limit") ?? "200"), 500);
     const countOnly = searchParams.get("countOnly") === "1" || searchParams.get("countOnly") === "true";
 
-    // FAST PATH: countOnly requests - skip LYG entirely, just count from DB
+    // FAST PATH: countOnly requests - DB only
     if (countOnly) {
       try {
         const family = await prisma.family.findUnique({
@@ -159,89 +95,122 @@ export async function GET(req: Request) {
       }
     }
 
-    // FULL PATH: normal members list request - use LYG + DB merge + fallback cache
-    const cacheKey = familyId;
-    const cached = membersCache.get(cacheKey);
-    const now = Date.now();
+    const family = await prisma.family.findUnique({
+      where: { slug: familyId },
+      select: { id: true, slug: true, name: true },
+    });
 
-    let normalized: MemberItem[] = [];
-    let source: "lyg" | "db_stale" = "lyg";
-    let fetchError: string | undefined;
+    if (!family) {
+      logWarn("members_fetch_db_failed", { familyId, error: "Family not found" });
+      logDashboardDone();
+      return NextResponse.json(
+        { ok: false, error: "FAMILY_NOT_FOUND" },
+        { status: 404 }
+      );
+    }
 
-    if (cached && cached.expiresAt > now) {
-      normalized = cached.items;
-      source = cached.source;
-    } else {
-      // Try LYG fetch + DB merge first
-      try {
-        normalized = await fetchMembersWithDiscordMerge(familyId);
-        source = "lyg";
-        membersCache.set(cacheKey, { expiresAt: now + MEMBERS_CACHE_TTL_MS, items: normalized, source });
+    const dbMembers = await prisma.member.findMany({
+      where: {
+        familyId: family.id,
+        isActive: true,
+        source: { not: "BANKLOG_GHOST" },
+      },
+      select: {
+        id: true,
+        steamId: true,
+        discordId: true,
+        discordDisplayName: true,
+        discordUsername: true,
+        rankLabel: true,
+        rankRoleId: true,
+        discordRoleIds: true,
+        discordLastError: true,
+        grade: true,
+        gradeLevel: true,
+        rpName: true,
+        playtime7d: true,
+        playtime7dUpdatedAt: true,
+        updatedAt: true,
+        discordSnapshot: {
+          select: {
+            rolesJson: true,
+            isInGuild: true,
+          },
+        },
+      },
+      take: 500,
+      orderBy: [{ rpName: "asc" }],
+    });
 
-        logInfo("members_fetch_lyg_with_merge_success", { familyId, count: normalized.length });
-      } catch (err: any) {
-        // Fallback: fetch from DB only (no LYG data)
-        const errMsg = err?.message ?? String(err);
-        fetchError = errMsg;
+    const discordIds = Array.from(
+      new Set(
+        dbMembers
+          .map((m) => m.discordId)
+          .filter((discordId): discordId is string => Boolean(discordId))
+      )
+    );
 
-        logWarn("members_fetch_lyg_failed_fallback_db", {
-          familyId,
-          error: errMsg,
-          fallbackToDb: true,
-        });
-
-        try {
-          // DB fallback: get all members from DB
-          const family = await prisma.family.findUnique({
-            where: { slug: familyId },
-            select: { id: true },
-          });
-
-          if (family) {
-            const dbMembers = await prisma.member.findMany({
-              where: {
-                familyId: family.id,
-                isActive: true,
-                source: { not: "BANKLOG_GHOST" },
-              },
-              select: {
-                steamId: true,
-              },
-              take: 500,
-            });
-
-            normalized = dbMembers
-              .filter((m) => m.steamId)
-              .map((m) => ({
-                steamId64: m.steamId ?? "",
-                family: undefined,
-                rank: undefined,
-                discordId: null,
-              }));
-          }
-
-          source = "db_stale";
-          membersCache.set(cacheKey, { expiresAt: now + MEMBERS_CACHE_TTL_MS, items: normalized, source });
-
-          logInfo("members_fetch_db_success", { familyId, count: normalized.length });
-        } catch (dbErr: any) {
-          const dbErrMsg = dbErr?.message ?? String(dbErr);
-          logWarn("members_fetch_db_failed", { familyId, error: dbErrMsg });
-          
-          // Return empty with error
-          logDashboardDone();
-          return NextResponse.json(
-            {
-              ok: false,
-              error: "FETCH_FAILED",
-              details: { lygError: errMsg, dbError: dbErrMsg },
+    const avatarHashByDiscordId = new Map<string, string>();
+    if (discordIds.length > 0) {
+      const linkedAccounts = await prisma.account.findMany({
+        where: {
+          provider: "discord",
+          providerAccountId: { in: discordIds },
+        },
+        select: {
+          providerAccountId: true,
+          user: {
+            select: {
+              image: true,
             },
-            { status: 503 }
-          );
-        }
+          },
+        },
+      });
+
+      for (const account of linkedAccounts) {
+        const hash = extractDiscordAvatarHash(account.user?.image);
+        if (hash) avatarHashByDiscordId.set(account.providerAccountId, hash);
       }
     }
 
+    const normalized: MemberItem[] = dbMembers
+      .filter((m) => m.steamId)
+      .map((m) => {
+        const stableRank = resolveStableRank({
+          hasDiscordId: Boolean(m.discordId),
+          rankRoleId: m.rankRoleId,
+          rankLabel: m.rankLabel,
+          discordRoleIds: m.discordRoleIds,
+          snapshotRolesJson: m.discordSnapshot?.rolesJson,
+          discordLastError: m.discordLastError,
+        });
+
+        const rankLabel = stableRank.rankRoleId
+          ? getGradeBadgeProps(stableRank.rankRoleId).label
+          : stableRank.rankLabel;
+
+        return {
+          id: m.id,
+          steamId64: m.steamId ?? "",
+          family: family.slug ?? null,
+          rank: rankLabel ?? null,
+          discordId: m.discordId ?? null,
+          discordAvatarHash: m.discordId ? avatarHashByDiscordId.get(m.discordId) ?? null : null,
+          discordStatus: !m.discordId
+            ? ("NON_VERIFIE" as const)
+            : m.discordSnapshot?.isInGuild === false
+              ? ("HORS_DISCORD" as const)
+              : ("OK" as const),
+          rpName: getMemberDisplayName(m),
+          grade: m.grade ?? null,
+          gradeLevel: typeof m.gradeLevel === "number" ? m.gradeLevel : 0,
+          playtime7d: m.playtime7d ?? 0,
+          playtime7dUpdatedAt: m.playtime7dUpdatedAt?.toISOString() ?? null,
+          updatedAt: m.updatedAt.toISOString(),
+        };
+      });
+
+    // 🔍 Inline search filter
     const filtered = q
       ? normalized.filter((m) => {
           const needle = q.toLowerCase();
@@ -249,25 +218,70 @@ export async function GET(req: Request) {
             m.steamId64.toLowerCase().includes(needle) ||
             (m.family ?? "").toLowerCase().includes(needle) ||
             (m.rank ?? "").toLowerCase().includes(needle) ||
+            (m.rpName ?? "").toLowerCase().includes(needle) ||
+            (m.grade ?? "").toLowerCase().includes(needle) ||
             (m.discordId ?? "").toLowerCase().includes(needle)
           );
         })
       : normalized;
 
-    const items = filtered.slice(0, limit).map((m) => ({
+    // Apply server-side sort
+    const sorted = [...filtered].sort((a, b) => {
+      const dir = sortDir === "desc" ? -1 : 1;
+      switch (sortBy) {
+        case "playtime7d":
+          return dir * ((a.playtime7d ?? 0) - (b.playtime7d ?? 0));
+        case "grade":
+          return dir * ((a.gradeLevel ?? 0) - (b.gradeLevel ?? 0)) || (a.rpName ?? "").localeCompare(b.rpName ?? "");
+        case "status": {
+          // OK=0, HORS_DISCORD=1, NON_VERIFIE=2 — matches UI semantic order (best→worst)
+          const order: Record<MemberItem["discordStatus"], number> = { OK: 0, HORS_DISCORD: 1, NON_VERIFIE: 2 };
+          const diff = dir * (order[a.discordStatus] - order[b.discordStatus]);
+          return diff !== 0 ? diff : (a.rpName ?? "").localeCompare(b.rpName ?? "");
+        }
+        case "name":
+        default:
+          return dir * (a.rpName ?? "").localeCompare(b.rpName ?? "");
+      }
+    });
+
+    const items = sorted.slice(0, limit).map((m) => ({
+      id: m.id,
       steamId64: m.steamId64,
       family: m.family ?? null,
       rank: m.rank ?? null,
       discordId: m.discordId ?? null,
+      discordAvatarHash: m.discordAvatarHash ?? null,
+      discordStatus: m.discordStatus,
+      rpName: m.rpName ?? null,
+      grade: m.grade ?? null,
+      gradeLevel: typeof m.gradeLevel === "number" ? m.gradeLevel : 0,
+      playtime7d: m.playtime7d ?? 0,
+      playtime7dUpdatedAt: m.playtime7dUpdatedAt ?? null,
+      updatedAt: m.updatedAt,
     }));
 
-    return NextResponse.json({ 
-      ok: true, 
-      familyId, 
-      total: items.length, 
+    const rows: StaffMemberDto[] = items.map((m) => ({
+      id: m.id,
+      rpName: m.rpName ?? null,
+      steamId: m.steamId64 ?? null,
+      discordId: m.discordId ?? null,
+      discordAvatarHash: m.discordAvatarHash ?? null,
+      familyName: m.family ?? null,
+      currentGradeName: m.rank ?? m.grade ?? null,
+      playtime7d: m.playtime7d ?? 0,
+      playtime7dUpdatedAt: m.playtime7dUpdatedAt ?? null,
+      updatedAt: m.updatedAt,
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      familyId,
+      total: items.length,
       items,
-      source,
-      ...(fetchError && { error: fetchError }),
+      members: items,
+      rows,
+      source: "db",
     });
   } catch (err: any) {
     const familyId = "unknown";
