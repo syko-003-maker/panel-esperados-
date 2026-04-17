@@ -3,9 +3,24 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { enqueueMemberAbsenceCreated } from "@/lib/discord/discord";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
-const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELED"] as const;
-const FAMILY_ID = "esperados";
+const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELED", "EXPIRED"] as const;
+const ABSENCE_TYPES = ["MEETING", "GENERAL"] as const;
+const FAMILY_ID = DEFAULT_FAMILY_ID;
+
+type AbsenceType = (typeof ABSENCE_TYPES)[number];
+type AbsenceUiStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELED" | "EXPIRED";
+
+type AbsenceMeta = {
+  v: 1;
+  type: AbsenceType;
+  meetingDate: string | null;
+  memberNotes: string | null;
+  rejectionReason: string | null;
+  rejectedById: string | null;
+  rejectedAt: string | null;
+};
 
 function parsePageParams(searchParams: URLSearchParams) {
   const pageRaw = Number(searchParams.get("page") ?? "1");
@@ -23,6 +38,91 @@ function parseDate(value: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d;
+}
+
+function parseAbsenceType(value: unknown): AbsenceType {
+  const normalized = String(value ?? "GENERAL").trim().toUpperCase();
+  return normalized === "MEETING" ? "MEETING" : "GENERAL";
+}
+
+function normalizeMeetingDateToSunday21(date: Date): Date {
+  const normalized = new Date(date);
+  const day = normalized.getDay();
+  const diffToSunday = (7 - day) % 7;
+  normalized.setDate(normalized.getDate() + diffToSunday);
+  normalized.setHours(21, 0, 0, 0);
+  return normalized;
+}
+
+function parseAbsenceMeta(notes: string | null | undefined): AbsenceMeta {
+  if (!notes) {
+    return {
+      v: 1,
+      type: "GENERAL",
+      meetingDate: null,
+      memberNotes: null,
+      rejectionReason: null,
+      rejectedById: null,
+      rejectedAt: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(notes) as Partial<AbsenceMeta>;
+    const type = parseAbsenceType(parsed.type);
+    return {
+      v: 1,
+      type,
+      meetingDate: typeof parsed.meetingDate === "string" ? parsed.meetingDate : null,
+      memberNotes: typeof parsed.memberNotes === "string" ? parsed.memberNotes : null,
+      rejectionReason: typeof parsed.rejectionReason === "string" ? parsed.rejectionReason : null,
+      rejectedById: typeof parsed.rejectedById === "string" ? parsed.rejectedById : null,
+      rejectedAt: typeof parsed.rejectedAt === "string" ? parsed.rejectedAt : null,
+    };
+  } catch {
+    return {
+      v: 1,
+      type: "GENERAL",
+      meetingDate: null,
+      memberNotes: notes,
+      rejectionReason: null,
+      rejectedById: null,
+      rejectedAt: null,
+    };
+  }
+}
+
+function stringifyAbsenceMeta(meta: AbsenceMeta): string {
+  return JSON.stringify(meta);
+}
+
+function computeUiStatus(status: string, endAt: Date): AbsenceUiStatus {
+  if (status === "APPROVED" && endAt.getTime() < Date.now()) {
+    return "EXPIRED";
+  }
+  return status as AbsenceUiStatus;
+}
+
+function toResponseAbsence(absence: any) {
+  const meta = parseAbsenceMeta(absence.notes);
+  return {
+    id: absence.id,
+    familyId: absence.familyId,
+    memberId: absence.memberId,
+    discordId: absence.discordId,
+    reason: absence.reason,
+    notes: meta.memberNotes,
+    type: meta.type,
+    meetingDate: meta.meetingDate,
+    status: absence.status,
+    uiStatus: computeUiStatus(absence.status, absence.endAt),
+    rejectionReason: meta.rejectionReason,
+    startAt: absence.startAt.toISOString(),
+    endAt: absence.endAt.toISOString(),
+    decidedAt: absence.decidedAt ? absence.decidedAt.toISOString() : null,
+    createdAt: absence.createdAt.toISOString(),
+    updatedAt: absence.updatedAt.toISOString(),
+  };
 }
 
 export async function GET(req: Request) {
@@ -48,8 +148,14 @@ export async function GET(req: Request) {
   }
 
   const { page, pageSize, skip } = parsePageParams(searchParams);
-  const where: any = { familyId: FAMILY_ID, discordId: String(discordId) };
-  if (status) where.status = status;
+  const familyDbId = await resolveFamilyId(FAMILY_ID);
+  const where: any = { familyId: familyDbId, discordId: String(discordId) };
+  if (status === "EXPIRED") {
+    where.status = "APPROVED";
+    where.endAt = { lt: new Date() };
+  } else if (status) {
+    where.status = status;
+  }
 
   const [data, total] = await Promise.all([
     prisma.absence.findMany({
@@ -61,7 +167,7 @@ export async function GET(req: Request) {
     prisma.absence.count({ where }),
   ]);
 
-  return NextResponse.json({ ok: true, data, page, pageSize, total });
+  return NextResponse.json({ ok: true, data: data.map((item) => toResponseAbsence(item)), page, pageSize, total });
 }
 
 export async function POST(req: Request) {
@@ -89,27 +195,54 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
   }
 
+  const type = parseAbsenceType(body.type);
   const startAtRaw = String(body.startAt ?? "").trim();
   const endAtRaw = String(body.endAt ?? "").trim();
+  const meetingDateRaw = String(body.meetingDate ?? "").trim();
   const reason = String(body.reason ?? "").trim();
+  const memberNotes = String(body.notes ?? "").trim();
 
   if (!startAtRaw || !endAtRaw) {
     return NextResponse.json({ ok: false, error: "MISSING_DATES" }, { status: 400 });
   }
 
-  const startAt = parseDate(startAtRaw);
-  const endAt = parseDate(endAtRaw);
+  let startAt = parseDate(startAtRaw);
+  let endAt = parseDate(endAtRaw);
   if (!startAt || !endAt) {
     return NextResponse.json({ ok: false, error: "INVALID_DATES" }, { status: 400 });
   }
+
+  let meetingDate: Date | null = null;
+  if (type === "MEETING") {
+    const meetingSource = meetingDateRaw || startAtRaw || endAtRaw;
+    const parsedMeetingDate = parseDate(meetingSource);
+    if (!parsedMeetingDate) {
+      return NextResponse.json({ ok: false, error: "INVALID_MEETING_DATE" }, { status: 400 });
+    }
+    meetingDate = normalizeMeetingDateToSunday21(parsedMeetingDate);
+    startAt = new Date(meetingDate);
+    startAt.setHours(0, 0, 0, 0);
+    endAt = new Date(meetingDate);
+    endAt.setHours(23, 59, 59, 999);
+  }
+
   if (endAt.getTime() < startAt.getTime()) {
     return NextResponse.json({ ok: false, error: "END_BEFORE_START" }, { status: 400 });
   }
 
+  if (type === "GENERAL") {
+    const maxEnd = new Date(startAt);
+    maxEnd.setMonth(maxEnd.getMonth() + 2);
+    if (endAt.getTime() > maxEnd.getTime()) {
+      return NextResponse.json({ ok: false, error: "GENERAL_MAX_2_MONTHS" }, { status: 400 });
+    }
+  }
+
   const now = new Date();
   const activeStatuses: ("PENDING" | "APPROVED")[] = ["PENDING", "APPROVED"];
+  const familyDbId = await resolveFamilyId(FAMILY_ID);
   const activeWhere = {
-    familyId: FAMILY_ID,
+    familyId: familyDbId,
     discordId: String(discordId),
     status: { in: activeStatuses },
     endAt: { gte: now },
@@ -143,12 +276,21 @@ export async function POST(req: Request) {
   const absence = await prisma.$transaction(async (tx) => {
     const created = await tx.absence.create({
       data: {
-        familyId: FAMILY_ID,
+        familyId: familyDbId,
         discordId: String(discordId),
+        memberId: scope.memberId ?? null,
         startAt,
         endAt,
         reason: reason || null,
-        notes: null,
+        notes: stringifyAbsenceMeta({
+          v: 1,
+          type,
+          meetingDate: meetingDate ? meetingDate.toISOString() : null,
+          memberNotes: memberNotes || null,
+          rejectionReason: null,
+          rejectedById: null,
+          rejectedAt: null,
+        }),
         status: "PENDING",
         createdById: actorId,
       },
@@ -156,7 +298,7 @@ export async function POST(req: Request) {
 
     await tx.auditLog.create({
       data: {
-        familyId: FAMILY_ID,
+        familyId: familyDbId,
         actorId,
         action: "create",
         entity: "Absence",
@@ -174,7 +316,7 @@ export async function POST(req: Request) {
 
     try {
       await enqueueMemberAbsenceCreated({
-          familyId: FAMILY_ID,
+          familyId: familyDbId,
         discordId: String(discordId),
           memberId: scope.memberId,
         absenceId: created.id,
@@ -187,5 +329,5 @@ export async function POST(req: Request) {
     return created;
   });
 
-  return NextResponse.json({ ok: true, absence });
+  return NextResponse.json({ ok: true, absence: toResponseAbsence(absence) });
 }

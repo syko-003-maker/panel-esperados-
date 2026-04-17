@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 const STATUSES = ["ACTIVE", "EXPIRED", "CLOSED"] as const;
-const FAMILY_ID = "esperados";
+const FAMILY_ID = DEFAULT_FAMILY_ID;
 
 function parsePageParams(searchParams: URLSearchParams) {
   const pageRaw = Number(searchParams.get("page") ?? "1");
@@ -58,13 +59,14 @@ export async function GET(req: Request) {
 
     const { page, pageSize, skip } = parsePageParams(searchParams);
     const now = new Date();
+    const familyDbId = await resolveFamilyId(FAMILY_ID);
     await prisma.sanction.updateMany({
-      where: { familyId: FAMILY_ID, status: "ACTIVE", endAt: { lt: now } },
+      where: { familyId: familyDbId, status: "ACTIVE", endAt: { lt: now } },
       data: { status: "EXPIRED" },
     });
 
     const where: any = {
-      familyId: FAMILY_ID,
+      familyId: familyDbId,
       discordId: String(discordId),
     };
     const legacyStatus = mapStatusToLegacy(status);

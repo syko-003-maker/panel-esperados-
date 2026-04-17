@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CheckCircle2, XCircle, Info, AlertTriangle, Scale } from "lucide-react";
 
 export function SanctionPageClient() {
   const router = useRouter();
@@ -40,66 +41,80 @@ export function SanctionPageClient() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to send justification");
+        throw new Error(data.error || "Échec de l'envoi de la justification");
       }
 
       setSuccess(true);
       setFormData({ sanctionId: "", reason: "", context: "" });
-
-      // Reset success message after 3s
-      setTimeout(() => setSuccess(false), 3000);
+      setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-4xl font-bold text-white">Justifier une Sanction</h1>
-        <p className="text-slate-400">
-          Contester ou justifier une sanction reçue auprès de l'équipe
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-300/70 mb-2">
+          Justificatifs
         </p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10">
+            <Scale className="h-4 w-4 text-red-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-50">
+              Justifier une sanction
+            </h1>
+            <p className="text-sm text-slate-400">
+              Contester ou justifier une sanction reçue auprès de l'équipe
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Success Message */}
+      {/* Success */}
       {success && (
-        <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4 text-green-300">
-          ✓ Justification de sanction envoyée avec succès !
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/8 px-5 py-4 text-emerald-300">
+          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+          <span className="text-sm font-medium">Justification de sanction envoyée avec succès !</span>
         </div>
       )}
 
-      {/* Error Message */}
+      {/* Error */}
       {error && (
-        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-300">
-          ✗ {error}
+        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/8 px-5 py-4 text-red-300">
+          <XCircle className="h-5 w-5 flex-shrink-0" />
+          <span className="text-sm">{error}</span>
         </div>
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-6 space-y-5">
         {/* Sanction ID */}
         <div className="space-y-2">
-          <label className="block text-sm font-semibold text-white">
-            ID de la Sanction (optionnel)
+          <label className="block text-sm font-medium text-slate-200">
+            Type de sanction reçue{" "}
+            <span className="text-slate-500 font-normal">(optionnel)</span>
           </label>
           <input
             type="text"
             name="sanctionId"
             value={formData.sanctionId}
             onChange={handleChange}
-            placeholder="Ex: SANC-001 ou le numéro de sanction"
-            className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Ex : Warn, Jail, Ban, Avertissement, Démote..."
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#7a1f2b]/60 focus:border-[#7a1f2b]/40 transition"
           />
         </div>
 
         {/* Context */}
         <div className="space-y-2">
-          <label className="block text-sm font-semibold text-white">
-            Contexte (optionnel)
+          <label className="block text-sm font-medium text-slate-200">
+            Contexte{" "}
+            <span className="text-slate-500 font-normal">(optionnel)</span>
           </label>
           <textarea
             name="context"
@@ -107,14 +122,14 @@ export function SanctionPageClient() {
             onChange={handleChange}
             placeholder="Décrivez le contexte ou les circonstances..."
             rows={3}
-            className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#7a1f2b]/60 focus:border-[#7a1f2b]/40 transition resize-none"
           />
         </div>
 
         {/* Reason */}
         <div className="space-y-2">
-          <label className="block text-sm font-semibold text-white">
-            Justification *
+          <label className="block text-sm font-medium text-slate-200">
+            Justification <span className="text-amber-400">*</span>
           </label>
           <textarea
             name="reason"
@@ -123,27 +138,26 @@ export function SanctionPageClient() {
             required
             placeholder="Expliquez pourquoi vous contestez cette sanction ou justifiez votre action..."
             rows={4}
-            className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#7a1f2b]/60 focus:border-[#7a1f2b]/40 transition resize-none"
           />
-          <p className={`text-xs ${isReasonValid ? "text-slate-400" : "text-red-400"}`}>
+          <p className={`text-xs ${isReasonValid ? "text-slate-500" : "text-red-400/80"}`}>
             {reasonLength}/10 caractères minimum
           </p>
         </div>
 
-        {/* Submit Button */}
-        <div className="flex gap-3">
+        {/* Actions */}
+        <div className="flex gap-3 pt-1">
           <button
             type="submit"
             disabled={loading || !isReasonValid}
-            className="flex-1 px-6 py-3 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white transition-colors duration-200"
+            className="flex-1 rounded-xl bg-[#7a1f2b] hover:bg-[#9a2535] disabled:opacity-40 disabled:cursor-not-allowed px-6 py-3 text-sm font-semibold text-white transition-colors"
           >
-            {loading ? "Envoi en cours..." : "Envoyer la Justification"}
+            {loading ? "Envoi en cours..." : "Envoyer la justification"}
           </button>
-
           <button
             type="button"
             onClick={() => router.back()}
-            className="px-6 py-3 rounded-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors duration-200"
+            className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/[0.06]"
           >
             Annuler
           </button>
@@ -151,21 +165,21 @@ export function SanctionPageClient() {
       </form>
 
       {/* Info */}
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 space-y-2">
-        <h3 className="text-white font-semibold">📌 Information</h3>
-        <p className="text-sm text-blue-300">
+      <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+        <Info className="h-4 w-4 text-slate-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-slate-400 leading-relaxed">
           Votre justification sera envoyée sur le canal Discord dédié et examinée
-          par l'équipe administrative. Veuillez être honnête et constructif dans
-          votre justification.
+          par l'équipe administrative. Soyez honnête et constructif dans votre
+          justification.
         </p>
       </div>
 
-      {/* Important Notice */}
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 space-y-2">
-        <h3 className="text-yellow-400 font-semibold">⚠️ Important</h3>
-        <p className="text-sm text-yellow-200">
-          Les fausses justifications ou comportements inappropriés pourraient
-          entraîner des sanctions supplémentaires.
+      {/* Warning */}
+      <div className="flex gap-3 rounded-2xl border border-amber-500/15 bg-amber-500/5 p-5">
+        <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-amber-300/80 leading-relaxed">
+          Les fausses justifications ou comportements inappropriés peuvent entraîner
+          des sanctions supplémentaires.
         </p>
       </div>
     </div>

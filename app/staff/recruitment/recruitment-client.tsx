@@ -6,45 +6,57 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge-new";
-import { RefreshCw, Search, Users } from "lucide-react";
+import { RefreshCw, Search, Trash2, Users } from "lucide-react";
+
+type DbStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "ARCHIVED";
 
 type Ticket = {
   id: string;
-  status: "OPEN" | "CLAIMED" | "CLOSED_ACCEPTED" | "CLOSED_REJECTED";
+  status: DbStatus;
+  isClaimed: boolean;
   candidateRpName: string;
   candidateSteamId: string | null;
   candidateDiscordId: string | null;
+  ticketKey: string | null;
+  discordThreadId: string | null;
   createdAt: string;
   updatedAt: string;
   claimedAt: string | null;
   claimedBy: { id: string; name: string | null } | null;
 };
 
-const STATUSES: Ticket["status"][] = ["OPEN", "CLAIMED", "CLOSED_ACCEPTED", "CLOSED_REJECTED"];
-
-const STATUS_CONFIG: Record<Ticket["status"], { label: string; color: string }> = {
-  OPEN: { label: "🟡 En attente", color: "bg-yellow-500/10 text-yellow-200 border-yellow-500/30" },
-  CLAIMED: { label: "🔵 Pris en charge", color: "bg-blue-500/10 text-blue-200 border-blue-500/30" },
-  CLOSED_ACCEPTED: { label: "✅ Accepté", color: "bg-green-500/10 text-green-200 border-green-500/30" },
-  CLOSED_REJECTED: { label: "❌ Refusé", color: "bg-red-500/10 text-red-200 border-red-500/30" },
+// Mapping direct statut DB → badge
+const STATUS_CONFIG: Record<DbStatus, { label: string; color: string }> = {
+  PENDING:  { label: "🟡 En attente",    color: "bg-yellow-500/10 text-yellow-200 border-yellow-500/30" },
+  ACCEPTED: { label: "✅ Accepté",        color: "bg-green-500/10  text-green-200  border-green-500/30"  },
+  REJECTED: { label: "❌ Refusé",         color: "bg-red-500/10    text-red-200    border-red-500/30"    },
+  ARCHIVED: { label: "📦 Archivé",        color: "bg-gray-500/10   text-gray-200   border-gray-500/30"   },
 };
+
+const CLAIMED_CONFIG = { label: "🔵 Pris en charge", color: "bg-blue-500/10 text-blue-200 border-blue-500/30" };
+
+const FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "",         label: "Tous les statuts"  },
+  { value: "PENDING",  label: "🟡 En attente"     },
+  { value: "ACCEPTED", label: "✅ Accepté"         },
+  { value: "REJECTED", label: "❌ Refusé"          },
+  { value: "ARCHIVED", label: "📦 Archivé"         },
+];
+
+const GUILD_ID = "1312845998753710151";
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-BE", { 
-    year: "numeric", 
-    month: "2-digit", 
-    day: "2-digit", 
-    hour: "2-digit", 
-    minute: "2-digit" 
+  return d.toLocaleString("fr-BE", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
   });
 }
 
-function fmtClaimedBy(ticket: Ticket) {
-  if (!ticket.claimedBy && !ticket.claimedAt) return "-";
-  const name = ticket.claimedBy?.name ?? ticket.claimedBy?.id ?? "Inconnu";
-  return ticket.claimedAt ? `${name}` : name;
+function statusBadge(ticket: Ticket) {
+  if (ticket.status === "PENDING" && ticket.isClaimed) return CLAIMED_CONFIG;
+  return STATUS_CONFIG[ticket.status] ?? STATUS_CONFIG.PENDING;
 }
 
 export default function RecruitmentClient() {
@@ -53,6 +65,8 @@ export default function RecruitmentClient() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -73,24 +87,40 @@ export default function RecruitmentClient() {
     }
   }
 
+  async function handleDelete(ticketId: string) {
+    setDeletingId(ticketId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/staff/recruitment/${ticketId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Suppression échouée");
+      setConfirmDeleteId(null);
+      setItems((prev) => prev.filter((t) => t.id !== ticketId));
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      setError(msg);
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   useEffect(() => {
     load();
-    const id = setInterval(() => {
-      load();
-    }, 5000); // Augmenter l'intervalle pour réduire les requêtes
+    const id = setInterval(() => { load(); }, 30_000);
     return () => clearInterval(id);
   }, [statusFilter, searchQuery]);
 
   // Stats
-  const totalCount = items.length;
-  const openCount = items.filter(i => i.status === "OPEN").length;
-  const claimedCount = items.filter(i => i.status === "CLAIMED").length;
-  const acceptedCount = items.filter(i => i.status === "CLOSED_ACCEPTED").length;
-  const rejectedCount = items.filter(i => i.status === "CLOSED_REJECTED").length;
+  const totalCount    = items.length;
+  const pendingCount  = items.filter((i) => i.status === "PENDING" && !i.isClaimed).length;
+  const claimedCount  = items.filter((i) => i.status === "PENDING" &&  i.isClaimed).length;
+  const acceptedCount = items.filter((i) => i.status === "ACCEPTED").length;
+  const rejectedCount = items.filter((i) => i.status === "REJECTED").length;
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="p-4 bg-slate-900/40 border-slate-800">
           <div className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Total</div>
@@ -98,7 +128,7 @@ export default function RecruitmentClient() {
         </Card>
         <Card className="p-4 bg-slate-900/40 border-slate-800">
           <div className="text-xs text-muted-foreground uppercase tracking-wide font-medium">En attente</div>
-          <div className="text-2xl font-bold text-yellow-400 mt-2">{openCount}</div>
+          <div className="text-2xl font-bold text-yellow-400 mt-2">{pendingCount}</div>
         </Card>
         <Card className="p-4 bg-slate-900/40 border-slate-800">
           <div className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Pris en charge</div>
@@ -126,24 +156,16 @@ export default function RecruitmentClient() {
             />
           </div>
           <div className="flex gap-2">
-            <select 
-              value={statusFilter} 
+            <select
+              value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-sm text-foreground"
             >
-              <option value="">Tous les statuts</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_CONFIG[s].label}
-                </option>
+              {FILTER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={load}
-              disabled={loading}
-            >
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </div>
@@ -157,13 +179,13 @@ export default function RecruitmentClient() {
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty */}
       {!loading && items.length === 0 && (
         <Card className="p-12 bg-slate-900/20 border-slate-800 text-center">
           <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
           <h3 className="text-lg font-semibold text-foreground mb-2">Aucun recrutement</h3>
           <p className="text-muted-foreground text-sm mb-4">
-            {searchQuery || statusFilter 
+            {searchQuery || statusFilter
               ? "Aucun résultat ne correspond à vos filtres"
               : "Les recrutements viennent de Discord"}
           </p>
@@ -188,40 +210,98 @@ export default function RecruitmentClient() {
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statut</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Recruté par</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Créé</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((ticket) => (
-                  <tr 
-                    key={ticket.id}
-                    className="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors"
-                  >
-                    <td className="py-3 px-4">
-                      <Link 
-                        href={`/staff/recruitment/${ticket.id}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {ticket.candidateRpName}
-                      </Link>
-                    </td>
-                    <td className="py-3 px-4">
-                      <code className="text-xs bg-slate-800 px-2 py-1 rounded font-mono">
-                        {ticket.candidateSteamId ?? "-"}
-                      </code>
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge className={`${STATUS_CONFIG[ticket.status].color} border`}>
-                        {STATUS_CONFIG[ticket.status].label}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">
-                      {fmtClaimedBy(ticket)}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">
-                      {fmtDate(ticket.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                {items.map((ticket) => {
+                  const badge = statusBadge(ticket);
+                  const isConfirming = confirmDeleteId === ticket.id;
+                  const isDeleting = deletingId === ticket.id;
+
+                  return (
+                    <tr
+                      key={ticket.id}
+                      className="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors"
+                    >
+                      <td className="py-3 px-4">
+                        <Link
+                          href={`/staff/recruitment/${ticket.id}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {ticket.candidateRpName}
+                        </Link>
+                        {ticket.ticketKey && (
+                          <div className="text-xs text-muted-foreground font-mono mt-0.5">{ticket.ticketKey}</div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <code className="text-xs bg-slate-800 px-2 py-1 rounded font-mono">
+                          {ticket.candidateSteamId ?? "-"}
+                        </code>
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge className={`${badge.color} border`}>
+                          {badge.label}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-muted-foreground">
+                        {ticket.claimedBy?.name ?? ticket.claimedBy?.id ?? "-"}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-muted-foreground">
+                        {fmtDate(ticket.createdAt)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-end gap-2">
+                          {!isConfirming ? (
+                            <>
+                              {ticket.discordThreadId && (
+                                <a
+                                  href={`https://discord.com/channels/${GUILD_ID}/${ticket.discordThreadId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                                >
+                                  Discord
+                                </a>
+                              )}
+                              <Link
+                                href={`/staff/recruitment/${ticket.id}`}
+                                className="text-xs px-2 py-1 rounded border border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08] transition-colors"
+                              >
+                                Ouvrir
+                              </Link>
+                              <button
+                                onClick={() => setConfirmDeleteId(ticket.id)}
+                                className="text-xs px-2 py-1 rounded border border-red-500/20 bg-red-500/[0.06] text-red-400 hover:bg-red-500/15 transition-colors"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">Supprimer ?</span>
+                              <button
+                                onClick={() => handleDelete(ticket.id)}
+                                disabled={isDeleting}
+                                className="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50"
+                              >
+                                {isDeleting ? "…" : "Confirmer"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                disabled={isDeleting}
+                                className="text-xs px-2 py-1 rounded border border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08] transition-colors"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -4,7 +4,7 @@ import { requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { questionBank } from "@/lib/recruitment/questionBank";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
-import { buildRecruitmentNotes, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { buildRecruitmentNotes, extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 
 const INVALID_JSON = Symbol("INVALID_JSON");
 
@@ -42,6 +42,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       steamId: true,
       discordId: true,
       notes: true,
+      ticketKey: true,
+      discordThreadId: true,
+      motivation: true,
+      availabilities: true,
+      payload: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -51,7 +56,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const notes = parseRecruitmentNotes(recruitment.notes ?? null);
-  const totals = computeRecruitmentTotals(notes.scoresJson);
+  const evaluation = extractRecruitmentEvaluation(notes, recruitment.payload);
+  const totals = computeRecruitmentTotals(evaluation.scoresJson);
   const statusLabel =
     recruitment.status === "ACCEPTED"
       ? "CLOSED_ACCEPTED"
@@ -74,11 +80,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     candidateAge: recruitment.age ?? null,
     candidateSteamId: recruitment.steamId ?? null,
     candidateDiscordId: recruitment.discordId ?? null,
+    ticketKey: (recruitment as any).ticketKey ?? null,
+    discordThreadId: (recruitment as any).discordThreadId ?? null,
+    motivation: (recruitment as any).motivation ?? null,
+    availabilities: (recruitment as any).availabilities ?? null,
     claimedById: notes.claimedById ?? null,
     claimedAt: notes.claimedAt ?? null,
     claimedBy: notes.claimedById ? { id: notes.claimedById, name: null } : null,
-    answersJson: notes.answersJson ?? null,
-    scoresJson: notes.scoresJson ?? null,
+    answersJson: Object.keys(evaluation.answersJson).length > 0 ? evaluation.answersJson : null,
+    scoresJson: Object.keys(evaluation.scoresJson).length > 0 ? evaluation.scoresJson : null,
     totalPoints: totals.totalPoints,
     totalOn20: totals.totalOn20,
     staffNotes: notes.staffNotes ?? null,
@@ -161,8 +171,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   });
 
   const notes = parseRecruitmentNotes(updated.notes ?? null);
+  const evaluation = extractRecruitmentEvaluation(notes, null);
   const totals = computeRecruitmentTotals(
-    shouldUpdateTotals ? scoresJsonNext : notes.scoresJson
+    shouldUpdateTotals ? scoresJsonNext : evaluation.scoresJson
   );
   const statusLabel =
     updated.status === "ACCEPTED"
@@ -191,11 +202,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       claimedById: notes.claimedById ?? null,
       claimedAt: notes.claimedAt ?? null,
       claimedBy: notes.claimedById ? { id: notes.claimedById, name: null } : null,
-      answersJson: notes.answersJson ?? null,
-      scoresJson: notes.scoresJson ?? null,
+      answersJson: Object.keys(evaluation.answersJson).length > 0 ? evaluation.answersJson : null,
+      scoresJson: Object.keys(evaluation.scoresJson).length > 0 ? evaluation.scoresJson : null,
       totalPoints: totals.totalPoints,
       totalOn20: totals.totalOn20,
       staffNotes: notes.staffNotes ?? null,
     },
   });
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const guard = await requireRecruiterOrAbove();
+  if (guard instanceof Response) return guard;
+
+  const existing = await prisma.recruitment.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  await prisma.recruitment.delete({ where: { id } });
+
+  return NextResponse.json({ ok: true });
 }

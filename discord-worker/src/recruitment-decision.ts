@@ -9,7 +9,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  type Guild,
+  PermissionFlagsBits,
   type TextChannel,
 } from "discord.js";
 import { startJob, finishJob } from "./lib/job-idempotence.js";
@@ -17,11 +17,39 @@ import { logInfo, logWarn, logError } from "./lib/worker-obs.js";
 import { IDS } from "./ids.js";
 
 const PANEL_URL = process.env.INGEST_BASE_URL || "http://localhost:3000";
-const LOG_CHANNEL_ID = process.env.RECRUITMENT_LOG_CHANNEL_ID || null;
 
 interface RecruitmentDecisionParams {
   ticketKey: string;
   decision: "APPROVE" | "REFUSE";
+}
+
+async function hasStaffDecisionAccess(interaction: ButtonInteraction): Promise<boolean> {
+  const guild = interaction.guild;
+  if (!guild) return false;
+
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return false;
+
+  const allowedRoleIds = new Set(
+    [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
+      (roleId): roleId is string => Boolean(roleId)
+    )
+  );
+
+  return (
+    member.permissions.has(PermissionFlagsBits.Administrator) ||
+    member.permissions.has(PermissionFlagsBits.ManageChannels) ||
+    member.roles.cache.some((role) => allowedRoleIds.has(role.id))
+  );
+}
+
+function mapDecisionErrorToUserMessage(error?: string): string {
+  if (!error) return "❌ Impossible de traiter cette décision pour le moment.";
+  if (error.includes("Unauthorized")) return "❌ Action réservée au staff.";
+  if (error.includes("Invalid decision") || error.includes("Format")) {
+    return "❌ Ce bouton n'est plus valide.";
+  }
+  return "❌ Impossible de traiter cette décision pour le moment.";
 }
 
 function parseRecruitmentCustomId(customId: string): RecruitmentDecisionParams | null {
@@ -141,46 +169,6 @@ function buildDecisionEmbed(params: {
 }
 
 /**
- * Post decision log to log channel
- */
-async function postDecisionLog(params: {
-  guild: Guild;
-  ticketKey: string;
-  decision: "APPROVE" | "REFUSE";
-  candidateName: string;
-  steamId?: string;
-  staffTag: string;
-  staffRpName?: string;
-  threadId?: string;
-}): Promise<void> {
-  if (!LOG_CHANNEL_ID) {
-    logWarn("recruitment_log_channel_missing", { ticketKey: params.ticketKey });
-    return;
-  }
-  
-  try {
-    const channel = await params.guild.channels.fetch(LOG_CHANNEL_ID);
-    if (!channel || !channel.isTextBased()) {
-      logWarn("recruitment_log_channel_invalid", { channelId: LOG_CHANNEL_ID });
-      return;
-    }
-    
-    const embed = buildDecisionEmbed(params);
-    
-    let content = `📌 **Recrutement ${params.decision === "APPROVE" ? "Accepté" : "Refusé"}**`;
-    if (params.threadId) {
-      content += ` • Thread: <#${params.threadId}>`;
-    }
-    
-    await (channel as TextChannel).send({ content, embeds: [embed] });
-    
-    logInfo("recruitment_log_posted", { ticketKey: params.ticketKey, channelId: LOG_CHANNEL_ID });
-  } catch (error) {
-    logError("recruitment_log_post_failed", { ticketKey: params.ticketKey }, error as Error);
-  }
-}
-
-/**
  * Main handler for recruitment decision buttons
  */
 export async function handleRecruitmentDecision(
@@ -198,13 +186,25 @@ export async function handleRecruitmentDecision(
     logError("recruitment_ack_failed", { customId: interaction.customId }, ackError as Error);
     return;
   }
+
+  if (!(await hasStaffDecisionAccess(interaction))) {
+    logWarn("recruitment_decide_worker_unauthorized", {
+      customId: interaction.customId,
+      staffDiscordId,
+    });
+    await interaction.followUp({
+      content: "❌ Action réservée au staff.",
+      ephemeral: true,
+    });
+    return;
+  }
   
   // Parse customId
   const params = parseRecruitmentCustomId(interaction.customId);
   if (!params) {
     logWarn("recruitment_invalid_custom_id", { customId: interaction.customId, userId: staffDiscordId });
     await interaction.followUp({
-      content: "❌ Format de bouton invalide.",
+      content: "❌ Ce bouton n'est plus valide.",
       ephemeral: true,
     });
     return;
@@ -234,7 +234,7 @@ export async function handleRecruitmentDecision(
     if (!apiResult.ok) {
       logWarn("recruitment_decide_api_failed", { ticketKey, decision, error: apiResult.error });
       await interaction.followUp({
-        content: `❌ Erreur API: ${apiResult.error}`,
+        content: mapDecisionErrorToUserMessage(apiResult.error),
         ephemeral: true,
       });
       await finishJob(jobKey, "failed");
@@ -261,6 +261,9 @@ export async function handleRecruitmentDecision(
           const buttonRow = new ActionRowBuilder<ButtonBuilder>();
           for (const component of (row as any).components) {
             if (component.type === 2) { // Button
+              if ((component as any).style === ButtonStyle.Link || Boolean((component as any).url)) {
+                continue;
+              }
               const button = ButtonBuilder.from(component as any);
               button.setDisabled(true);
               buttonRow.addComponents(button);
@@ -292,19 +295,8 @@ export async function handleRecruitmentDecision(
       });
     }
     
-    // Post to log channel
-    if (interaction.guild) {
-      await postDecisionLog({
-        guild: interaction.guild,
-        ticketKey,
-        decision,
-        candidateName: recruitment.rpName || recruitment.discordId || "Unknown",
-        steamId: recruitment.steamId,
-        staffTag,
-        staffRpName: staff.rpName,
-        threadId: recruitment.threadId,
-      });
-    }
+    // Side-effects (log, whitelist embed, ticket close) are handled by the outbox processor
+    // The Discord API route now enqueues the same RECRUITMENT_DECISION job as the panel route
     
     await finishJob(jobKey, "done");
     logInfo("recruitment_decide_success", { ticketKey, decision, staffDiscordId });

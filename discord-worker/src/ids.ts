@@ -94,6 +94,7 @@ export const EVENT_VERSION = 1;
 
 export const CUSTOM_ID = {
   PANEL_RECRUIT: "contact:open:recruitment",
+  PANEL_RECRUIT_CONTINUE: "contact:open:recruitment:step2",
   PANEL_COMPLAINT: "contact:open:complaint",
   MODAL_RECRUIT: "contact:modal:recruitment",
   MODAL_COMPLAINT: "contact:modal:complaint",

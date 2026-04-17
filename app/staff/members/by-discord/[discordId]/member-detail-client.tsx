@@ -4,9 +4,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { StaffPage } from "../../../ui/StaffPage";
-import { StaffTable } from "../../../ui/StaffTable";
-import { Badge } from "../../../ui/Badge";
+import { DataTile } from "@/components/staff/ui/DataTile";
+import { EmptyState } from "@/components/staff/ui/EmptyState";
+import { LoadingState } from "@/components/staff/ui/LoadingState";
+import { MotionButtonFrame, MotionSection } from "@/components/staff/ui/motion";
+import { PageShell } from "@/components/staff/ui/PageShell";
+import { SectionCard } from "@/components/staff/ui/SectionCard";
+import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { getGradeBadgeProps } from "@/lib/grade-colors";
+import { getMemberDisplayName, getNeutralRankBadge, resolveStableRank } from "@/lib/member-display";
+import {
+	AlertTriangle,
+	ArrowLeft,
+	CalendarDays,
+	ClipboardList,
+	History,
+	MessageSquareText,
+	NotebookPen,
+	Shield,
+	UserRound,
+} from "lucide-react";
 
 type GradeHistoryEntry = {
 	id: string;
@@ -31,10 +48,17 @@ type Member = {
 	discordId: string;
 	steamId: string | null;
 	rpName: string | null;
+	discordDisplayName?: string | null;
+	discordUsername?: string | null;
 	age: number | null;
 	grade: string | null;
 	gradeLevel: number;
 	roleDiscordId: string | null;
+	rankRoleId?: string | null;
+	rankLabel?: string | null;
+	discordRoleIds?: string[];
+	discordLastError?: string | null;
+	discordSnapshotRolesJson?: unknown;
 	isActive: boolean;
 	joinedAt: string | null;
 	createdAt: string;
@@ -58,14 +82,20 @@ type Recruitment = {
 	createdAt: string;
 };
 
-const GRADE_COLORS: Record<string, { bg: string; color: string }> = {
-	CHEF: { bg: "#f3e8ff", color: "#6b21a8" },
-	CAPTAIN: { bg: "#dbeafe", color: "#1e40af" },
-	OFFICER: { bg: "#e0e7ff", color: "#3730a3" },
-	WL4: { bg: "#dcfce7", color: "#166534" },
-	WL3: { bg: "#d1fae5", color: "#065f46" },
-	WL2: { bg: "#ccfbf1", color: "#115e59" },
-	WL1: { bg: "#cffafe", color: "#155e75" },
+type AbsenceEntry = {
+	id: string;
+	type: "MEETING" | "GENERAL";
+	meetingDate: string | null;
+	reason: string | null;
+	notes: string | null;
+	status: string;
+	uiStatus: "PENDING" | "APPROVED" | "REJECTED" | "CANCELED" | "EXPIRED";
+	rejectionReason: string | null;
+	isActive: boolean;
+	startAt: string;
+	endAt: string;
+	decidedAt: string | null;
+	createdAt: string;
 };
 
 function fmtDate(iso: string | null) {
@@ -81,23 +111,23 @@ function fmtDate(iso: string | null) {
 	});
 }
 
-function statusBadge(status: string, type: "sanction" | "complaint" | "recruitment") {
+function getStatusMeta(status: string, type: "sanction" | "complaint" | "recruitment") {
 	if (type === "sanction") {
-		if (status === "ACTIVE") return { bg: "#fee2e2", color: "#991b1b", label: "⚠️ Active" };
-		if (status === "EXPIRED") return { bg: "#fef3c7", color: "#b45309", label: "⏱️ Expirée" };
-		return { bg: "#e5e7eb", color: "#374151", label: "✓ Clôturée" };
+		if (status === "ACTIVE") return { label: "Active", tone: "warning" as const };
+		if (status === "EXPIRED") return { label: "Expirée", tone: "neutral" as const };
+		return { label: "Clôturée", tone: "success" as const };
 	}
 	if (type === "complaint") {
-		if (status === "OPEN") return { bg: "#fef3c7", color: "#b45309", label: "🔴 Ouvert" };
-		if (status === "TREATED") return { bg: "#d1fae5", color: "#065f46", label: "✅ Traité" };
-		if (status === "UNTREATED") return { bg: "#fee2e2", color: "#991b1b", label: "❌ Refusé" };
-		return { bg: "#e5e7eb", color: "#374151", label: "⊘ Clôturé" };
+		if (status === "OPEN") return { label: "Ouverte", tone: "warning" as const };
+		if (status === "TREATED") return { label: "Traitée", tone: "success" as const };
+		if (status === "UNTREATED") return { label: "Refusée", tone: "danger" as const };
+		return { label: "Clôturée", tone: "neutral" as const };
 	}
 	if (type === "recruitment") {
-		if (status === "OPEN") return { bg: "#eff6ff", color: "#0c4a6e", label: "⏳ En attente" };
-		return { bg: "#ecfdf5", color: "#065f46", label: "✓ Clôturé" };
+		if (status === "OPEN") return { label: "En attente", tone: "info" as const };
+		return { label: "Clôturé", tone: "success" as const };
 	}
-	return { bg: "#f3f4f6", color: "#6b7280", label: status };
+	return { label: status, tone: "neutral" as const };
 }
 
 export function MemberDetailClient({
@@ -108,7 +138,9 @@ export function MemberDetailClient({
 }) {
 	const [complaints, setComplaints] = useState<Complaint[]>([]);
 	const [recruitments, setRecruitments] = useState<Recruitment[]>([]);
+	const [absences, setAbsences] = useState<AbsenceEntry[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
 
 	const staffNotes = useMemo(() => {
 		return member.gradeHistory
@@ -123,7 +155,14 @@ export function MemberDetailClient({
 
 	useEffect(() => {
 		async function loadRelatedData() {
+			setError(null);
 			try {
+				const historyRes = await fetch(`/api/staff/members/by-discord/${member.discordId}/history`, { cache: "no-store" });
+				if (historyRes.ok) {
+					const historyData = await historyRes.json();
+					setAbsences(Array.isArray(historyData?.data?.absences) ? historyData.data.absences : []);
+				}
+
 				const complaintsRes = await fetch("/api/staff/complaints", { cache: "no-store" });
 				if (complaintsRes.ok) {
 					const data = await complaintsRes.json();
@@ -136,172 +175,293 @@ export function MemberDetailClient({
 				}
 			} catch (err) {
 				console.error("Failed to load related data:", err);
+				setError("Certaines données liées n'ont pas pu être chargées.");
 			} finally {
 				setLoading(false);
 			}
 		}
-		loadRelatedData();
+		void loadRelatedData();
 	}, [member.discordId]);
 
-	const gradeColor = member.grade ? GRADE_COLORS[member.grade] : null;
+	const activeAbsence = useMemo(() => absences.find((absence) => absence.isActive) ?? null, [absences]);
+
+	function absenceTypeLabel(type: "MEETING" | "GENERAL") {
+		return type === "MEETING" ? "Absence réunion" : "Absence générale";
+	}
+
+	function absenceStatusLabel(status: AbsenceEntry["uiStatus"]) {
+		if (status === "PENDING") return "En attente";
+		if (status === "APPROVED") return "Approuvée";
+		if (status === "REJECTED") return "Refusée";
+		if (status === "EXPIRED") return "Expirée";
+		return status;
+	}
+
+	const displayName = getMemberDisplayName(member);
+	const stableRank = resolveStableRank({
+		hasDiscordId: Boolean(member.discordId),
+		rankRoleId: member.rankRoleId ?? null,
+		rankLabel: member.rankLabel ?? null,
+		discordRoleIds: member.discordRoleIds,
+		snapshotRolesJson: member.discordSnapshotRolesJson,
+		discordLastError: member.discordLastError ?? null,
+	});
+
+	const rankBadge = (() => {
+		if (stableRank.rankRoleId) {
+			return getGradeBadgeProps(stableRank.rankRoleId);
+		}
+		if (stableRank.rankLabel) {
+			const base = getGradeBadgeProps(null);
+			return { ...base, label: stableRank.rankLabel };
+		}
+		if (stableRank.neutralState) {
+			return getNeutralRankBadge(stableRank.neutralState);
+		}
+		return null;
+	})();
+
+	const rankTone = stableRank.rankRoleId || stableRank.rankLabel ? "accent" : stableRank.neutralState ? "warning" : "neutral";
+	const complaintsPreview = complaints.slice(0, 10);
 
 	return (
-		<StaffPage
-			title={member.rpName || "Sans nom RP"}
-			subtitle={`Discord: ${member.discordId}${member.steamId ? ` | Steam: ${member.steamId}` : ""}`}
+		<PageShell
+			title={displayName}
+			description={`Discord: ${member.discordId}${member.steamId ? ` • Steam: ${member.steamId}` : ""}`}
+			icon={UserRound}
+			actions={
+				<>
+					<MotionButtonFrame>
+						<Link
+							href="/staff/members"
+							className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.08]"
+						>
+							<ArrowLeft className="h-4 w-4" />
+							Retour à la liste
+						</Link>
+					</MotionButtonFrame>
+					{rankBadge ? <StatusBadge tone={rankTone}>{rankBadge.label}</StatusBadge> : null}
+					<StatusBadge tone={member.isActive ? "success" : "neutral"}>
+						{member.isActive ? "Membre actif" : "Ancien membre"}
+					</StatusBadge>
+				</>
+			}
 		>
-			<Link href="/staff/members" className="text-blue-600 hover:underline text-sm mb-4 inline-block">
-				← Retour à la liste
-			</Link>
+			<MotionSection delay={0.03}>
+				<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+					<DataTile label="Âge" value={member.age ? `${member.age} ans` : "Non renseigné"} />
+					<DataTile label="Niveau de grade" value={member.gradeLevel} tone="info" />
+					<DataTile
+						label="Rang stable"
+						value={rankBadge ? <StatusBadge tone={rankTone}>{rankBadge.label}</StatusBadge> : "Sans grade détecté"}
+						tone={rankBadge ? "info" : "default"}
+					/>
+					<DataTile
+						label="Dernière mise à jour"
+						value={fmtDate(member.updatedAt)}
+						tone={member.isActive ? "success" : "warning"}
+					/>
+				</div>
+			</MotionSection>
 
-			<div className="grid gap-4 sm:grid-cols-3 mb-6">
-				<div className="border border-slate-800 rounded-lg p-4 bg-slate-900/40">
-					<div className="text-xs text-muted-foreground mb-1">Âge</div>
-					<div className="font-semibold text-lg text-foreground">{member.age ? `${member.age} ans` : "-"}</div>
-				</div>
-				<div className="border border-slate-800 rounded-lg p-4 bg-slate-900/40">
-					<div className="text-xs text-muted-foreground mb-1">Niveau de grade</div>
-					<div className="font-semibold text-lg text-foreground">{member.gradeLevel}</div>
-				</div>
-				<div className="border border-slate-800 rounded-lg p-4 bg-slate-900/40 flex flex-col items-start gap-2">
-					{gradeColor && (
-						<span className="px-3 py-1 rounded text-xs font-semibold" style={{ backgroundColor: gradeColor.bg, color: gradeColor.color }}>
-							{member.grade}
-						</span>
-					)}
-				<Badge tone={member.isActive ? "green" : "gray"}>
-					{member.isActive ? "✓ Actif" : "Ancien membre"}
-					</Badge>
-				</div>
-			</div>
-
-			<div className="mb-6">
-				<h2 className="text-lg font-bold mb-3 flex items-center gap-2">⚠️ Sanctions ({member.sanctions.length})</h2>
-				{member.sanctions.length === 0 ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						Aucune sanction
+			{error ? (
+				<SectionCard
+					title="Chargement partiel"
+					description="La fiche principale reste disponible, mais certaines données liées n'ont pas pu être récupérées."
+					icon={AlertTriangle}
+				>
+					<div className="flex flex-wrap items-center gap-2 text-sm text-amber-100">
+						<StatusBadge tone="warning">Données liées incomplètes</StatusBadge>
+						<span>{error}</span>
 					</div>
-				) : (
-					<StaffTable headers={["Statut", "Type", "Raison", "Créée le"]} stickyHeader>
-						{member.sanctions.map((s) => {
-							const badge = statusBadge(s.status, "sanction");
-							return (
-								<tr key={s.id} className="hover:bg-slate-900/30">
-									<td className="px-4 py-3">
-										<Badge tone={s.status === "ACTIVE" ? "yellow" : s.status === "EXPIRED" ? "gray" : "green"}>
-											{badge.label}
-										</Badge>
-									</td>
-									<td className="px-4 py-3 font-semibold text-sm">{s.type}</td>
-									<td className="px-4 py-3 text-sm text-muted-foreground">{s.reason || "-"}</td>
-									<td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{fmtDate(s.createdAt)}</td>
-								</tr>
-							);
-						})}
-					</StaffTable>
-				)}
-			</div>
+				</SectionCard>
+			) : null}
 
-			<div className="mb-6">
-				<h2 className="text-lg font-bold mb-3 flex items-center gap-2">📨 Plaintes liées ({complaints.length})</h2>
+			<SectionCard
+				title={`Absences (${absences.length})`}
+				description="Historique des absences et état courant du membre sur les réunions et indisponibilités."
+				icon={CalendarDays}
+			>
 				{loading ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						⏳ Chargement...
-					</div>
-				) : complaints.length === 0 ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						Aucune plainte trouvée
-					</div>
+					<LoadingState title="Chargement des absences" description="Récupération de l'historique d'absence du membre." />
+				) : absences.length === 0 ? (
+					<EmptyState title="Aucune absence" description="Aucune absence n'est enregistrée pour ce membre." />
 				) : (
-					<StaffTable headers={["Statut", "Canal", "Créée le"]} stickyHeader>
-						{complaints.map((c) => {
-							const badge = statusBadge(c.status, "complaint");
-							const tone = c.status === "OPEN" ? "yellow" : c.status === "TREATED" ? "green" : c.status === "UNTREATED" ? "red" : "gray";
-							return (
-								<tr key={c.id} className="hover:bg-slate-900/30">
-									<td className="px-4 py-3">
-										<Badge tone={tone}>{badge.label}</Badge>
-									</td>
-									<td className="px-4 py-3 font-mono text-sm">{c.channelId}</td>
-									<td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{fmtDate(c.createdAtDiscord)}</td>
-								</tr>
-							);
-						})}
-					</StaffTable>
-				)}
-			</div>
-
-			<div className="mb-6">
-				<h2 className="text-lg font-bold mb-3 flex items-center gap-2">🧾 Recrutements liés ({recruitments.length})</h2>
-				{loading ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						⏳ Chargement...
-					</div>
-				) : recruitments.length === 0 ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						Aucun recrutement trouvé
-					</div>
-				) : (
-					<StaffTable headers={["Statut", "Ticket", "RP Name", "Créé le"]} stickyHeader>
-						{recruitments.map((r) => {
-							const badge = statusBadge(r.status, "recruitment");
-							const tone = r.status === "OPEN" ? "blue" : "green";
-							return (
-								<tr key={r.id} className="hover:bg-slate-900/30">
-									<td className="px-4 py-3">
-										<Badge tone={tone}>{badge.label}</Badge>
-									</td>
-									<td className="px-4 py-3 font-mono text-sm">{r.ticketKey}</td>
-									<td className="px-4 py-3 text-sm">{r.rpName || "-"}</td>
-									<td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{fmtDate(r.createdAt)}</td>
-								</tr>
-							);
-						})}
-					</StaffTable>
-				)}
-			</div>
-
-			<div className="mb-6">
-				<h2 className="text-lg font-bold mb-3 flex items-center gap-2">📝 Notes internes staff</h2>
-				{staffNotes.length === 0 ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						Aucune note interne
-					</div>
-				) : (
-					<div className="border border-slate-800 rounded-lg divide-y divide-slate-800">
-						{staffNotes.map((note) => (
-							<div key={note.id} className="p-4">
-								<div className="text-xs text-muted-foreground mb-1">{fmtDate(note.date)}</div>
-								<div className="text-sm font-semibold text-foreground mb-2">Auteur : {note.author}</div>
-								<div className="text-sm text-foreground whitespace-pre-wrap">{note.content}</div>
+					<div className="space-y-4">
+						{activeAbsence ? (
+							<div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-100">
+								<span className="font-semibold">Absence active:</span>{" "}
+								{absenceTypeLabel(activeAbsence.type)} jusqu'au {fmtDate(activeAbsence.endAt)}
 							</div>
+						) : null}
+						<SurfaceTable headers={["Type", "Statut", "Période", "Motif"]}>
+							{absences.map((absence) => (
+								<tr key={absence.id} className="border-t border-white/8">
+									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{absenceTypeLabel(absence.type)}</td>
+									<td className="px-4 py-3 text-sm">
+										<StatusBadge tone={absence.uiStatus === "APPROVED" ? "success" : absence.uiStatus === "REJECTED" ? "danger" : absence.uiStatus === "PENDING" ? "warning" : "neutral"}>
+											{absenceStatusLabel(absence.uiStatus)}
+										</StatusBadge>
+									</td>
+									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">
+										{fmtDate(absence.startAt)} → {fmtDate(absence.endAt)}
+									</td>
+									<td className="px-4 py-3 text-sm text-slate-400">
+										{absence.reason || "-"}
+										{absence.rejectionReason ? ` (Refus: ${absence.rejectionReason})` : ""}
+									</td>
+								</tr>
+							))}
+						</SurfaceTable>
+					</div>
+				)}
+			</SectionCard>
+
+			<SectionCard
+				title={`Sanctions (${member.sanctions.length})`}
+				description="Vue rapide des sanctions appliquées au membre et de leur état courant."
+				icon={Shield}
+			>
+				{member.sanctions.length === 0 ? (
+					<EmptyState title="Aucune sanction" description="Aucune sanction n'est rattachée à cette fiche membre." />
+				) : (
+					<SurfaceTable headers={["Statut", "Type", "Raison", "Date de création"]}>
+						{member.sanctions.map((sanction) => {
+							const meta = getStatusMeta(sanction.status, "sanction");
+							return (
+								<tr key={sanction.id} className="border-t border-white/8">
+									<td className="px-4 py-3">
+										<StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+									</td>
+									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{sanction.type}</td>
+									<td className="px-4 py-3 text-sm text-slate-400">{sanction.reason || "-"}</td>
+									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(sanction.createdAt)}</td>
+								</tr>
+							);
+						})}
+					</SurfaceTable>
+				)}
+			</SectionCard>
+
+			<SectionCard
+				title={`Plaintes liées (${complaintsPreview.length})`}
+				description="Dernières plaintes visibles depuis le panel staff pour ce membre."
+				icon={MessageSquareText}
+			>
+				{loading ? (
+					<LoadingState title="Chargement des plaintes" description="Récupération des plaintes liées au membre." />
+				) : complaintsPreview.length === 0 ? (
+					<EmptyState title="Aucune plainte trouvée" description="Aucune plainte exploitable n'a été trouvée pour ce membre." />
+				) : (
+					<SurfaceTable headers={["Statut", "Canal", "Date de création"]}>
+						{complaintsPreview.map((complaint) => {
+							const meta = getStatusMeta(complaint.status, "complaint");
+							return (
+								<tr key={complaint.id} className="border-t border-white/8">
+									<td className="px-4 py-3">
+										<StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+									</td>
+									<td className="px-4 py-3 font-mono text-sm text-slate-300">{complaint.channelId}</td>
+									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(complaint.createdAtDiscord)}</td>
+								</tr>
+							);
+						})}
+					</SurfaceTable>
+				)}
+			</SectionCard>
+
+			<SectionCard
+				title={`Recrutements liés (${recruitments.length})`}
+				description="Suivi rapide des recrutements associés au Discord de ce membre."
+				icon={ClipboardList}
+			>
+				{loading ? (
+					<LoadingState title="Chargement des recrutements" description="Récupération des recrutements liés au membre." />
+				) : recruitments.length === 0 ? (
+					<EmptyState title="Aucun recrutement trouvé" description="Aucun recrutement lié n'a été identifié pour ce membre." />
+				) : (
+					<SurfaceTable headers={["Statut", "Ticket", "Nom RP", "Date de création"]}>
+						{recruitments.map((recruitment) => {
+							const meta = getStatusMeta(recruitment.status, "recruitment");
+							return (
+								<tr key={recruitment.id} className="border-t border-white/8">
+									<td className="px-4 py-3">
+										<StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+									</td>
+									<td className="px-4 py-3 font-mono text-sm text-slate-300">{recruitment.ticketKey}</td>
+									<td className="px-4 py-3 text-sm text-slate-100">{recruitment.rpName || "-"}</td>
+									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(recruitment.createdAt)}</td>
+								</tr>
+							);
+						})}
+					</SurfaceTable>
+				)}
+			</SectionCard>
+
+			<SectionCard
+				title="Notes internes staff"
+				description="Notes métier historisées depuis les changements de grade et annotations internes."
+				icon={NotebookPen}
+			>
+				{staffNotes.length === 0 ? (
+					<EmptyState title="Aucune note interne" description="Aucune note staff n'est disponible pour cette fiche membre." />
+				) : (
+					<div className="space-y-3">
+						{staffNotes.map((note, index) => (
+							<MotionSection key={note.id} delay={0.02 + index * 0.01}>
+								<div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+									<div className="text-xs text-slate-500">{fmtDate(note.date)}</div>
+									<div className="mt-2 text-sm font-semibold text-slate-100">Auteur : {note.author}</div>
+									<div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{note.content}</div>
+								</div>
+							</MotionSection>
 						))}
 					</div>
 				)}
-			</div>
+			</SectionCard>
 
-			<div className="mb-6">
-				<h2 className="text-lg font-bold mb-3 flex items-center gap-2">📊 Historique des grades ({member.gradeHistory.length})</h2>
+			<SectionCard
+				title={`Historique des grades (${member.gradeHistory.length})`}
+				description="Historique récent des évolutions de grade, de leur origine et de l'auteur du changement."
+				icon={History}
+			>
 				{member.gradeHistory.length === 0 ? (
-					<div className="bg-slate-900/20 border border-slate-800 rounded-lg p-6 text-center text-muted-foreground text-sm">
-						Aucun changement de grade
-					</div>
+					<EmptyState title="Aucun changement de grade" description="Aucune évolution de grade n'est enregistrée pour ce membre." />
 				) : (
-					<StaffTable headers={["Date", "Ancien grade", "Nouveau grade", "Par", "Source"]} stickyHeader>
-						{member.gradeHistory.map((h) => (
-							<tr key={h.id} className="hover:bg-slate-900/30">
-								<td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{fmtDate(h.changedAt)}</td>
-								<td className="px-4 py-3 text-sm font-semibold text-muted-foreground">{h.oldGrade || "-"}</td>
-								<td className="px-4 py-3 text-sm font-semibold text-primary">{h.newGrade}</td>
-								<td className="px-4 py-3 text-sm text-muted-foreground">{h.changedBy || "-"}</td>
+					<SurfaceTable headers={["Date", "Ancien grade", "Nouveau grade", "Par", "Source"]}>
+						{member.gradeHistory.map((historyEntry) => (
+							<tr key={historyEntry.id} className="border-t border-white/8">
+								<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(historyEntry.changedAt)}</td>
+								<td className="px-4 py-3 text-sm font-semibold text-slate-400">{historyEntry.oldGrade || "-"}</td>
+								<td className="px-4 py-3 text-sm font-semibold text-slate-100">{historyEntry.newGrade}</td>
+								<td className="px-4 py-3 text-sm text-slate-400">{historyEntry.changedBy || "-"}</td>
 								<td className="px-4 py-3 text-sm">
-									<Badge tone="gray">{h.source}</Badge>
+									<StatusBadge>{historyEntry.source}</StatusBadge>
 								</td>
 							</tr>
 						))}
-					</StaffTable>
+					</SurfaceTable>
 				)}
-			</div>
-		</StaffPage>
+			</SectionCard>
+		</PageShell>
+	);
+}
+
+function SurfaceTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+	return (
+		<div className="overflow-x-auto rounded-2xl border border-white/8 bg-white/[0.03]">
+			<table className="min-w-full border-collapse text-sm">
+				<thead>
+					<tr className="bg-white/[0.03] text-left">
+						{headers.map((header) => (
+							<th key={header} className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+								{header}
+							</th>
+						))}
+					</tr>
+				</thead>
+				<tbody>{children}</tbody>
+			</table>
+		</div>
 	);
 }

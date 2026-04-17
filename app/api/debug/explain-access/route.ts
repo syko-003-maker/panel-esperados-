@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { getSession } from "@/auth";
 import { getStaffUser } from "@/lib/rbac";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
@@ -20,18 +21,17 @@ import { getStaffRoleIds } from "@/lib/discord-rbac";
  * - decision: décision finale avec raison + source d'accès
  */
 export async function GET() {
+  const requestId = randomUUID();
   try {
     const session = await getSession();
     
     if (!session) {
+      console.warn(`[api/debug/explain-access] requestId=${requestId} - unauthenticated request`);
       return NextResponse.json({
         ok: false,
-        error: "NOT_AUTHENTICATED",
-        decision: {
-          canAccess: false,
-          reason: "No active session - user not logged in",
-          deniedAt: "session_check",
-        },
+        requestId,
+        message: "Vous n'êtes pas connecté. Veuillez vous connecter ou lier votre compte.",
+        cta: "/dashboard",
       }, { status: 401 });
     }
 
@@ -179,8 +179,8 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({
-      ok: true,
+    // Build debug payload for server logs
+    const debugDetails = {
       timestamp: new Date().toISOString(),
       identifiers,
       discordRoles: discordRolesInfo,
@@ -188,13 +188,39 @@ export async function GET() {
       legacyFlags,
       decision,
       recommendations,
-    });
+    };
+
+    // Log full details server-side (do NOT expose to public users)
+    console.info("[/api/debug/explain-access] requestId=", requestId, debugDetails);
+
+    const allowFullDebug = process.env.NODE_ENV !== "production" && process.env.DEBUG_RBAC === "1";
+
+    // If user cannot access or we're in production, return only a generic message + requestId and CTA
+    if (!canAccess) {
+      console.warn("[/api/debug/explain-access] requestId=", requestId, "Access denied");
+    }
+
+    if (!canAccess || !allowFullDebug) {
+      const genericMessage = canAccess
+        ? "Vous avez l'accès au panel."
+        : "Accès refusé. Si votre compte Discord n'est pas lié, veuillez le lier pour demander l'accès.";
+
+      return NextResponse.json({
+        ok: canAccess,
+        requestId,
+        message: genericMessage,
+        cta: !canAccess ? "/dashboard" : undefined,
+      }, { status: canAccess ? 200 : 403 });
+    }
+
+    // Development-only: return full debug details when explicitly enabled
+    return NextResponse.json({ ok: true, requestId, ...debugDetails });
   } catch (error: any) {
-    console.error("[/api/debug/explain-access] Error:", error);
+    console.error("[/api/debug/explain-access] requestId=", requestId, "Error:", error);
     return NextResponse.json({
       ok: false,
-      error: "Failed to explain access",
-      details: error.message || String(error),
+      requestId,
+      message: "Erreur interne. Veuillez contacter le support en fournissant cet ID de requête.",
     }, { status: 500 });
   }
 }

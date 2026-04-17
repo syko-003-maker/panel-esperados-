@@ -2,7 +2,10 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { requireRecruiterOrAbove } from "@/lib/guards";
+import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { RecruitmentsListClient } from "./recruitments-list-client";
+import { PageShell } from "@/components/staff/ui";
+import { Users } from "lucide-react";
 
 export default async function RecruitmentsPage() {
   const guard = await requireRecruiterOrAbove();
@@ -25,18 +28,69 @@ export default async function RecruitmentsPage() {
     take: 200,
   });
 
-  const data = recruitments.map((r) => ({
-    id: r.id,
-    ticketKey: r.ticketKey!,
-    status: (r.closedAt ? "FINI" : "OPEN") as "OPEN" | "FINI",
-    authorDiscordId: r.discordId,
-    authorTag: r.authorTag,
-    steamId: r.steamId,
-    rpName: r.rpName,
-    threadId: r.discordThreadId,
-    createdAt: r.createdAt.toISOString(),
-    closedAt: r.closedAt?.toISOString() ?? null,
+  // Résoudre les noms des recruteurs depuis notes.claimedById (userId NextAuth)
+  // Priorité : rpName (Member) > displayName Discord > username Discord
+  const allNotes = recruitments.map((r) => parseRecruitmentNotes(r.notes ?? null));
+  const claimedUserIds = [...new Set(
+    allNotes.map((n) => n.claimedById).filter((id): id is string => Boolean(id))
+  )];
+  const claimedUsers = claimedUserIds.length > 0
+    ? await prisma.user.findMany({
+        where: { id: { in: claimedUserIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  // userId → discordId via Account
+  const accounts = claimedUserIds.length > 0
+    ? await prisma.account.findMany({
+        where: { userId: { in: claimedUserIds }, provider: "discord" },
+        select: { userId: true, providerAccountId: true },
+      })
+    : [];
+  const discordIdByUserId = new Map(accounts.map((a) => [a.userId, a.providerAccountId]));
+  // discordId → rpName via Member
+  const claimedDiscordIds = [...new Set(accounts.map((a) => a.providerAccountId))];
+  const claimedMembers = claimedDiscordIds.length > 0
+    ? await prisma.member.findMany({
+        where: { discordId: { in: claimedDiscordIds } },
+        select: { discordId: true, rpName: true },
+      })
+    : [];
+  const rpNameByDiscordId = new Map(
+    claimedMembers.filter((m): m is typeof m & { discordId: string } => Boolean(m.discordId))
+      .map((m) => [m.discordId, m.rpName])
+  );
+  const userNameMap = new Map(claimedUsers.map((u) => {
+    const discordId = discordIdByUserId.get(u.id);
+    const rpName = discordId ? rpNameByDiscordId.get(discordId) : null;
+    return [u.id, rpName ?? u.name ?? null];
   }));
 
-  return <RecruitmentsListClient recruitments={data} />;
+  const data = recruitments.map((r, i) => {
+    const notes = allNotes[i];
+    const claimedById = notes.claimedById ?? null;
+    return {
+      id: r.id,
+      ticketKey: r.ticketKey!,
+      status: r.status,
+      authorDiscordId: r.discordId,
+      authorTag: r.authorTag,
+      steamId: r.steamId,
+      rpName: r.rpName,
+      threadId: r.discordThreadId,
+      createdAt: r.createdAt.toISOString(),
+      closedAt: r.closedAt?.toISOString() ?? null,
+      claimedByName: claimedById ? (userNameMap.get(claimedById) ?? null) : null,
+    };
+  });
+
+  return (
+    <PageShell
+      title="Recrutements"
+      description="Gestion des candidatures reçues depuis Discord et accès rapide aux dossiers ouverts."
+      icon={Users}
+    >
+      <RecruitmentsListClient recruitments={data} />
+    </PageShell>
+  );
 }

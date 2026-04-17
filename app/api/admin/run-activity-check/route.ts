@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { enqueueSanctionApply } from "@/lib/discord/discord";
+import { evaluateSanctionRules } from "@/lib/sanction-rules";
+import { getSanctionExpirationDate } from "@/lib/sanctions";
 
 /**
  * POST /api/admin/run-activity-check
@@ -92,7 +95,7 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          await prisma.sanction.create({
+          const sanction = await prisma.sanction.create({
             data: {
               familyId,
               discordId: member.discordId,
@@ -101,8 +104,34 @@ export async function POST(req: NextRequest) {
               source: "ACTIVITY",
               reason: `Inactivité détectée - Aucune activité depuis plus de 2 semaines`,
               startAt: now,
+              expiresAt: getSanctionExpirationDate("AVERT_ORAL_PLAYTIME", now),
+              status: "ACTIVE",
+              discordStatus: "PENDING",
               createdById: systemUser.id,
             },
+          });
+
+          const outbox = await enqueueSanctionApply({
+            familyId,
+            sanctionId: sanction.id,
+            discordId: member.discordId,
+            memberName: member.rpName ?? "Unknown",
+            sanctionType: sanction.type,
+            reason: sanction.reason ?? "No reason provided",
+            durationHours: sanction.expiresAt
+              ? Math.max(1, Math.ceil((sanction.expiresAt.getTime() - Date.now()) / (60 * 60 * 1000)))
+              : null,
+            staffName: "Système",
+            appliedByUserId: systemUser.id,
+          });
+
+          await prisma.sanction.update({
+            where: { id: sanction.id },
+            data: { outboxJobId: outbox?.id ?? null } as any,
+          });
+
+          await evaluateSanctionRules(member.id, familyId).catch((err) => {
+            console.error("[/api/admin/run-activity-check] Error evaluating rules:", err);
           });
 
           results.sanctionsCreated++;

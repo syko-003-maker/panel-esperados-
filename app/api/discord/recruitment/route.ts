@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { randomUUID } from "crypto";
+import { buildRecruitmentStorage } from "@/lib/recruitment/ingest";
 
 const TICKET_PARENT_CHANNEL = process.env.DISCORD_TICKETS_CATEGORY_ID || null;
 
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
     if (!body) return badRequest("Invalid JSON");
+
+    const storage = buildRecruitmentStorage(body);
 
     payload = {
       rpName: String(body.rpName || "").trim(),
@@ -55,13 +58,12 @@ export async function POST(req: Request) {
         familyId: "esperados",
         discordId: payload.authorDiscordId,
         ticketChannelId: payload.ticketChannelId,
-
-        payload: {
-          age: payload.age,
-          activeSanctions: payload.activeSanctions,
-          steamId: payload.steamId,
-          proofRequired: true,
-        },
+        payload: storage.payload as any,
+        notes: storage.notes,
+        age: payload.age,
+        steamId: payload.steamId,
+        motivation: (storage.motivation ?? String(body.motivation || "").trim()) || null,
+        availabilities: (storage.availabilities ?? String(body.dispo || body.availabilities || "").trim()) || null,
 
         createdBy: {
           connectOrCreate: {
@@ -99,6 +101,7 @@ export async function POST(req: Request) {
           steamId: payload.steamId,
           age: payload.age,
           activeSanctions: payload.activeSanctions,
+          payload: storage.payload,
           discordId: payload.authorDiscordId,
           authorDiscordId: payload.authorDiscordId,
           ticketChannelId: payload.ticketChannelId,

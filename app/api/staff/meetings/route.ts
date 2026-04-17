@@ -2,20 +2,63 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { getSession } from "@/auth";
+import { resolveFamilyId } from "@/lib/family";
+import { getISOWeekKey } from "@/lib/meetings-legacy";
 import {
-  AttendanceStatus,
-  getISOWeekKey,
-  serializeMeetingNotes,
+  buildMeetingClientRow,
+  computeMeetingCounts,
+  buildMeetingRowSnapshot,
   DEFAULT_MEETING_FAMILY_ID,
-  buildMeetingDTO,
-} from "@/lib/meetings-legacy";
-function logMeeting(action: string, meetingId: string, locked: boolean) {
-  if (process.env.NODE_ENV === "production") return;
-  console.log("[meetings]", { action, meetingId, locked });
+  isMeetingLocked,
+} from "@/lib/meetings";
+import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
+import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
+
+function buildMeetingListItem(meeting: {
+  id: string;
+  title: string | null;
+  type: string;
+  status: string;
+  summary: string | null;
+  summaryText: string | null;
+  finalizedAt: Date | null;
+  meetingDate: Date;
+  weekKey: string;
+  createdAt: Date;
+  updatedAt: Date;
+  rows: Array<{
+    id: string;
+    rpNameSnapshot: string;
+    discordIdSnapshot: string | null;
+    playtimeMinutes: number;
+    attendanceStatus: string;
+    decisionType: string;
+    staffNote: string | null;
+    isJustified: boolean;
+    updatedAt: Date;
+  }>;
+  _count: { decisions: number; attendances: number; rows: number };
+}) {
+  const rows = meeting.rows.map((row) => buildMeetingClientRow(row));
+  return {
+    id: meeting.id,
+    scheduledAt: meeting.meetingDate.toISOString(),
+    weekKey: meeting.weekKey,
+    title: meeting.title ?? `Réunion ${meeting.weekKey}`,
+    type: meeting.type,
+    status: meeting.status,
+    locked: isMeetingLocked(meeting.status),
+    finalizedAt: meeting.finalizedAt?.toISOString() ?? null,
+    summary: meeting.summaryText ?? meeting.summary,
+    decisionsCount: meeting._count.decisions,
+    attendancesCount: meeting._count.attendances || meeting._count.rows,
+    counts: computeMeetingCounts(rows),
+    createdAt: meeting.createdAt.toISOString(),
+    updatedAt: meeting.updatedAt.toISOString(),
+  };
 }
 
 export async function GET(req: Request) {
-  // ✅ PATCH: Unified staff protection (session + isStaff + member linked)
   const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
 
@@ -23,7 +66,9 @@ export async function GET(req: Request) {
   const weekKeyParam = searchParams.get("weekKey");
   const statusParam = searchParams.get("status");
 
-  const where: Record<string, unknown> = {};
+  const familyDbId = await resolveFamilyId(DEFAULT_MEETING_FAMILY_ID);
+
+  const where: Record<string, unknown> = { familyId: familyDbId };
   if (weekKeyParam) where.weekKey = weekKeyParam;
   if (statusParam) where.status = statusParam;
 
@@ -37,47 +82,42 @@ export async function GET(req: Request) {
       weekKey: true,
       type: true,
       status: true,
-      notes: true,
       summary: true,
+      summaryText: true,
       finalizedAt: true,
       createdAt: true,
       updatedAt: true,
+      rows: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          rpNameSnapshot: true,
+          discordIdSnapshot: true,
+          playtimeMinutes: true,
+          attendanceStatus: true,
+          sanctionType: true,
+          decisionType: true,
+          staffNote: true,
+          isJustified: true,
+          updatedAt: true,
+        },
+      },
       _count: {
         select: {
           decisions: true,
           attendances: true,
+          rows: true,
         },
       },
     },
   });
 
-  // Build DTOs with both legacy and new fields
-  const data = meetings.map((meeting) => {
-    const legacyDTO = buildMeetingDTO({
-      id: meeting.id,
-      meetingDate: meeting.meetingDate,
-      weekKey: meeting.weekKey,
-      notes: meeting.notes,
-      updatedAt: meeting.updatedAt,
-    });
-
-    return {
-      ...legacyDTO,
-      title: meeting.title,
-      type: meeting.type,
-      status: meeting.status,
-      summary: meeting.summary,
-      finalizedAt: meeting.finalizedAt,
-      decisionsCount: meeting._count.decisions,
-      attendancesCount: meeting._count.attendances,
-    };
-  });
+  const data = meetings.map(buildMeetingListItem);
 
   return NextResponse.json({ ok: true, data });
 }
 
 export async function POST(req: Request) {
-  // ✅ PATCH: Unified staff protection (session + isStaff + member linked)
   const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
 
@@ -96,67 +136,121 @@ export async function POST(req: Request) {
 
   const weekKey = getISOWeekKey(meetingDate);
   const title = String(body?.title ?? `Reunion ${weekKey}`).trim() || `Reunion ${weekKey}`;
+  const description = String(body?.meetingNote ?? body?.notes ?? body?.description ?? "").trim() || null;
 
   const existing = await prisma.meeting.findUnique({ where: { weekKey } });
   if (existing) {
     return NextResponse.json({ ok: false, error: "WEEKKEY_EXISTS" }, { status: 409 });
   }
 
+  await ensureFreshFamilyPlaytime(DEFAULT_MEETING_FAMILY_ID);
+
+  const familyId = await resolveFamilyId(DEFAULT_MEETING_FAMILY_ID);
+
   const members = await prisma.member.findMany({
-    where: { familyId: DEFAULT_MEETING_FAMILY_ID },
-    select: { id: true, discordId: true, rpName: true },
+    where: { familyId, isGhost: false },
+    select: {
+      id: true,
+      source: true,
+      discordId: true,
+      rpName: true,
+      grade: true,
+      isActive: true,
+      discordRoleIds: true,
+      rankRoleId: true,
+      rankLabel: true,
+      steamId: true,
+      playtime7d: true,
+      discordInGuild: true,
+      missingFromLygSince: true,
+    },
     orderBy: { rpName: "asc" },
   });
 
-  const rows = members
-    .filter((member) => member.discordId)
-    .map((member) => ({
-      discordId: String(member.discordId),
-      name: member.rpName ?? "Unknown",
-      status: "UNKNOWN" as AttendanceStatus,
-      note: "",
-    }));
-
-  const payload = {
-    version: 1 as const,
-    weekKey,
-    title,
-    status: "SCHEDULED",
-    lockedAt: null,
-    meetingNote: "",
-    discord: {},
-    rows,
-  };
+  const activeMembers = members.filter(isActiveMembersScopeMember);
+  const rowSnapshots = activeMembers.map((member, index) => ({
+    ...buildMeetingRowSnapshot(member),
+    attendanceStatus: "NOT_CONCERNED" as const,
+    decisionType: "NONE" as const,
+    sanctionType: null,
+    sanctionReason: null,
+    staffNote: null,
+    sortOrder: index,
+  }));
 
   const meeting = await prisma.meeting.create({
     data: {
+      familyId,
       meetingDate,
       weekKey,
       title,
       status: "DRAFT",
       createdByUserId: actorId,
-      notes: serializeMeetingNotes(payload),
+      createdById: actorId,
+      description,
+      rows: {
+        create: rowSnapshots,
+      },
     },
-    select: { id: true, title: true, meetingDate: true, weekKey: true, type: true, status: true, notes: true, updatedAt: true },
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      status: true,
+      meetingDate: true,
+      weekKey: true,
+      description: true,
+      summary: true,
+      summaryText: true,
+      summaryChannelId: true,
+      summaryPostedAt: true,
+      finalizedAt: true,
+      closedAt: true,
+      updatedAt: true,
+      rows: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          rpNameSnapshot: true,
+          gradeSnapshot: true,
+          steamIdSnapshot: true,
+          discordIdSnapshot: true,
+          playtimeMinutes: true,
+          attendanceStatus: true,
+          sanctionType: true,
+          decisionType: true,
+          sanctionReason: true,
+          staffNote: true,
+          isJustified: true,
+          sortOrder: true,
+          updatedAt: true,
+        },
+      },
+    },
   });
-
-  const dto = buildMeetingDTO({
-    id: meeting.id,
-    meetingDate: meeting.meetingDate,
-    weekKey: meeting.weekKey,
-    notes: meeting.notes,
-    updatedAt: meeting.updatedAt,
-  });
-
-  logMeeting("create", meeting.id, dto.locked);
 
   return NextResponse.json({
     ok: true,
     meeting: {
-      ...dto,
-      rows,
-      meetingNote: payload.meetingNote ?? "",
-      discord: payload.discord ?? {},
+      id: meeting.id,
+      scheduledAt: meeting.meetingDate.toISOString(),
+      title: meeting.title ?? `Réunion ${meeting.weekKey}`,
+      status: meeting.status,
+      type: meeting.type,
+      weekKey: meeting.weekKey,
+      locked: isMeetingLocked(meeting.status),
+      counts: computeMeetingCounts(meeting.rows),
+      updatedAt: meeting.updatedAt.toISOString(),
+      meetingNote: meeting.description ?? "",
+      summary: meeting.summaryText ?? meeting.summary,
+      finalizedAt: meeting.finalizedAt?.toISOString() ?? null,
+      closedAt: meeting.closedAt?.toISOString() ?? null,
+      discord: {
+        channelId: meeting.summaryChannelId ?? null,
+        messageId: null,
+        lastPublishedAt: meeting.summaryPostedAt?.toISOString() ?? null,
+      },
+      rows: meeting.rows.map((row) => buildMeetingClientRow(row)),
     },
   });
 }

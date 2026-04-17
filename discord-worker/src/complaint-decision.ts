@@ -5,41 +5,84 @@
 
 import {
   ButtonInteraction,
+  ChannelType,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  PermissionFlagsBits,
   type Guild,
   type TextChannel,
+  type ThreadChannel,
 } from "discord.js";
 import { startJob, finishJob } from "./lib/job-idempotence.js";
 import { logInfo, logWarn, logError } from "./lib/worker-obs.js";
 import { IDS } from "./ids.js";
+import { archiveComplaintThreadMessages } from "./archive-complaint-messages.js";
 
 const PANEL_URL = process.env.INGEST_BASE_URL || "http://localhost:3000";
 const LOG_CHANNEL_ID = process.env.COMPLAINT_LOG_CHANNEL_ID || process.env.TICKETS_LOGS_CHANNEL_ID || null;
 
 interface ComplaintDecisionParams {
   ticketKey: string;
-  decision: "TRAITE" | "NON_RESOLU" | "REFUSE";
+  decision: "TRAITE" | "NON_RESOLUE" | "REFUSE";
+}
+
+function normalizeComplaintDecision(value: string): ComplaintDecisionParams["decision"] | null {
+  const normalized = value.toUpperCase();
+
+  if (normalized === "TRAITE") return "TRAITE";
+  if (normalized === "NON_RESOLU" || normalized === "NON_RESOLUE") return "NON_RESOLUE";
+  if (normalized === "REFUSE") return "REFUSE";
+
+  return null;
+}
+
+async function hasStaffDecisionAccess(interaction: ButtonInteraction): Promise<boolean> {
+  const guild = interaction.guild;
+  if (!guild) return false;
+
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return false;
+
+  const allowedRoleIds = new Set(
+    [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
+      (roleId): roleId is string => Boolean(roleId)
+    )
+  );
+
+  return (
+    member.permissions.has(PermissionFlagsBits.Administrator) ||
+    member.permissions.has(PermissionFlagsBits.ManageChannels) ||
+    member.roles.cache.some((role) => allowedRoleIds.has(role.id))
+  );
+}
+
+function mapDecisionErrorToUserMessage(error?: string): string {
+  if (!error) return "❌ Impossible de traiter cette décision pour le moment.";
+  if (error.includes("Unauthorized")) return "❌ Action réservée au staff.";
+  if (error.includes("Invalid decision") || error.includes("Format")) {
+    return "❌ Ce bouton n'est plus valide.";
+  }
+  return "❌ Impossible de traiter cette décision pour le moment.";
 }
 
 function parseComplaintCustomId(customId: string): ComplaintDecisionParams | null {
   // Format from tickets.ts: ticket:complaint:close:STATUS:TICKETKEY
-  // STATUS can be: TRAITE, NON_RESOLU, REFUSE (or other legacy values)
+  // STATUS can be: TRAITE, NON_RESOLUE, REFUSE (or legacy NON_RESOLU)
   // Alternative format: complaint:decide:STATUS:TICKETKEY
   
   if (customId.startsWith("complaint:decide:")) {
     const parts = customId.split(":");
     if (parts.length < 4) return null;
-    
-    const decision = parts[2].toUpperCase();
+
+    const decision = normalizeComplaintDecision(parts[2]);
     const ticketKey = parts.slice(3).join(":");
-    
-    if (!["TRAITE", "NON_RESOLU", "REFUSE"].includes(decision)) return null;
+
+    if (!decision) return null;
     if (!ticketKey) return null;
-    
-    return { ticketKey, decision: decision as "TRAITE" | "NON_RESOLU" | "REFUSE" };
+
+    return { ticketKey, decision };
   }
   
   // Legacy format: ticket:complaint:close:STATUS:TICKETKEY
@@ -47,14 +90,14 @@ function parseComplaintCustomId(customId: string): ComplaintDecisionParams | nul
     const rest = customId.replace("ticket:complaint:close:", "");
     const colonIdx = rest.indexOf(":");
     if (colonIdx === -1) return null;
-    
-    const status = rest.slice(0, colonIdx).toUpperCase();
+
+    const status = normalizeComplaintDecision(rest.slice(0, colonIdx));
     const ticketKey = rest.slice(colonIdx + 1);
-    
-    if (!["TRAITE", "NON_RESOLU", "REFUSE"].includes(status)) return null;
+
+    if (!status) return null;
     if (!ticketKey) return null;
-    
-    return { ticketKey, decision: status as "TRAITE" | "NON_RESOLU" | "REFUSE" };
+
+    return { ticketKey, decision: status };
   }
   
   return null;
@@ -65,7 +108,7 @@ function parseComplaintCustomId(customId: string): ComplaintDecisionParams | nul
  */
 async function callDecisionAPI(
   ticketKey: string,
-  decision: "TRAITE" | "NON_RESOLU" | "REFUSE",
+  decision: "TRAITE" | "NON_RESOLUE" | "REFUSE",
   staffDiscordId: string,
   staffUsername: string,
   messageId?: string,
@@ -113,7 +156,7 @@ async function callDecisionAPI(
  */
 function buildDecisionEmbed(params: {
   ticketKey: string;
-  decision: "TRAITE" | "NON_RESOLU" | "REFUSE";
+  decision: "TRAITE" | "NON_RESOLUE" | "REFUSE";
   title: string;
   authorDiscordId?: string;
   targetName?: string;
@@ -131,7 +174,7 @@ function buildDecisionEmbed(params: {
     color = 0x22c55e; // Green
     emoji = "✅";
     statusLabel = "**TRAITÉ**";
-  } else if (decision === "NON_RESOLU") {
+  } else if (decision === "NON_RESOLUE") {
     color = 0xf59e0b; // Orange
     emoji = "⚠️";
     statusLabel = "**NON RÉSOLU**";
@@ -141,7 +184,7 @@ function buildDecisionEmbed(params: {
     statusLabel = "**REFUSÉ**";
   }
   
-  const embedTitle = `${emoji} Plainte — ${decision === "TRAITE" ? "Traitée" : decision === "NON_RESOLU" ? "Non Résolue" : "Refusée"}`;
+  const embedTitle = `${emoji} Plainte — ${decision === "TRAITE" ? "Traitée" : decision === "NON_RESOLUE" ? "Non Résolue" : "Refusée"}`;
   
   const embed = new EmbedBuilder()
     .setTitle(embedTitle)
@@ -173,7 +216,7 @@ function buildDecisionEmbed(params: {
 async function postDecisionLog(params: {
   guild: Guild;
   ticketKey: string;
-  decision: "TRAITE" | "NON_RESOLU" | "REFUSE";
+  decision: "TRAITE" | "NON_RESOLUE" | "REFUSE";
   title: string;
   authorDiscordId?: string;
   targetName?: string;
@@ -195,7 +238,7 @@ async function postDecisionLog(params: {
     
     const embed = buildDecisionEmbed(params);
     
-    let content = `📌 **Plainte ${params.decision === "TRAITE" ? "Traitée" : params.decision === "NON_RESOLU" ? "Non Résolue" : "Refusée"}**`;
+    let content = `📌 **Plainte ${params.decision === "TRAITE" ? "Traitée" : params.decision === "NON_RESOLUE" ? "Non Résolue" : "Refusée"}**`;
     if (params.threadId) {
       content += ` • Thread: <#${params.threadId}>`;
     }
@@ -226,13 +269,25 @@ export async function handleComplaintDecision(
     logError("complaint_ack_failed", { customId: interaction.customId }, ackError as Error);
     return;
   }
+
+  if (!(await hasStaffDecisionAccess(interaction))) {
+    logWarn("complaint_decide_worker_unauthorized", {
+      customId: interaction.customId,
+      staffDiscordId,
+    });
+    await interaction.followUp({
+      content: "❌ Action réservée au staff.",
+      ephemeral: true,
+    });
+    return;
+  }
   
   // Parse customId
   const params = parseComplaintCustomId(interaction.customId);
   if (!params) {
     logWarn("complaint_invalid_custom_id", { customId: interaction.customId, userId: staffDiscordId });
     await interaction.followUp({
-      content: "❌ Format de bouton invalide.",
+      content: "❌ Ce bouton n'est plus valide.",
       ephemeral: true,
     });
     return;
@@ -262,7 +317,7 @@ export async function handleComplaintDecision(
     if (!apiResult.ok) {
       logWarn("complaint_decide_api_failed", { ticketKey, decision, error: apiResult.error });
       await interaction.followUp({
-        content: `❌ Erreur API: ${apiResult.error}`,
+        content: mapDecisionErrorToUserMessage(apiResult.error),
         ephemeral: true,
       });
       await finishJob(jobKey, "failed");
@@ -290,6 +345,9 @@ export async function handleComplaintDecision(
           const buttonRow = new ActionRowBuilder<ButtonBuilder>();
           for (const component of (row as any).components) {
             if (component.type === 2) { // Button
+              if ((component as any).style === ButtonStyle.Link || Boolean((component as any).url)) {
+                continue;
+              }
               const button = ButtonBuilder.from(component as any);
               button.setDisabled(true);
               buttonRow.addComponents(button);
@@ -334,6 +392,103 @@ export async function handleComplaintDecision(
         staffRpName: staff.rpName,
         threadId: complaint.threadId,
       });
+    }
+
+    // Archive thread messages to panel
+    if (interaction.guild && complaint.threadId) {
+      const archiveResult = await archiveComplaintThreadMessages({
+        threadId: complaint.threadId,
+        ticketKey,
+        guild: interaction.guild,
+      });
+      if (!archiveResult.ok) {
+        logWarn("complaint_archive_failed_in_decision", { ticketKey, error: archiveResult.error });
+      } else {
+        logInfo("complaint_messages_archived", { ticketKey, messageCount: archiveResult.messageCount });
+      }
+    }
+
+    // Close/archive the thread
+    if (complaint.threadId && interaction.guild) {
+      try {
+        const thread = await interaction.guild.channels.fetch(complaint.threadId);
+        if (thread?.isThread()) {
+          const threadChannel = thread as ThreadChannel;
+          
+          // Archive thread
+          if (!threadChannel.archived) {
+            await threadChannel.setArchived(true);
+            logInfo("complaint_thread_archived", { ticketKey, threadId: complaint.threadId });
+          }
+          
+          // Lock thread
+          if (!threadChannel.locked) {
+            await threadChannel.setLocked(true);
+            logInfo("complaint_thread_locked", { ticketKey, threadId: complaint.threadId });
+          }
+        } else if (thread?.type === ChannelType.GuildText) {
+          const textChannel = thread as TextChannel;
+
+          // Send close message before deleting
+          await textChannel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle("🔒 Ticket fermé")
+                .setDescription(`Plainte clôturée par le staff.`)
+                .setColor(0x16a34a)
+                .setTimestamp(),
+            ],
+          }).catch(() => null);
+
+          // Delete the text channel (rename alone leaves it visible)
+          await textChannel.delete(`Plainte ${ticketKey} clôturée`).catch((delErr) => {
+            logWarn("complaint_text_channel_delete_failed", { ticketKey, channelId: complaint.threadId, error: delErr instanceof Error ? delErr.message : String(delErr) });
+          });
+
+          logInfo("complaint_text_channel_deleted", { ticketKey, channelId: complaint.threadId });
+        }
+      } catch (err) {
+        logWarn("complaint_thread_close_failed", { ticketKey, error: err instanceof Error ? err.message : String(err) });
+        // Non-critical, don't fail the whole operation
+      }
+    }
+
+    // Send copy to complainant via DM
+    if (complaint.authorDiscordId) {
+      try {
+        const complainant = await interaction.client.users.fetch(complaint.authorDiscordId);
+        if (complainant) {
+          const decisionText = decision === "TRAITE" ? "traitée" : decision === "NON_RESOLUE" ? "non résolue" : "refusée";
+          const closureText =
+            decision === "TRAITE"
+              ? "Le staff a traité votre plainte."
+              : decision === "NON_RESOLUE"
+                ? "Le staff a clôturé votre plainte comme non résolue."
+                : "Le staff a refusé votre plainte.";
+          const dmEmbed = new EmbedBuilder()
+            .setTitle("📋 Résumé de votre plainte")
+            .setColor(decision === "TRAITE" ? 0x22c55e : decision === "NON_RESOLUE" ? 0xf59e0b : 0xef4444)
+            .setDescription(closureText)
+            .addFields(
+              { name: "Type", value: "Plainte", inline: true },
+              { name: "Statut final", value: decisionText, inline: true },
+              { name: "Cible", value: complaint.targetName || "—", inline: false },
+              { name: "Raison", value: complaint.reason || complaint.title || "Sans raison", inline: false }
+            )
+            .setFooter({ text: "Los Esperados • plainte clôturée" })
+            .setTimestamp();
+
+          if (complaint.summary) {
+            dmEmbed.addFields({ name: "Résumé", value: complaint.summary, inline: false });
+          }
+
+          await complainant.send({ embeds: [dmEmbed] });
+          logInfo("complaint_dm_sent", { ticketKey, authorDiscordId: complaint.authorDiscordId });
+        }
+      } catch (err) {
+        logWarn("complaint_dm_send_failed", { ticketKey, authorDiscordId: complaint.authorDiscordId, error: err instanceof Error ? err.message : String(err) });
+        // Non-critical, don't fail the whole operation
+      }
     }
     
     await finishJob(jobKey, "done");

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { auditStaffAction, createAuditLog } from "@/lib/audit";
-import { evaluateSanctionRules } from "@/lib/sanction-rules";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { enqueueRemoveRole } from "@/lib/discord/discord";
+import { getSanctionClearRoleId, isClearableSanctionType } from "@/lib/sanctions";
 
 export async function POST(
   _req: Request,
@@ -33,16 +33,9 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "SANCTION_NOT_FOUND" }, { status: 404 });
     }
 
-    // Only AVERT_* types can be manually cleared
-    const AVERT_TYPES = [
-      "AVERT_ORAL_PLAYTIME",
-      "AVERT_ORAL_REUNION",
-      "AVERT_LEGER",
-      "AVERT_LOURD",
-    ];
-    if (!AVERT_TYPES.includes(sanction.type)) {
+    if (!isClearableSanctionType(sanction.type)) {
       return NextResponse.json(
-        { ok: false, error: "ONLY_AVERT_CAN_CLEAR" },
+        { ok: false, error: "SANCTION_TYPE_NOT_CLEARABLE" },
         { status: 400 }
       );
     }
@@ -55,15 +48,40 @@ export async function POST(
       );
     }
 
-    const now = new Date();
+    const guildId = process.env.DISCORD_GUILD_ID ?? process.env.GUILD_ID ?? "";
+    const roleId = getSanctionClearRoleId(sanction.type);
+    const targetDiscordId = sanction.member?.discordId ?? sanction.discordId ?? null;
 
-    // Update sanction
+    if (!guildId || !roleId || !targetDiscordId) {
+      return NextResponse.json({ ok: false, error: "SANCTION_CLEAR_NOT_READY" }, { status: 409 });
+    }
+
+    const outbox = await enqueueRemoveRole({
+      familyId: sanction.familyId,
+      guildId,
+      userDiscordId: targetDiscordId,
+      roleId,
+      entity: "Sanction",
+      entityId: sanction.id,
+      meta: {
+        sanctionId: sanction.id,
+        sanctionType: sanction.type,
+        memberId: sanction.memberId,
+        memberDiscordId: targetDiscordId,
+        memberName: sanction.member?.rpName ?? null,
+        requestedByUserId: actorId,
+        setClearedAt: true,
+      },
+    });
+
+    const clearedNow = new Date();
     await prisma.sanction.update({
       where: { id: sanction.id },
       data: {
-        clearedAt: now,
-        clearedStatus: "APPLIED",
+        clearedAt: clearedNow,
+        clearedStatus: "PENDING",
         clearedError: null,
+        outboxJobId: outbox.id,
       } as any,
     });
 
@@ -74,6 +92,7 @@ export async function POST(
       meta: {
         memberId: sanction.memberId,
         type: sanction.type,
+        outboxJobId: outbox.id,
       },
     });
 
@@ -87,20 +106,17 @@ export async function POST(
         actorName,
         type: sanction.type,
         memberDiscordId: sanction.member?.discordId,
+        outboxJobId: outbox.id,
       },
-    });
-
-    // Evaluate auto sanction rules
-    await evaluateSanctionRules(sanction.memberId, DEFAULT_FAMILY_ID).catch((err) => {
-      console.error("[POST /api/staff/sanctions/[id]/clear] Error evaluating rules:", err);
     });
 
     return NextResponse.json({
       ok: true,
       sanction: {
         id: sanction.id,
-        clearedAt: now.toISOString(),
-        clearedStatus: "APPLIED",
+        clearedAt: clearedNow.toISOString(),
+        clearedStatus: "PENDING",
+        outboxJobId: outbox.id,
       },
     });
   } catch (e: any) {

@@ -41,6 +41,8 @@ const prisma = new PrismaClient();
 const PANEL_BASE_URL = process.env.INGEST_BASE_URL ?? process.env.PANEL_BASE_URL ?? "http://localhost:3000";
 const WORKER_SECRET =
   process.env.INGEST_SECRET ?? process.env.DISCORD_WORKER_SECRET ?? "";
+const RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID = "1312846003358924874";
+const RECRUITMENT_ANNOUNCEMENT_COLOR = 0x7f1d1d;
 
 async function panelFetch(path: string, options: RequestInit = {}): Promise<any> {
   const url = `${PANEL_BASE_URL}${path}`;
@@ -169,6 +171,12 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setDMPermission(false),
 
+  new SlashCommandBuilder()
+    .setName("annonce-recrutement")
+    .setDescription("Envoie l'annonce de recrutement dans le salon configuré")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false),
+
   // /syncname - Staff only - Re-sync member nickname from rpName
   new SlashCommandBuilder()
     .setName("syncname")
@@ -216,6 +224,46 @@ function log(event: string, data: Record<string, unknown> = {}) {
       timestamp: new Date().toISOString(),
     })
   );
+}
+
+function buildRecruitmentAnnouncementEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x8b5cf6)
+    .setTitle("🌟 LOS ESPERADOS RECRUTE 🌟")
+    .setDescription(
+      `━━━━━━━━━━━━━━━━━━━━━━━
+
+> Une famille basée sur le respect, l’organisation et l’efficacité.
+> Nous cherchons des joueurs actifs et fiables pour renforcer nos rangs.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+
+👥 **Profil recherché**
+• Joueur actif et impliqué  
+• Bon comportement et respect  
+• Esprit d’équipe  
+• Présence en jeu et en vocal appréciée  
+
+━━━━━━━━━━━━━━━━━━━━━━━
+
+⚖️ **Notre fonctionnement**
+• Organisation claire et structurée  
+• Règles simples et respectées  
+• Bonne entente entre les membres  
+• Chef & Etat-Major présent et à l’écoute  
+
+━━━━━━━━━━━━━━━━━━━━━━━
+
+📩 **Intéressé ?**
+Présente-toi dans <#1312846003627622524>  
+Nous étudierons ta candidature rapidement.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **Los Esperados — Sérieux, respect et cohésion.**`
+    )
+    .setFooter({ text: "Los Esperados" })
+    .setTimestamp();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -322,6 +370,8 @@ export async function handleCommand(
       return handleUnlinkCommand(interaction);
     case "linkpanel":
       return handleLinkPanelCommand(interaction, client);
+    case "annonce-recrutement":
+      return handleRecruitmentAnnouncementCommand(interaction);
     case "syncname":
       return handleSyncNameCommand(interaction, client);
     case "bank":
@@ -424,6 +474,68 @@ async function handleLinkPanelCommand(
   await interaction.editReply({
     content: `❌ Impossible de poster le panneau: ${result.error ?? "Erreur inconnue"}`,
   });
+}
+
+async function handleRecruitmentAnnouncementCommand(
+  interaction: ChatInputCommandInteraction
+): Promise<void> {
+  if (!(await requireStaff(interaction))) return;
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    if (!interaction.guild) {
+      await interaction.editReply({
+        content: "Impossible de trouver ou d'écrire dans le salon des annonces.",
+      });
+      return;
+    }
+
+    const channel = await interaction.guild.channels.fetch(RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID);
+    if (!channel || !channel.isTextBased() || channel.isDMBased()) {
+      await interaction.editReply({
+        content: "Impossible de trouver ou d'écrire dans le salon des annonces.",
+      });
+      return;
+    }
+
+    const botMember = interaction.guild.members.me ?? (await interaction.guild.members.fetchMe());
+    const permissions = channel.permissionsFor(botMember);
+
+    if (
+      !permissions?.has(PermissionFlagsBits.ViewChannel) ||
+      !permissions.has(PermissionFlagsBits.SendMessages) ||
+      !permissions.has(PermissionFlagsBits.EmbedLinks)
+    ) {
+      await interaction.editReply({
+        content: "Impossible de trouver ou d'écrire dans le salon des annonces.",
+      });
+      return;
+    }
+
+    await channel.send({ embeds: [buildRecruitmentAnnouncementEmbed()] });
+
+    await interaction.editReply({
+      content: "L’annonce de recrutement a bien été envoyée dans le salon configuré.",
+    });
+
+    log("recruitment_announcement_command_ok", {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      channelId: RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID,
+    });
+  } catch (e) {
+    log("recruitment_announcement_command_error", {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      channelId: RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID,
+      error: e instanceof Error ? e.message : String(e),
+    });
+
+    await interaction.editReply({
+      content: "Impossible de trouver ou d'écrire dans le salon des annonces.",
+    });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1025,12 +1137,13 @@ async function handleBankCommand(interaction: ChatInputCommandInteraction): Prom
     const isDebt = balance.debt > 0;
 
     const fmtMoney = (n: number) => Math.trunc(n).toLocaleString("fr-FR");
-    const formatDate = (d: Date) => d.toLocaleDateString("fr-BE", {
+    const formatDate = (d: Date) => d.toLocaleString("fr-BE", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "Europe/Brussels",
     });
 
     const embed = new EmbedBuilder()
@@ -1054,7 +1167,7 @@ async function handleBankCommand(interaction: ChatInputCommandInteraction): Prom
             ? `+${fmtMoney(balance.balance)}$`
             : `-${fmtMoney(Math.abs(balance.balance))}$`,
           inline: true,
-        }
+        },
       )
       .setFooter({
         text: `SteamID: ${targetMember.steamId ?? "N/A"} • ${formatDate(new Date())}`,

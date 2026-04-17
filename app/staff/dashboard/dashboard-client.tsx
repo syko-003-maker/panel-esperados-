@@ -4,6 +4,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge-new";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataTile } from "@/components/staff/ui/DataTile";
+import { EmptyState } from "@/components/staff/ui/EmptyState";
+import { PageShell } from "@/components/staff/ui/PageShell";
+import { SectionCard } from "@/components/staff/ui/SectionCard";
+import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import {
   AlertCircle,
   Users,
@@ -13,15 +18,15 @@ import {
   TrendingUp,
   RefreshCw,
 } from "lucide-react";
-import { PageHeader, StatCard, Section } from "@/components/staff/ui-components";
+import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion";
 import { formatAppDate } from "@/lib/app-date-formatter";
 import { useDashboardData } from "@/lib/hooks/useDashboardData";
 
 type Complaint = {
   id: string;
-  channelId: string;
-  status: "OPEN" | "TREATED" | "UNTREATED" | "CLOSED";
-  createdAtDiscord: string;
+  ticketKey: string | null;
+  status: "OPEN" | "IN_REVIEW" | "RESOLVED" | "REJECTED" | "CLOSED";
+  createdAt: string;
 };
 
 type Recruitment = {
@@ -49,11 +54,17 @@ function fmtDate(iso: string | null) {
 function getComplaintBadge(status: string) {
   const styles: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
     OPEN: { variant: "destructive", label: "🔴 Ouvert" },
-    TREATED: { variant: "secondary", label: "✅ Traité" },
-    UNTREATED: { variant: "destructive", label: "❌ Refusé" },
+    IN_REVIEW: { variant: "default", label: "🔵 En cours" },
+    RESOLVED: { variant: "secondary", label: "✅ Traitée" },
+    REJECTED: { variant: "destructive", label: "❌ Refusée" },
     CLOSED: { variant: "outline", label: "⊘ Clôturé" },
   };
   return styles[status] || styles.OPEN;
+}
+
+function getComplaintLabel(complaint: Complaint) {
+  if (complaint.ticketKey?.trim()) return `Plainte ${complaint.ticketKey.trim()}`;
+  return `Plainte #${complaint.id.slice(-4)}`;
 }
 
 function getRecruitmentBadge(status: string) {
@@ -75,126 +86,56 @@ export default function StaffDashboardClient() {
   const { data, loading, error, refresh } = useDashboardData();
 
   // Destructure from data
-  const { complaints, recruitments, sanctions, membersCount, membersSource, membersError } = data;
+  const { complaints, recruitments, sanctions, pendingAbsences, membersCount, membersSource, membersError } = data;
 
   // Sécuriser avec des versions garanties en tableaux
   const complaintsArr = Array.isArray(complaints) ? complaints : [];
   const recruitmentsArr = Array.isArray(recruitments) ? recruitments : [];
   const sanctionsArr = Array.isArray(sanctions) ? sanctions : [];
-
-  // Log temporaire (même en prod, léger)
-  if (typeof window !== "undefined") {
-    (window as any).__dashShapeLogged ??= true;
-    if ((window as any).__dashShapeLogged === true) {
-      (window as any).__dashShapeLogged = "done";
-      console.log("[DASH SHAPE]", {
-        complaintsIsArray: Array.isArray(complaints),
-        recruitmentsIsArray: Array.isArray(recruitments),
-        sanctionsIsArray: Array.isArray(sanctions),
-        complaintsType: typeof complaints,
-        recruitmentsType: typeof recruitments,
-        sanctionsType: typeof sanctions,
-      });
-    }
-  }
-
-  // Vérification de cohérence: s'assurer que les arrays ne peuvent pas être non-arrays partout
-  if (!Array.isArray(complaintsArr) || !Array.isArray(recruitmentsArr) || !Array.isArray(sanctionsArr)) {
-    if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-      console.error("[DASHBOARD CRITICAL] Type mismatch after extraction", {
-        complaintsIsArray: Array.isArray(complaintsArr),
-        recruitmentsIsArray: Array.isArray(recruitmentsArr),
-        sanctionsIsArray: Array.isArray(sanctionsArr),
-        dataKeys: data ? Object.keys(data) : null,
-      });
-    }
-    // Fallback de secours ultime
-    return (
-      <div className="space-y-8">
-        <PageHeader 
-          title="Dashboard"
-          description="Vue d'ensemble complète de votre serveur en temps réel"
-        />
-        <div className="rounded-lg border border-red-500/50 bg-red-50/20 p-4 dark:border-red-800/50 dark:bg-red-900/10">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-red-900 dark:text-red-200">
-                ⚠️ Erreur critique de structure de données
-              </h3>
-              <p className="mt-1 text-xs text-red-800 dark:text-red-400">
-                Les véhicules de données ne sont pas au format attendu. Consultez la console pour plus de détails.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Log de débogage pour vérifier les types au niveau du composant
-  if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-    console.log("[DASHBOARD RENDER SHAPE]", {
-      dataType: typeof data,
-      dataIsObject: data !== null && typeof data === "object",
-      dataKeys: data ? Object.keys(data).sort() : null,
-      complaintsType: typeof complaintsArr,
-      complaintsIsArray: Array.isArray(complaintsArr),
-      complaintsLength: complaintsArr?.length ?? "N/A",
-      recruitmentsType: typeof recruitmentsArr,
-      recruitmentsIsArray: Array.isArray(recruitmentsArr),
-      recruitmentsLength: recruitmentsArr?.length ?? "N/A",
-      sanctionsType: typeof sanctionsArr,
-      sanctionsIsArray: Array.isArray(sanctionsArr),
-      sanctionsLength: sanctionsArr?.length ?? "N/A",
-      membersCountType: typeof membersCount,
-      membersCountValue: membersCount,
-      membersSourceType: typeof membersSource,
-      membersSourceValue: membersSource,
-    });
-  }
+  const pendingAbsencesArr = Array.isArray(pendingAbsences) ? pendingAbsences : [];
 
   const stats = [
-    { icon: AlertCircle, label: "Plaintes ouvertes", value: complaintsArr.length, color: "text-amber-600" },
-    { icon: FileText, label: "Recrutements en attente", value: recruitmentsArr.length, color: "text-blue-600" },
-    { icon: Ban, label: "Sanctions actives", value: sanctionsArr.length, color: "text-red-600" },
-    { icon: Users, label: "Membres actifs", value: membersCount, color: "text-green-600" },
+    { icon: AlertCircle, label: "Plaintes ouvertes", value: complaintsArr.length, tone: "warning" as const },
+    { icon: FileText, label: "Recrutements en attente", value: recruitmentsArr.length, tone: "info" as const },
+    { icon: Ban, label: "Sanctions actives", value: sanctionsArr.length, tone: "danger" as const },
+    { icon: Users, label: "Membres actifs", value: membersCount, tone: "success" as const },
   ];
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <PageHeader 
-          title="Dashboard"
-          description="Vue d'ensemble complète de votre serveur en temps réel"
-        />
-        <Button
-          onClick={() => refresh(true)}
-          disabled={loading}
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          {loading ? "Chargement..." : "Rafraîchir"}
-        </Button>
-      </div>
+    <PageShell
+      title="Dashboard"
+      description="Vue d'ensemble staff des flux prioritaires et des actions à traiter."
+      icon={TrendingUp}
+      actions={
+        <MotionButtonFrame>
+          <Button
+            onClick={() => refresh(true)}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-2xl border-white/10 bg-white/[0.04]"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            {loading ? "Chargement..." : "Rafraîchir"}
+          </Button>
+        </MotionButtonFrame>
+      }
+    >
 
       {/* Members Source Warning */}
       {membersSource === "db_stale" && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-50/20 p-4 dark:border-amber-800/50 dark:bg-amber-900/10">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-300" />
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                ⚠️ Données membres en mode fallback
+              <h3 className="text-sm font-semibold text-amber-100">
+                Données membres en mode fallback
               </h3>
-              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+              <p className="mt-1 text-xs text-amber-100/80">
                 La source externe (LYG) est temporairement indisponible. Les données affichées proviennent de la base de données locale et peuvent être légèrement obsolètes.
               </p>
               {membersError && (
-                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 font-mono">
+                <p className="mt-1 font-mono text-xs text-amber-200/90">
                   Erreur: {membersError}
                 </p>
               )}
@@ -205,93 +146,118 @@ export default function StaffDashboardClient() {
 
       {/* Global Error */}
       {error && !membersSource && (
-        <div className="rounded-lg border border-red-500/50 bg-red-50/20 p-4 dark:border-red-800/50 dark:bg-red-900/10">
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-100">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-red-900 dark:text-red-200">
-                ⚠️ Erreur de chargement
-              </h3>
-              <p className="mt-1 text-xs text-red-800 dark:text-red-400">
-                {error}
-              </p>
+              <h3 className="text-sm font-semibold text-red-100">Erreur de chargement</h3>
+              <p className="mt-1 text-xs text-red-100/80">{error}</p>
             </div>
           </div>
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge tone="info">Source membres: {membersSource || "live"}</StatusBadge>
+        {error ? <StatusBadge tone="danger">Données partielles</StatusBadge> : <StatusBadge tone="success">Flux dashboard actifs</StatusBadge>}
+      </div>
+
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
-            <StatCard
+            <DataTile
               key={idx}
               label={stat.label}
+              className="min-h-[108px]"
               value={
-                loading ? (
-                  <Skeleton className="h-8 w-12" />
-                ) : (
-                  <span className={stat.color}>{stat.value}</span>
-                )
+                <div className="flex min-h-[2.75rem] items-center justify-between gap-3">
+                  <div className="text-2xl font-semibold tracking-tight text-slate-50">
+                    {loading ? <Skeleton className="h-8 w-14" /> : stat.value}
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
+                    <Icon className="h-5 w-5 text-slate-200" />
+                  </div>
+                </div>
               }
-              icon={<Icon className="h-5 w-5" />}
+              tone={stat.tone}
             />
           );
         })}
       </div>
 
       {/* Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:auto-rows-fr">
         {/* Urgent Actions */}
-        <Section 
+        <DashboardSection
           title="🚨 Actions urgentes"
           description="Choses à faire en priorité"
         >
-          <div className="space-y-2">
+          <div className="flex min-h-[180px] flex-1 flex-col gap-2">
             {complaintsArr.filter(c => c.status === "OPEN").length > 0 && (
-              <Link
-                href="/staff/complaints"
-                className="block p-4 rounded-lg border border-red-300/50 bg-red-50/20 hover:bg-red-100/30 transition text-red-900 dark:text-red-200 dark:border-red-800/50 dark:bg-red-900/10"
-              >
-                <div className="font-semibold">📝 {complaintsArr.filter(c => c.status === "OPEN").length} plainte(s) ouverte(s)</div>
-                <div className="text-sm">Cliquez pour traiter les plaintes en attente</div>
-              </Link>
+              <MotionListItem>
+                <Link
+                  href="/staff/complaints"
+                  className="block rounded-[20px] border border-red-500/20 bg-red-500/[0.08] p-4 text-red-100 transition hover:bg-red-500/[0.12]"
+                >
+                  <div className="font-semibold">📝 {complaintsArr.filter(c => c.status === "OPEN").length} plainte(s) ouverte(s)</div>
+                  <div className="text-sm text-red-100/80">Cliquez pour traiter les plaintes en attente</div>
+                </Link>
+              </MotionListItem>
             )}
             {recruitmentsArr.filter(r => r.status === "OPEN").length > 0 && (
-              <Link
-                href="/staff/recruitment"
-                className="block p-4 rounded-lg border border-blue-300/50 bg-blue-50/20 hover:bg-blue-100/30 transition text-blue-900 dark:text-blue-200 dark:border-blue-800/50 dark:bg-blue-900/10"
-              >
-                <div className="font-semibold">👥 {recruitmentsArr.filter(r => r.status === "OPEN").length} recrutement(s) à décider</div>
-                <div className="text-sm">Cliquez pour voir les candidatures en attente</div>
-              </Link>
+              <MotionListItem>
+                <Link
+                  href="/staff/recruitment"
+                  className="block rounded-[20px] border border-amber-500/20 bg-amber-500/[0.08] p-4 text-amber-100 transition hover:bg-amber-500/[0.12]"
+                >
+                  <div className="font-semibold">👥 {recruitmentsArr.filter(r => r.status === "OPEN").length} recrutement(s) à décider</div>
+                  <div className="text-sm text-amber-100/80">Cliquez pour voir les candidatures en attente</div>
+                </Link>
+              </MotionListItem>
             )}
             {sanctionsArr.filter(s => s.status === "ACTIVE").length > 0 && (
-              <Link
-                href="/staff/sanctions"
-                className="block p-4 rounded-lg border border-amber-300/50 bg-amber-50/20 hover:bg-amber-100/30 transition text-amber-900 dark:text-amber-200 dark:border-amber-800/50 dark:bg-amber-900/10"
-              >
-                <div className="font-semibold">⚖️ {sanctionsArr.filter(s => s.status === "ACTIVE").length} sanction(s) à surveiller</div>
-                <div className="text-sm">Cliquez pour gérer les sanctions actives</div>
-              </Link>
+              <MotionListItem>
+                <Link
+                  href="/staff/sanctions"
+                  className="block rounded-[20px] border border-amber-500/20 bg-amber-500/[0.08] p-4 text-amber-100 transition hover:bg-amber-500/[0.12]"
+                >
+                  <div className="font-semibold">⚖️ {sanctionsArr.filter(s => s.status === "ACTIVE").length} sanction(s) à surveiller</div>
+                  <div className="text-sm text-amber-100/80">Cliquez pour gérer les sanctions actives</div>
+                </Link>
+              </MotionListItem>
             )}
-            {complaintsArr.length === 0 && recruitmentsArr.length === 0 && sanctionsArr.length === 0 && (
-              <div className="p-4 rounded-lg border border-green-300/50 bg-green-50/20 text-green-900 dark:text-green-200 dark:border-green-800/50 dark:bg-green-900/10">
-                <div className="font-semibold">✅ Tout est à jour!</div>
-                <div className="text-sm">Aucune action urgente nécessaire en ce moment.</div>
+            {pendingAbsencesArr.length > 0 && (
+              <MotionListItem>
+                <Link
+                  href="/staff/absences"
+                  className="block rounded-[20px] border border-blue-500/20 bg-blue-500/[0.08] p-4 text-blue-100 transition hover:bg-blue-500/[0.12]"
+                >
+                  <div className="font-semibold">📅 {pendingAbsencesArr.length} absence(s) en attente de validation</div>
+                  <div className="text-sm text-blue-100/80">Cliquez pour valider ou rejeter les absences</div>
+                </Link>
+              </MotionListItem>
+            )}
+            {complaintsArr.length === 0 && recruitmentsArr.length === 0 && sanctionsArr.length === 0 && pendingAbsencesArr.length === 0 && (
+              <div className="flex flex-1 items-center justify-center">
+                <EmptyState
+                  icon={<TrendingUp className="h-12 w-12" />}
+                  title="Tout est à jour"
+                  description="Aucune action urgente n'est requise pour le moment."
+                />
               </div>
             )}
           </div>
-        </Section>
+        </DashboardSection>
 
         {/* Recent Recruitments */}
-        <Section 
+        <DashboardSection
           title="Recrutements en attente"
           description="Dernières demandes d'intégration"
         >
-          <div className="rounded-lg border border-border overflow-hidden bg-card/30">
-            <div className="divide-y divide-border">
+          <div className="flex min-h-[180px] flex-1 flex-col rounded-lg border border-border bg-card/30 overflow-hidden">
+            <div className="flex flex-1 flex-col divide-y divide-border">
               {loading ? (
                 <div className="p-6 space-y-3">
                   {[1, 2, 3].map((i) => (
@@ -331,21 +297,21 @@ export default function StaffDashboardClient() {
                   </div>
                 </>
               ) : (
-                <div className="p-8 text-center text-muted-foreground">
+                <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
                   Aucun recrutement en attente
                 </div>
               )}
             </div>
           </div>
-        </Section>
+        </DashboardSection>
 
         {/* Recent Sanctions */}
-        <Section 
+        <DashboardSection
           title="Sanctions actives"
           description="Sanctions en cours et à surveiller"
         >
-          <div className="rounded-lg border border-border overflow-hidden bg-card/30">
-            <div className="divide-y divide-border">
+          <div className="flex min-h-[180px] flex-1 flex-col rounded-lg border border-border bg-card/30 overflow-hidden">
+            <div className="flex flex-1 flex-col divide-y divide-border">
               {loading ? (
                 <div className="p-6 space-y-3">
                   {[1, 2, 3].map((i) => (
@@ -385,65 +351,81 @@ export default function StaffDashboardClient() {
                   </div>
                 </>
               ) : (
-                <div className="p-8 text-center text-muted-foreground">
+                <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
                   Aucune sanction active
                 </div>
               )}
             </div>
           </div>
-        </Section>
-      </div>
-
-      {/* Complaints Section */}
-      <Section
-        title="Plaintes ouvertes"
-        description="Plaintes en attente de traitement"
-      >
-        <div className="rounded-lg border border-border overflow-hidden bg-card/30">
-          <div className="divide-y divide-border">
-            {loading ? (
-              <div className="p-6 space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : complaintsArr.length > 0 ? (
-              <>
-                {complaintsArr.map((comp) => (
-                  <div
-                    key={comp.id}
-                    className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">
-                        Plainte #{comp.channelId.slice(-4)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {fmtDate(comp.createdAtDiscord)}
-                      </p>
-                    </div>
-                    <Badge variant={getComplaintBadge(comp.status).variant}>
-                      {getComplaintBadge(comp.status).label}
-                    </Badge>
-                  </div>
-                ))}
-                <div className="px-4 py-3 border-t border-border bg-muted/20">
-                  <Button variant="ghost" size="sm" className="w-full" asChild>
-                    <Link href="/staff/complaints">
-                      Voir toutes les plaintes
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </Link>
-                  </Button>
+        </DashboardSection>
+        <DashboardSection
+          title="Plaintes ouvertes"
+          description="Plaintes en attente de traitement"
+        >
+          <div className="flex min-h-[180px] flex-1 flex-col rounded-lg border border-border bg-card/30 overflow-hidden">
+            <div className="flex flex-1 flex-col divide-y divide-border">
+              {loading ? (
+                <div className="p-6 space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
                 </div>
-              </>
-            ) : (
-              <div className="p-8 text-center text-muted-foreground">
-                Aucune plainte ouverte
-              </div>
-            )}
+              ) : complaintsArr.length > 0 ? (
+                <>
+                  {complaintsArr.map((comp) => (
+                    <div
+                      key={comp.id}
+                      className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground">
+                          {getComplaintLabel(comp)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {fmtDate(comp.createdAt)}
+                        </p>
+                      </div>
+                      <Badge variant={getComplaintBadge(comp.status).variant}>
+                        {getComplaintBadge(comp.status).label}
+                      </Badge>
+                    </div>
+                  ))}
+                  <div className="px-4 py-3 border-t border-border bg-muted/20">
+                    <Button variant="ghost" size="sm" className="w-full" asChild>
+                      <Link href="/staff/complaints">
+                        Voir toutes les plaintes
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Link>
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
+                  Aucune plainte ouverte
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </Section>
-    </div>
+        </DashboardSection>
+      </div>
+    </PageShell>
+  );
+}
+
+function DashboardSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <SectionCard title={title} description={description} className="flex h-full min-h-[180px] flex-col">
+      <div className="flex flex-1 flex-col">
+        {children}
+      </div>
+    </SectionCard>
   );
 }

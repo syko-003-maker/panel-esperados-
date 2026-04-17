@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import type { SanctionType } from "@prisma/client";
+import { getSanctionExpirationDate } from "@/lib/sanctions";
 
 /**
  * Automatic sanction rules engine
@@ -10,9 +11,9 @@ import type { SanctionType } from "@prisma/client";
  * 2. A sanction is cleared/expired
  *
  * Rules:
- * - If ≥3 AVERT_LEGER actifs → DEMOTE
- * - If ≥2 AVERT_LOURD actifs → DEMOTE
- * - If DEMOTE exists + new AVERT_LOURD → BLACKLIST
+ * - 2x AVERT_LEGER actifs → AVERT_LOURD
+ * - 1x AVERT_LOURD + 1x AVERT_LEGER actifs → DEMOTE
+ * - 2x AVERT_LOURD actifs → DEMOTE
  */
 
 export async function evaluateSanctionRules(
@@ -27,7 +28,6 @@ export async function evaluateSanctionRules(
   }
 
   try {
-    // Get active (non-cleared, non-expired) sanctions
     const now = new Date();
     const activeSanctions = (await prisma.sanction.findMany({
       where: {
@@ -35,28 +35,30 @@ export async function evaluateSanctionRules(
         familyId,
         status: "ACTIVE",
         clearedAt: null,
-        // Expired sanctions are still counted if not yet cleared
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
     })) as any[];
 
-    // Filter by type
     const avertLeger = activeSanctions.filter((s) => s.type === "AVERT_LEGER");
     const avertLourd = activeSanctions.filter((s) => s.type === "AVERT_LOURD");
     const demotes = activeSanctions.filter((s) => s.type === "DEMOTE");
     const blacklists = activeSanctions.filter((s) => s.type === "BLACKLIST");
+    const hasActiveHeavy = avertLourd.length > 0;
 
-    // Already blacklisted or demoted? Skip
     if (blacklists.length > 0 || demotes.length > 0) return;
 
-    // Rule 1: ≥3 AVERT_LEGER → DEMOTE
-    if (avertLeger.length >= 3) {
-      await createAutoSanction(memberId, familyId, "DEMOTE", "3x AVERT_LEGER accumulés");
+    if (avertLourd.length >= 2) {
+      await createAutoSanction(memberId, familyId, "DEMOTE", "Escalade automatique: 2 avertos lourds actifs");
       return;
     }
 
-    // Rule 2: ≥2 AVERT_LOURD → DEMOTE
-    if (avertLourd.length >= 2) {
-      await createAutoSanction(memberId, familyId, "DEMOTE", "2x AVERT_LOURD accumulés");
+    if (hasActiveHeavy && avertLeger.length >= 1) {
+      await createAutoSanction(memberId, familyId, "DEMOTE", "Escalade automatique: 1 averto lourd + 1 averto léger actifs");
+      return;
+    }
+
+    if (avertLeger.length >= 2) {
+      await createAutoSanction(memberId, familyId, "AVERT_LOURD", "Escalade automatique: 2 avertos légers actifs");
       return;
     }
   } catch (err) {
@@ -78,6 +80,20 @@ async function createAutoSanction(
 
     if (!member || !member.discordId) return;
 
+    const duplicate = await prisma.sanction.findFirst({
+      where: {
+        familyId,
+        memberId,
+        type,
+        status: "ACTIVE",
+        clearedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) return;
+
+    const startAt = new Date();
     const sanction = await prisma.sanction.create({
       data: {
         familyId,
@@ -87,7 +103,8 @@ async function createAutoSanction(
         reason,
         status: "ACTIVE",
         discordStatus: "PENDING",
-        startAt: new Date(),
+        startAt,
+        expiresAt: getSanctionExpirationDate(type, startAt),
         createdById: "SYSTEM",
       } as any,
     });

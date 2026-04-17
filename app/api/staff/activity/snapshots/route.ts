@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { getMemberScopeFlags, isActiveMembersScopeMember } from "@/lib/staff/member-scope";
 
 /**
  * GET /api/staff/activity/snapshots
@@ -45,21 +46,43 @@ export async function GET(req: NextRequest) {
     const discordIds = [...new Set(snapshots.map((s) => s.memberDiscordId))];
     const members = await prisma.member.findMany({
       where: { familyId, discordId: { in: discordIds } },
-      select: { discordId: true, rpName: true, grade: true },
+      select: {
+        discordId: true,
+        rpName: true,
+        grade: true,
+        isActive: true,
+        isGhost: true,
+        rankRoleId: true,
+        rankLabel: true,
+        discordRoleIds: true,
+      },
     });
-    const memberMap = new Map(members.map((m) => [m.discordId, m]));
+    const scopedMembers = members
+      .filter(isActiveMembersScopeMember)
+      .map((member) => ({
+        ...member,
+        grade: getMemberScopeFlags(member).gradeInfo.grade,
+      }));
+    const allowedDiscordIds = new Set(
+      scopedMembers
+        .map((member) => member.discordId)
+        .filter((discordId): discordId is string => typeof discordId === "string" && discordId.trim() !== "")
+    );
+    const memberMap = new Map(scopedMembers.map((m) => [m.discordId, m]));
 
-    const enrichedSnapshots = snapshots.map((s) => ({
-      ...s,
-      member: memberMap.get(s.memberDiscordId) ?? null,
-    }));
+    const enrichedSnapshots = snapshots
+      .filter((snapshot) => allowedDiscordIds.has(snapshot.memberDiscordId))
+      .map((s) => ({
+        ...s,
+        member: memberMap.get(s.memberDiscordId) ?? null,
+      }));
 
     // Get summary stats
     const stats = {
-      total: snapshots.length,
-      ok: snapshots.filter((s) => s.status === "OK").length,
-      warn: snapshots.filter((s) => s.status === "WARN").length,
-      ko: snapshots.filter((s) => s.status === "KO").length,
+      total: enrichedSnapshots.length,
+      ok: enrichedSnapshots.filter((s) => s.status === "OK").length,
+      warn: enrichedSnapshots.filter((s) => s.status === "WARN").length,
+      ko: enrichedSnapshots.filter((s) => s.status === "KO").length,
     };
 
     return NextResponse.json({

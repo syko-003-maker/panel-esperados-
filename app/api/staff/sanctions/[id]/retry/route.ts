@@ -11,9 +11,19 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const session = (guard as any).session;
   const actorId = session?.user?.id ?? session?.userId;
   const actorName = session?.user?.name ?? null;
+  const actorMemberId = session?.member?.id ?? null;
   if (!actorId) {
     return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
   }
+
+  const actorRpName = actorMemberId
+    ? (
+        await prisma.member.findFirst({
+          where: { id: actorMemberId },
+          select: { rpName: true },
+        })
+      )?.rpName ?? null
+    : null;
 
   const sanction = await prisma.sanction.findUnique({
     where: { id },
@@ -30,6 +40,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   if (!sanction) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  if (sanction.discordStatus === "PENDING") {
+    return NextResponse.json({ ok: false, error: "ALREADY_QUEUED" }, { status: 409 });
   }
 
   if (sanction.discordStatus === "APPLIED") {
@@ -67,8 +81,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         memberName: sanction.member?.rpName ?? null,
         type: sanction.type,
         reason: sanction.reason,
+        staffName: actorName,
+        staffRpName: actorRpName,
+        appliedByUserId: actorId,
+        actorMemberId,
       },
     } as any,
+  });
+
+  await prisma.sanction.update({
+    where: { id },
+    data: { outboxJobId: outbox.id } as any,
   });
 
   await auditStaffAction(actorId, actorName, "SANCTION_RETRY", "Sanction", sanction.id, {

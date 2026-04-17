@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logInfo, logWarn } from "@/lib/obs";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 
 /**
  * Diagnostic et réparation des Member.steamId manquants
@@ -16,6 +17,9 @@ import { logInfo, logWarn } from "@/lib/obs";
  * 4. Si trouvé, update Member avec steamId
  */
 export async function GET(req: NextRequest) {
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
+
   const { searchParams } = req.nextUrl;
   const mode = searchParams.get("mode") || "check";
   const familyId = "esperados";

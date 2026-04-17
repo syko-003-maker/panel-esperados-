@@ -9,8 +9,9 @@ export type BanklogsQueryKey = {
   familyDbId: string;
   page: number;
   limit: number;
-  type?: "1" | "2" | null;
+  type?: string | null;
   steamId?: string | null;
+  member?: string | null;
   days?: number | null;
 };
 
@@ -43,6 +44,7 @@ function generateKey(params: BanklogsQueryKey): string {
     limit: params.limit,
     type: params.type ?? null,
     steamId: params.steamId?.trim() ?? null,
+    member: params.member?.trim() ?? null,
     days: params.days ?? null,
   });
 }

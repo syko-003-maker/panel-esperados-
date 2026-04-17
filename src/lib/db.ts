@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
@@ -11,3 +11,6 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+// Re-export Prisma namespace for raw queries
+export { Prisma };

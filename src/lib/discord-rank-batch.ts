@@ -11,6 +11,7 @@ export type MemberForEnrichment = {
   discordId: string | null;
   rankLabel: string | null;
   rankRoleId?: string | null;
+  discordRoleIds?: string[] | null;
   [key: string]: unknown;
 };
 
@@ -81,13 +82,15 @@ function resolveRankWithDiagnostics(roles: string[]): {
  */
 export async function enrichMembersWithRanks<T extends MemberForEnrichment>(
   members: T[],
-  options?: { guildId?: string; debug?: boolean }
+  options?: { guildId?: string; debug?: boolean; allowDiscordFetch?: boolean }
 ): Promise<(T & MemberWithDiagnostics)[]> {
   if (!members || members.length === 0) {
     return [];
   }
 
   const debug = options?.debug ?? false;
+  const allowDiscordFetch = options?.allowDiscordFetch ?? true;
+  const debugDiscord = process.env.DEBUG_DISCORD === "1";
   const guildId = options?.guildId;
 
   // Identify members that need rank resolution
@@ -106,7 +109,7 @@ export async function enrichMembersWithRanks<T extends MemberForEnrichment>(
   let guildMembersMap: Map<string, string[]> | null = null;
   const hasDiscordMembersToCheck = needsResolution.length > 0;
   
-  if (hasDiscordMembersToCheck) {
+  if (hasDiscordMembersToCheck && allowDiscordFetch) {
     try {
       if (debug) {
         console.log(`[discord-rank:batch] Fetching all guild members...`);
@@ -124,6 +127,10 @@ export async function enrichMembersWithRanks<T extends MemberForEnrichment>(
       console.error("[discord-rank:batch] Failed to fetch guild members map:", err);
       // Continue gracefully - guildMembersMap will be null, all members will get FETCH_FAILED
     }
+  }
+
+  if (hasDiscordMembersToCheck && !allowDiscordFetch && debugDiscord) {
+    console.log("[discord-rank:batch] DB-only mode: skipping Discord API fetch");
   }
 
   // Enrich all members with diagnostics
@@ -158,7 +165,43 @@ export async function enrichMembersWithRanks<T extends MemberForEnrichment>(
       } as T & MemberWithDiagnostics;
     }
 
-    // Case 3: Discord ID exists, check guild members map
+    // Case 3: DB-only mode (no Discord fetch)
+    if (!allowDiscordFetch) {
+      const rolesFromDb = Array.isArray(member.discordRoleIds)
+        ? member.discordRoleIds
+        : null;
+
+      if (!rolesFromDb) {
+        return {
+          ...member,
+          _diag_hasDiscordId: true,
+          _diag_discordId: member.discordId,
+          _diag_fetchStatus: "ALREADY_IN_DB",
+          _diag_rolesCount: 0,
+          _diag_matchedRankRoleId: null,
+          _diag_matchedRankLabel: null,
+        } as T & MemberWithDiagnostics;
+      }
+
+      const { rankRoleId, rankLabel } = resolveRankWithDiagnostics(rolesFromDb);
+      const newRankLabel = rankLabel || member.rankLabel;
+      const gradeLevel = getRankGradeLevel(newRankLabel);
+
+      return {
+        ...member,
+        rankLabel: newRankLabel,
+        rankRoleId: rankRoleId || member.rankRoleId,
+        gradeLevel: gradeLevel || member.gradeLevel,
+        _diag_hasDiscordId: true,
+        _diag_discordId: member.discordId,
+        _diag_fetchStatus: "ALREADY_IN_DB",
+        _diag_rolesCount: rolesFromDb.length,
+        _diag_matchedRankRoleId: rankRoleId,
+        _diag_matchedRankLabel: rankLabel,
+      } as T & MemberWithDiagnostics;
+    }
+
+    // Case 4: Discord fetch enabled, check guild members map
     // Map will be null if Discord API failed (429, 5xx, timeout, etc.)
     if (!guildMembersMap) {
       // Guild members fetch failed - mark as FETCH_FAILED (not NOT_IN_GUILD)
@@ -173,7 +216,7 @@ export async function enrichMembersWithRanks<T extends MemberForEnrichment>(
       } as T & MemberWithDiagnostics;
     }
 
-    // Case 4: Guild members map is available, check if member is in guild
+    // Case 5: Guild members map is available, check if member is in guild
     const rolesFromGuild = guildMembersMap.get(member.discordId!);
     
     if (!rolesFromGuild) {
@@ -189,7 +232,7 @@ export async function enrichMembersWithRanks<T extends MemberForEnrichment>(
       } as T & MemberWithDiagnostics;
     }
 
-    // Case 5: Member is in guild, resolve rank from their roles
+    // Case 6: Member is in guild, resolve rank from their roles
     const { rankRoleId, rankLabel, reason } = resolveRankWithDiagnostics(rolesFromGuild);
     
     // Calculate gradeLevel based on resolved rankLabel

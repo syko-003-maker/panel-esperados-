@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { PageShell, SectionCard } from "@/components/staff/ui";
+import { PageShell } from "@/components/staff/ui/PageShell";
+import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { Bot, FileText, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

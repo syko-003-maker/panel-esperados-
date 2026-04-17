@@ -23,6 +23,7 @@ model User {
   recruitments              Recruitment[]       @relation("RecruitmentCreatedBy")
   complaints                Complaint[]         @relation("ComplaintCreatedBy")
   absences                  Absence[]           @relation("AbsenceCreatedBy")
+  absencesDecided            Absence[]           @relation("AbsenceDecidedBy")
   sanctions                 Sanction[]          @relation("SanctionCreatedBy")
   sanctionsClosed           Sanction[]          @relation("SanctionClosedBy")
   recruitmentTicketsClaimed RecruitmentTicket[] @relation("RecruitmentTicketClaimedBy")
@@ -137,6 +138,8 @@ model Member {
 
   // Source tracking
   source MemberSource @default(LYG) // Provenance du Member
+  isGhost   Boolean      @default(false) // Ghost member: placeholder created to attach banklogs
+  createdFrom String? // Origin tag for ghost creation (e.g., "banklog_backfill")
 
   // Grade system (legacy - for history only)
   grade         String?  // WL1, WL2, WL3, WL4, CHEF, etc.
@@ -153,6 +156,7 @@ model Member {
   // Grace period for deactivation (avoid marking inactive on single mismatch)
   lastSeenAt    DateTime?  // Last time member was seen in LYG API
   missingSince  DateTime?  // When member first went missing from LYG (null if currently seen)
+  missingFromLygSince DateTime? // Missing from LYG across full syncs (grace-based)
 
   // Discord mirror (updated by worker/resync, avoids 429 spam)
   discordInGuild          Boolean?   // null=unknown, true=in guild, false=left
@@ -160,11 +164,20 @@ model Member {
   discordRolesUpdatedAt   DateTime?  // Last successful Discord sync
   discordLastError        String?    // Last error during Discord sync (if any)
 
+  // 7-day playtime from LYG
+  playtime7d              Int        @default(0)
+  playtime7dUpdatedAt     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   sanctions     Sanction[]     @relation("SanctionMember")
   gradeHistory  GradeHistory[]
+  absences      Absence[]
+  discordSnapshot MemberDiscordSnapshot?
+  meetingRows   MeetingRow[]
+  complaintsFiled Complaint[] @relation("ComplaintFiled")
+  complaintsReceived Complaint[] @relation("ComplaintReceived")
 
   @@unique([familyId, steamId])
   @@unique([familyId, discordId])
@@ -173,6 +186,28 @@ model Member {
   @@index([discordId])
   @@index([familyId, isActive])
   @@index([familyId, grade])
+}
+
+model MemberDiscordSnapshot {
+  id            String   @id @default(cuid())
+  memberId      String   @unique
+  member        Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  discordId     String
+  isInGuild     Boolean
+  rolesJson     Json?
+  nickname      String?
+  username      String?
+  lastCheckedAt DateTime
+  lastSuccessAt DateTime?
+  lastError     String?
+  source        String
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([discordId])
+  @@index([lastCheckedAt])
 }
 
 enum MemberSource {
@@ -370,7 +405,9 @@ model Complaint {
   id            String          @id @default(cuid())
   familyId      String
   complainantId String?
+  complainant   Member?         @relation("ComplaintFiled", fields: [complainantId], references: [id], onDelete: SetNull)
   targetId      String?
+  target        Member?         @relation("ComplaintReceived", fields: [targetId], references: [id], onDelete: SetNull)
   title         String
   description   String
   status        ComplaintStatus @default(OPEN)
@@ -406,6 +443,12 @@ model Complaint {
   createdById String
   createdBy   User   @relation("ComplaintCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
 
+  // Linked ComplaintTicket
+  ticket ComplaintTicket? @relation("ComplaintTicket")
+  
+  // Linked Sanctions created from this complaint
+  sanctions Sanction[] @relation("SanctionFromComplaint")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -413,21 +456,31 @@ model Complaint {
   @@index([authorDiscordId])
   @@index([ticketKey])
   @@index([threadId])
+  @@index([complainantId])
+  @@index([targetId])
 }
 
 model ComplaintTicket {
   id               String                @id @default(cuid())
   guildId          String
   channelId        String                @unique
+  threadId         String?               // Discord thread ID for linking
   categoryId       String                @default("unknown")
   createdAtDiscord DateTime              @default(now())
   closedAtDiscord  DateTime?
   status           ComplaintTicketStatus @default(OPEN)
 
+  // Link to Complaint
+  complaintId String?   @unique
+  complaint   Complaint? @relation("ComplaintTicket", fields: [complaintId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   messages ComplaintMessage[]
+
+  @@index([threadId])
+  @@index([complaintId])
 }
 
 model ComplaintMessage {
@@ -460,7 +513,27 @@ enum MeetingType {
 
 enum MeetingStatus {
   DRAFT
+  IN_PROGRESS
+  CLOSED
+  CANCELED
   FINAL
+}
+
+enum MeetingRowAttendanceStatus {
+  PRESENT
+  ABSENT
+  JUSTIFIED
+  NOT_CONCERNED
+}
+
+enum MeetingRowDecisionType {
+  NONE
+  REMINDER
+  WARNING_ORAL
+  WARNING
+  DEMOTE
+  EXCLUDE
+  OTHER
 }
 
 enum MeetingDecisionAction {
@@ -480,7 +553,15 @@ model Meeting {
   status          MeetingStatus @default(DRAFT)
   notes           String?
   summary         String?
+  description     String?
+  summaryText     String?
+  summaryChannelId String?
+  summaryPostedAt DateTime?
   createdByUserId String?
+  createdById     String?
+  closedById      String?
+  closedAt        DateTime?
+  sanctionsAppliedAt DateTime?
   finalizedAt     DateTime?
   finalizedByUserId String?
 
@@ -489,11 +570,39 @@ model Meeting {
 
   decisions   MeetingDecision[]
   attendances MeetingAttendance[]
+  rows        MeetingRow[]
 
   @@unique([weekKey])
   @@index([meetingDate])
   @@index([familyId, meetingDate])
   @@index([familyId, status])
+}
+
+model MeetingRow {
+  id                String                     @id @default(cuid())
+  meetingId         String
+  memberId          String?
+  rpNameSnapshot    String
+  gradeSnapshot     String?
+  steamIdSnapshot   String?
+  discordIdSnapshot String?
+  playtimeMinutes   Int                        @default(0)
+  attendanceStatus  MeetingRowAttendanceStatus @default(NOT_CONCERNED)
+  decisionType      MeetingRowDecisionType     @default(NONE)
+  sanctionType      String?
+  sanctionReason    String?
+  staffNote         String?
+  isJustified       Boolean                    @default(false)
+  sortOrder         Int                        @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  member  Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, sortOrder])
+  @@index([memberId])
 }
 
 model MeetingDecision {
@@ -598,11 +707,17 @@ model Absence {
   id        String        @id @default(cuid())
   familyId  String
   discordId String
+  memberId  String?
+  member    Member?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
   reason    String?
   startAt   DateTime
   endAt     DateTime
   status    AbsenceStatus @default(PENDING)
   notes     String?
+
+  decidedById String?
+  decidedBy   User?  @relation("AbsenceDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt   DateTime?
 
   justifications AbsenceJustification[]
 
@@ -614,6 +729,8 @@ model Absence {
 
   @@index([familyId, status, startAt])
   @@index([discordId])
+  @@index([memberId])
+  @@index([decidedById])
 }
 
 model Sanction {
@@ -643,6 +760,10 @@ model Sanction {
   clearedStatus SanctionClearedStatus?
   clearedError String?
   
+  // Reference to source complaint (Phase 2)
+  complaintId String?
+  complaint   Complaint? @relation("SanctionFromComplaint", fields: [complaintId], references: [id], onDelete: SetNull)
+  
   // Legacy fields (kept for backward compatibility)
   endAt         DateTime?
   durationHours Int?
@@ -668,6 +789,7 @@ model Sanction {
   @@index([discordId])
   @@index([discordId, status])
   @@index([expiresAt])
+  @@index([complaintId])
 }
 
 model AbsenceJustification {

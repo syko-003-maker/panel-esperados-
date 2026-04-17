@@ -5,95 +5,138 @@ import { prisma } from "@/lib/db";
 const DEFAULT_TEMPLATES = [
   {
     key: "recruitment.submitted",
-    title: "Recruitment submitted",
-    content: "New recruitment: {{discordId}} steam: {{steamId}} rp: {{rpName}} age: {{age}}",
+    title: "Recrutement soumis",
+    content: "📥 Nouvelle candidature reçue\n\n👤 {{rpName}} (<@{{discordId}}>)\n🎮 Steam : {{steamId}}\n🎂 Âge : {{age}}",
   },
   {
     key: "recruitment.accepted",
-    title: "Recruitment accepted",
-    content: "Recruitment accepted: {{discordId}} rp: {{rpName}} steam: {{steamId}}",
+    title: "Recrutement accepté",
+    content: "✅ Candidature acceptée\n\n👤 {{rpName}} (<@{{discordId}}>)\n🎮 Steam : {{steamId}}\n\nBienvenue dans la famille !",
   },
   {
     key: "recruitment.rejected",
-    title: "Recruitment rejected",
-    content: "Recruitment rejected: {{discordId}} rp: {{rpName}} steam: {{steamId}}",
+    title: "Recrutement refusé",
+    content: "❌ Candidature refusée\n\n👤 {{rpName}} (<@{{discordId}}>)\n🎮 Steam : {{steamId}}",
   },
   {
     key: "complaint.created",
-    title: "Complaint created",
-    content: "New complaint: {{title}} ({{complainantId}} -> {{targetId}})",
+    title: "Plainte créée",
+    content: "📋 Nouvelle plainte — {{title}}\n\nPlaignant : <@{{complainantId}}>\nContre : <@{{targetId}}>",
   },
   {
     key: "sanction.created",
-    title: "Sanction created",
-    content: "Sanction {{type}} for {{discordId}}: {{reason}} (points: {{points}})",
+    title: "Sanction appliquée",
+    content: "⚠️ Sanction appliquée — {{type}}\n\nMembre : <@{{discordId}}>\nMotif : {{reason}}\nPoints : {{points}}",
   },
   {
     key: "absence.requested",
-    title: "Absence requested",
-    content: "Absence requested: {{discordId}} from {{startAt}} to {{endAt}}",
+    title: "Absence demandée",
+    content: "📅 Absence déclarée\n\nMembre : <@{{discordId}}>\nDu {{startAt}} au {{endAt}}",
   },
   {
     key: "ME_ABSENCE_CREATED",
-    title: "Member absence created",
-    content: "Member absence: {{discordId}} from {{startAt}} to {{endAt}}",
+    title: "Absence créée (membre)",
+    content: "📅 Absence enregistrée\n\nMembre : <@{{discordId}}>\nDu {{startAt}} au {{endAt}}",
   },
   {
     key: "absence_justification_created",
-    title: "Absence justification",
-    content: "Absence justification by {{discordId}} for {{absenceId}}",
+    title: "Justificatif d'absence",
+    content: "📎 Justificatif d'absence soumis\n\nMembre : <@{{discordId}}>",
   },
   {
     key: "ME_ABSENCE_JUSTIFIED",
-    title: "Member absence justification",
-    content: "Absence justification by {{discordId}} for {{absenceId}}: {{message}}",
+    title: "Absence justifiée (membre)",
+    content: "📎 Justificatif d'absence soumis\n\nMembre : <@{{discordId}}>\nMessage : {{message}}",
   },
   {
     key: "sanction_justification_created",
-    title: "Sanction justification",
-    content: "Sanction justification by {{discordId}} for {{sanctionId}}",
+    title: "Justificatif de sanction",
+    content: "📎 Justificatif de sanction soumis\n\nMembre : <@{{discordId}}>",
   },
   {
     key: "ME_SANCTION_JUSTIFIED",
-    title: "Member sanction justification",
-    content: "Sanction justification by {{discordId}} for {{sanctionId}}: {{message}}",
+    title: "Sanction justifiée (membre)",
+    content: "📎 Justificatif de sanction soumis\n\nMembre : <@{{discordId}}>\nMessage : {{message}}",
   },
   {
     key: "BANK_DEBT_PING_SINGLE",
-    title: "Los Esperados - Banque",
-    content: "{{mention}} Tu es en deficit de {{deficitAmountFormatted}}. Merci de rembourser rapidement.",
+    title: "Rappel de dette",
+    content: "{{mention}} tu es actuellement en déficit de **{{deficitAmountFormatted}}** sur le compte bancaire de la famille.\n\nMerci de régulariser ta situation dans les plus brefs délais. En cas de problème, contacte un État-Major.",
   },
   {
     key: "absence.approved",
-    title: "Absence approved",
-    content: "Absence approved: {{discordId}} from {{startAt}} to {{endAt}}",
+    title: "Absence approuvée",
+    content: "✅ Absence approuvée\n\nMembre : <@{{discordId}}>\nDu {{startAt}} au {{endAt}}",
   },
   {
     key: "meeting.scheduled",
-    title: "Meeting scheduled",
-    content: "Meeting scheduled: {{title}} at {{scheduledAt}}",
+    title: "Réunion programmée",
+    content: "📅 Réunion programmée — {{title}}\n\nRendez-vous le {{scheduledAt}}",
   },
 ] as const;
+
+// Contenus anglais d'origine : si un template en DB correspond encore à ce contenu,
+// il est migré vers le contenu français par défaut lors du prochain appel à ensureDefaults.
+// Cela ne touche jamais les templates personnalisés par le staff.
+const LEGACY_CONTENT_MAP: Record<string, string> = {
+  "recruitment.submitted":          "New recruitment: {{discordId}} steam: {{steamId}} rp: {{rpName}} age: {{age}}",
+  "recruitment.accepted":           "Recruitment accepted: {{discordId}} rp: {{rpName}} steam: {{steamId}}",
+  "recruitment.rejected":           "Recruitment rejected: {{discordId}} rp: {{rpName}} steam: {{steamId}}",
+  "complaint.created":              "New complaint: {{title}} ({{complainantId}} -> {{targetId}})",
+  "sanction.created":               "Sanction {{type}} for {{discordId}}: {{reason}} (points: {{points}})",
+  "absence.requested":              "Absence requested: {{discordId}} from {{startAt}} to {{endAt}}",
+  "ME_ABSENCE_CREATED":             "Member absence: {{discordId}} from {{startAt}} to {{endAt}}",
+  "absence_justification_created":  "Absence justification by {{discordId}} for {{absenceId}}",
+  "ME_ABSENCE_JUSTIFIED":           "Absence justification by {{discordId}} for {{absenceId}}: {{message}}",
+  "sanction_justification_created": "Sanction justification by {{discordId}} for {{sanctionId}}",
+  "ME_SANCTION_JUSTIFIED":          "Sanction justification by {{discordId}} for {{sanctionId}}: {{message}}",
+  "BANK_DEBT_PING_SINGLE":          "{{mention}} Tu es en deficit de {{deficitAmountFormatted}}. Merci de rembourser rapidement.",
+  "absence.approved":               "Absence approved: {{discordId}} from {{startAt}} to {{endAt}}",
+  "meeting.scheduled":              "Meeting scheduled: {{title}} at {{scheduledAt}}",
+};
 
 async function ensureDefaults(familyId: string) {
   const existing = await prisma.discordTemplate.findMany({
     where: { familyId },
-    select: { key: true },
+    select: { key: true, content: true, title: true },
   });
-  const existingKeys = new Set(existing.map((t) => t.key));
-  const missing = DEFAULT_TEMPLATES.filter((t) => !existingKeys.has(t.key));
-  if (missing.length === 0) return;
 
-  await prisma.discordTemplate.createMany({
-    data: missing.map((t) => ({
-      familyId,
-      key: t.key,
-      title: t.title,
-      content: t.content,
-      enabled: true,
-    })),
-    skipDuplicates: true,
+  const existingMap = new Map(existing.map((t) => [t.key, t]));
+
+  // Créer les templates manquants
+  const missing = DEFAULT_TEMPLATES.filter((t) => !existingMap.has(t.key));
+  if (missing.length > 0) {
+    await prisma.discordTemplate.createMany({
+      data: missing.map((t) => ({
+        familyId,
+        key: t.key,
+        title: t.title,
+        content: t.content,
+        enabled: true,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  // Migrer les templates qui ont encore le contenu anglais d'origine (non personnalisés)
+  const newDefaults = new Map<string, { key: string; title: string; content: string }>(DEFAULT_TEMPLATES.map((t) => [t.key, t]));
+  const toMigrate = existing.filter((row) => {
+    const legacy = LEGACY_CONTENT_MAP[row.key];
+    return legacy && row.content === legacy;
   });
+
+  if (toMigrate.length > 0) {
+    await Promise.all(
+      toMigrate.map((row) => {
+        const newDef = newDefaults.get(row.key);
+        if (!newDef) return Promise.resolve();
+        return prisma.discordTemplate.update({
+          where: { familyId_key: { familyId, key: row.key } },
+          data: { content: newDef.content, title: newDef.title },
+        });
+      })
+    );
+  }
 }
 
 export async function GET(req: Request) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged } from "@/lib/guards";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 
 function parseAfter(value: string | null) {
   if (!value) return null;
@@ -15,13 +15,22 @@ function parseAfter(value: string | null) {
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requirePrivileged();
+  const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
+
+  const complaintTicket = await prisma.complaintTicket.findUnique({
+    where: { complaintId: id },
+    select: { id: true },
+  });
+
+  if (!complaintTicket) {
+    return NextResponse.json({ ok: true, data: [] });
+  }
 
   const { searchParams } = new URL(req.url);
   const after = parseAfter(searchParams.get("after"));
 
-  const where: Record<string, unknown> = { ticketId: id };
+  const where: Record<string, unknown> = { ticketId: complaintTicket.id };
   if (after) {
     where.OR = [
       { createdAtDiscord: { gt: after } },

@@ -26,6 +26,13 @@ export async function syncMemberPlaytime7d(input: {
       select: { id: true, steamId: true, playtime7d: true },
     }),
   ]);
+  const snapshotEntries = Array.isArray(rows)
+    ? rows
+        .map((row) => [String(row?.steamId ?? "").trim(), row?.playtime7d] as const)
+        .filter(
+          ([steamId, value]) => Boolean(steamId) && typeof value === "number" && Number.isFinite(value)
+        )
+    : [];
 
   // ⚠️ RÈGLE MÉTIER : garde contre snapshot LYG vide
   //
@@ -36,7 +43,7 @@ export async function syncMemberPlaytime7d(input: {
   //
   // Règle : on n'applique jamais de reset à 0 sans un snapshot exploitable (rows.length > 0).
   // Comportement volontaire et sécurisé : abort, log, retour propre sans toucher la DB.
-  if (rows.length === 0) {
+  if (snapshotEntries.length === 0) {
     console.log("[playtime7d] Empty snapshot from LYG — aborting sync to protect weekly data", {
       family: input.familyId,
       dbMembers: members.length,
@@ -55,11 +62,11 @@ export async function syncMemberPlaytime7d(input: {
 
   console.log("[playtime7d] sync start", {
     family: input.familyId,
-    snapshotSize: rows.length,
+    snapshotSize: snapshotEntries.length,
     dbMembers: members.length,
   });
 
-  const bySteam = new Map(rows.map((r) => [r.steamId, r.playtime7d]));
+  const bySteam = new Map(snapshotEntries);
   const now = new Date();
 
   let updated = 0;
@@ -116,7 +123,7 @@ export async function syncMemberPlaytime7d(input: {
   }
 
   const result: SyncPlaytime7dResult = {
-    fetched: rows.length,
+    fetched: snapshotEntries.length,
     scanned: members.length,
     updated,
     resetToZero,

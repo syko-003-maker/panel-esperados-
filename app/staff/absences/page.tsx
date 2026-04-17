@@ -1,7 +1,7 @@
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import AbsencesClient from "./absences-client";
 import { redirect } from "next/navigation";
-import { PageShell } from "@/components/staff/ui";
+import { PageShell } from "@/components/staff/ui/PageShell";
 
 export default async function StaffAbsencesPage() {
   const guard = await requireChefOrEtatMajor();

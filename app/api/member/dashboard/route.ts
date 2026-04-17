@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
+import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
+import { getMemberDebt } from "@/lib/bank-debts";
 
 /**
  * GET /api/member/dashboard
@@ -18,11 +20,17 @@ export async function GET(req: NextRequest) {
   try {
     const session = await auth();
     if (!session) {
+      console.warn("[dashboard] No session");
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = (session as any)?.user?.id ?? (session as any)?.userId;
+    const sessionDiscordId = (session as any)?.discordId ?? (session as any)?.user?.discordId;
+    console.log("[dashboard] session", { userId, discordId: sessionDiscordId });
+
     const scope = await getMemberScopeOrNull(session);
     if (!scope) {
+      console.warn("[dashboard] scope null", { userId, discordId: sessionDiscordId });
       return NextResponse.json(
         { ok: false, code: "MEMBER_NOT_LINKED" },
         { status: 403 }
@@ -30,10 +38,11 @@ export async function GET(req: NextRequest) {
     }
 
     const { discordId, rpName, memberId } = scope;
-    const FAMILY_ID = "esperados";
+    console.log("[dashboard] scope OK", { rpName, memberId, discordId });
 
-    // Load member for steamId and other details
+    // Load member for steamId and familyId
     let steamId: string | null = null;
+    let FAMILY_ID: string | null = null;
     try {
       const member = await prisma.member.findUnique({
         where: { id: memberId },
@@ -43,9 +52,22 @@ export async function GET(req: NextRequest) {
         },
       });
       steamId = member?.steamId ?? null;
+      FAMILY_ID = member?.familyId ?? null;
     } catch (e) {
-      // Table might not exist in test env
       steamId = null;
+    }
+
+    // If member familyId not available, resolve from slug
+    if (!FAMILY_ID) {
+      try {
+        FAMILY_ID = await resolveFamilyId(DEFAULT_FAMILY_ID);
+      } catch (e) {
+        console.error("[dashboard] resolveFamilyId failed and member has no familyId", e);
+        return NextResponse.json(
+          { ok: false, error: "Erreur de configuration famille" },
+          { status: 500 }
+        );
+      }
     }
 
     // Load bank transactions (last 5)
@@ -94,6 +116,7 @@ export async function GET(req: NextRequest) {
           familyId: FAMILY_ID,
           discordId,
           status: "ACTIVE",
+          clearedAt: null,
         },
       });
       // Get last sanction
@@ -171,6 +194,25 @@ export async function GET(req: NextRequest) {
       absences.last = null;
     }
 
+    // Calcul du déficit bancaire (réutilise la même logique que le module staff)
+    let debt: { eligible: boolean; net: number; deficitAmount: number } = {
+      eligible: false,
+      net: 0,
+      deficitAmount: 0,
+    };
+    try {
+      const debtResult = await getMemberDebt({ familyId: FAMILY_ID, memberId });
+      if ("net" in debtResult && typeof debtResult.net === "number") {
+        debt = {
+          eligible: debtResult.net < 0,
+          net: debtResult.net,
+          deficitAmount: debtResult.deficitAmount ?? 0,
+        };
+      }
+    } catch {
+      // Non bloquant : le déficit reste à 0 si le calcul échoue
+    }
+
     return NextResponse.json({
       ok: true,
       member: {
@@ -181,6 +223,7 @@ export async function GET(req: NextRequest) {
       bank,
       sanctions,
       absences,
+      debt,
     });
   } catch (error) {
     console.error("[api/member/dashboard] error:", error);

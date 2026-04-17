@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { enqueueRemoveRole } from "@/lib/discord/discord";
+import { getAvertRoleId } from "@/lib/sanctions";
 
 // This endpoint can be called without auth for cron jobs
 // Use a secret header for security
 const CRON_SECRET = process.env.CRON_SECRET;
 
 function validateCronSecret(req: Request): boolean {
-  if (!CRON_SECRET) return true; // If no secret configured, allow (dev mode)
+  if (!CRON_SECRET) return false; // Refuse if secret not configured — fail safe
   const secret = req.headers.get("x-cron-secret");
   return secret === CRON_SECRET;
 }
 
 /**
  * POST /api/admin/expire-sanctions
- * Auto-expire sanctions that have passed their endAt date
+ * Auto-expire sanctions that have passed their expiresAt date
  * Called by cron job
  */
 export async function POST(req: NextRequest) {
@@ -27,18 +29,19 @@ export async function POST(req: NextRequest) {
   const now = new Date();
 
   try {
-    // Find all active sanctions with expired endAt
+    const guildId = process.env.DISCORD_GUILD_ID ?? process.env.GUILD_ID ?? "";
+
     const expiredSanctions = await prisma.sanction.findMany({
       where: {
         familyId,
         status: "ACTIVE",
-        endAt: { lt: now },
+        expiresAt: { lt: now },
       },
       select: {
         id: true,
+        familyId: true,
         discordId: true,
         type: true,
-        endAt: true,
       },
     });
 
@@ -50,33 +53,51 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Update all expired sanctions
-    const result = await prisma.sanction.updateMany({
-      where: {
-        id: { in: expiredSanctions.map((s) => s.id) },
-      },
-      data: {
-        status: "EXPIRED",
-        closedAt: now,
-      },
-    });
+    for (const sanction of expiredSanctions) {
+      const roleId = getAvertRoleId(sanction.type);
+      const shouldQueueCleanup = Boolean(roleId && sanction.discordId && guildId);
 
-    // Log the expirations
+      await prisma.sanction.update({
+        where: { id: sanction.id },
+        data: {
+          status: "EXPIRED",
+          closedAt: now,
+          clearedStatus: shouldQueueCleanup ? "PENDING" : undefined,
+          clearedError: shouldQueueCleanup ? null : undefined,
+        } as any,
+      });
+
+      if (shouldQueueCleanup) {
+        await enqueueRemoveRole({
+          familyId: sanction.familyId,
+          guildId,
+          userDiscordId: sanction.discordId!,
+          roleId: roleId!,
+          entity: "Sanction",
+          entityId: sanction.id,
+          meta: {
+            sanctionId: sanction.id,
+            sanctionType: sanction.type,
+            setClearedAt: false,
+          },
+        });
+      }
+    }
+
     console.log(JSON.stringify({
       event: "sanctions_expired",
-      count: result.count,
+      count: expiredSanctions.length,
       sanctions: expiredSanctions.map((s) => ({
         id: s.id,
         discordId: s.discordId,
         type: s.type,
-        endAt: s.endAt,
       })),
       timestamp: now.toISOString(),
     }));
 
     return NextResponse.json({
       ok: true,
-      expired: result.count,
+      expired: expiredSanctions.length,
       sanctions: expiredSanctions.map((s) => ({
         id: s.id,
         discordId: s.discordId,
@@ -109,7 +130,7 @@ export async function GET(req: NextRequest) {
       where: {
         familyId,
         status: "ACTIVE",
-        endAt: { lt: new Date() },
+        expiresAt: { lt: new Date() },
       },
     });
 

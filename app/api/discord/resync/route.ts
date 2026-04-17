@@ -17,7 +17,7 @@ import { prisma } from "@/lib/db";
 import { debug, warn, error as logError } from "@/lib/logger";
 import { createDelay } from "@/lib/utils/delay";
 
-const DISCORD_TOKEN = (process.env.DISCORD_TOKEN ?? process.env.DISCORD_BOT_TOKEN ?? "").trim();
+const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
 const GUILD_ID = (process.env.GUILD_ID ?? process.env.DISCORD_GUILD_ID ?? "").trim();
 const WORKER_SECRET = (process.env.DISCORD_WORKER_SECRET ?? "").trim();
 

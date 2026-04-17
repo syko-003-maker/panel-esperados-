@@ -4,10 +4,15 @@ export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 import { requirePrivileged } from "@/lib/guards";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { resolveFamilyId } from "@/lib/family";
-import { debug, error as logError } from "@/lib/logger";
+import { debug, error as logError, logger } from "@/lib/logger";
 import { getBanklogsCache, setBanklogsCache } from "@/lib/banklogs-cache";
+import { getMemberDisplayName } from "@/lib/member-display";
+import { requireStaffAccess } from "@/lib/rbac";
+import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
+import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+import { isDisplayableStaffMember } from "@/lib/staff/member-scope";
 
 export const runtime = "nodejs";
 
@@ -19,6 +24,37 @@ const FAMILY_NAME = "Los Esperados";
 // Si ton LYG n'utilise pas /api/darkrp/, change ici:
 const LYG_BANKLOGS_PATH = `/api/darkrp/familles/${encodeURIComponent(FAMILY_NAME)}/banklogs`;
 const LYG_MEMBERS_PATH = `/api/darkrp/familles/${FAMILY_SLUG}/members`;
+
+function buildDisplayableMemberSql(): Prisma.Sql {
+  return Prisma.sql`
+    (
+      m."id" IS NULL
+      OR (
+        m."isActive" = true
+        AND COALESCE(m."isGhost", false) = false
+        AND (m."discordId" IS NULL OR m."discordInGuild" IS DISTINCT FROM false)
+        AND m."missingFromLygSince" IS NULL
+        AND NOT (
+          COALESCE(m."rankRoleId", '') = ${DEMOTE_ROLE_ID}
+          OR ${DEMOTE_ROLE_ID} = ANY(COALESCE(m."discordRoleIds", ARRAY[]::text[]))
+          OR LOWER(COALESCE(m."grade", '')) LIKE '%demote%'
+          OR LOWER(COALESCE(m."rankLabel", '')) LIKE '%demote%'
+          OR ${BLACKLIST_ROLE_ID} = ANY(COALESCE(m."discordRoleIds", ARRAY[]::text[]))
+          OR LOWER(COALESCE(m."grade", '')) LIKE '%blacklist%'
+          OR LOWER(COALESCE(m."rankLabel", '')) LIKE '%blacklist%'
+          OR COALESCE(m."rankRoleId", '') = ${RESERVIST_ROLE_ID}
+          OR ${RESERVIST_ROLE_ID} = ANY(COALESCE(m."discordRoleIds", ARRAY[]::text[]))
+          OR LOWER(COALESCE(m."grade", '')) LIKE '%réserviste%'
+          OR LOWER(COALESCE(m."grade", '')) LIKE '%reserviste%'
+          OR LOWER(COALESCE(m."grade", '')) LIKE '%reservist%'
+          OR LOWER(COALESCE(m."rankLabel", '')) LIKE '%réserviste%'
+          OR LOWER(COALESCE(m."rankLabel", '')) LIKE '%reserviste%'
+          OR LOWER(COALESCE(m."rankLabel", '')) LIKE '%reservist%'
+        )
+      )
+    )
+  `;
+}
 
 function jsonOk(payload: any, status = 200) {
   return NextResponse.json(payload, {
@@ -79,6 +115,13 @@ function getLygToken() {
   return token;
 }
 
+function hasValidIngestSecret(req: Request): boolean {
+  const expected = process.env.INGEST_SECRET;
+  if (!expected) return false;
+  const provided = req.headers.get("x-ingest-secret");
+  return Boolean(provided && provided === expected);
+}
+
 function safeJsonParse(text: string) {
   try {
     return JSON.parse(text);
@@ -135,8 +178,10 @@ async function fetchLygJsonSafe(path: string, init?: RequestInit) {
  */
 export async function GET(req: Request) {
   try {
-    const guard = await requirePrivileged();
-    if (guard instanceof Response) return guard;
+    if (!hasValidIngestSecret(req)) {
+      const guard = await requireStaffAccess();
+      if (guard instanceof Response) return guard;
+    }
 
     const { searchParams } = new URL(req.url);
 
@@ -163,15 +208,18 @@ export async function GET(req: Request) {
 
     const typeRaw = searchParams.get("type"); // "1" | "2" | ""
     const steamIdRaw = (searchParams.get("steamId") ?? "").trim();
+    const memberRaw = (searchParams.get("member") ?? "").trim();
     const daysRaw = Number(searchParams.get("days") ?? "0"); // 7/30/90/0
+    const typeParsed = typeRaw ? Number(typeRaw) : NaN;
 
     // ✅ CACHE CHECK
     const cacheParams = {
       familyDbId,
       page,
       limit,
-      type: (typeRaw === "1" || typeRaw === "2" ? typeRaw : null) as "1" | "2" | null,
+      type: Number.isFinite(typeParsed) ? String(typeParsed) : null,
       steamId: steamIdRaw || null,
+      member: memberRaw || null,
       days: daysRaw > 0 ? daysRaw : null,
     };
 
@@ -195,14 +243,15 @@ export async function GET(req: Request) {
       familySlug: FAMILY_SLUG,
       familyDbId,
       typeRaw,
+      memberRaw,
       steamIdRaw,
       daysRaw,
     });
 
     const where: any = { familyId: familyDbId };
 
-    if (typeRaw === "1" || typeRaw === "2") {
-      where.type = Number(typeRaw);
+    if (Number.isFinite(typeParsed)) {
+      where.type = typeParsed;
     }
 
     if (steamIdRaw) {
@@ -214,21 +263,117 @@ export async function GET(req: Request) {
       where.at = { gte: from };
     }
 
-    const [items, total] = await Promise.all([
-      prisma.bankLog.findMany({
-        where,
-        orderBy: { at: "desc" },
-        skip,
-        take: limit,
-        select: {
-          at: true,
-          type: true,
-          money: true,
-          steamId: true,
-        },
-      }),
-      prisma.bankLog.count({ where }),
-    ]);
+    // ✅ Use raw query to LEFT JOIN Member and include rpName with fallback
+    // This supports both cuid and slug familyId for backward compatibility
+    const displayableMemberSql = buildDisplayableMemberSql();
+
+    const itemsRaw = await prisma.$queryRaw<Array<{
+      memberId: string | null;
+      at: Date;
+      type: number;
+      money: number;
+      steamId: string;
+      rpName: string | null;
+      discordId: string | null;
+      discordDisplayName: string | null;
+      discordUsername: string | null;
+      isActive: boolean | null;
+      isGhost: boolean | null;
+      discordInGuild: boolean | null;
+      missingFromLygSince: Date | null;
+      grade: string | null;
+      rankRoleId: string | null;
+      rankLabel: string | null;
+      discordRoleIds: string[] | null;
+    }>>`
+      SELECT 
+        m."id" AS "memberId",
+        b."at" AS "at",
+        b."type" AS "type",
+        b."money" AS "money",
+        b."steamId" AS "steamId",
+        m."rpName" AS "rpName",
+        m."discordId" AS "discordId",
+        m."discordDisplayName" AS "discordDisplayName",
+        m."discordUsername" AS "discordUsername",
+        m."isActive" AS "isActive",
+        COALESCE(m."isGhost", false) AS "isGhost",
+        m."discordInGuild" AS "discordInGuild",
+        m."missingFromLygSince" AS "missingFromLygSince",
+        m."discordInGuild" AS "discordInGuild",
+        m."missingFromLygSince" AS "missingFromLygSince",
+        m."grade" AS "grade",
+        m."rankRoleId" AS "rankRoleId",
+        m."rankLabel" AS "rankLabel",
+        m."discordRoleIds" AS "discordRoleIds"
+      FROM "BankLog" b
+      LEFT JOIN "Member" m
+        ON m."steamId" = b."steamId"
+        AND (m."familyId" = ${familyDbId} OR m."familyId" = ${FAMILY_SLUG})
+      WHERE b."familyId" = ${familyDbId}
+        ${Number.isFinite(typeParsed) ? Prisma.sql`AND b."type" = ${typeParsed}` : Prisma.empty}
+        ${steamIdRaw ? Prisma.sql`AND b."steamId" LIKE ${'%' + steamIdRaw + '%'}` : Prisma.empty}
+        ${memberRaw ? Prisma.sql`AND COALESCE(m."rpName", m."discordDisplayName", m."discordUsername", '') ILIKE ${'%' + memberRaw + '%'}` : Prisma.empty}
+        ${Number.isFinite(daysRaw) && daysRaw > 0 ? Prisma.sql`AND b."at" >= ${new Date(Date.now() - daysRaw * 24 * 60 * 60 * 1000)}` : Prisma.empty}
+        AND ${displayableMemberSql}
+      ORDER BY b."at" DESC
+      LIMIT ${limit}
+      OFFSET ${skip}
+    `;
+
+    const totalRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM "BankLog" b
+      LEFT JOIN "Member" m
+        ON m."steamId" = b."steamId"
+        AND (m."familyId" = ${familyDbId} OR m."familyId" = ${FAMILY_SLUG})
+      WHERE b."familyId" = ${familyDbId}
+        ${Number.isFinite(typeParsed) ? Prisma.sql`AND b."type" = ${typeParsed}` : Prisma.empty}
+        ${steamIdRaw ? Prisma.sql`AND b."steamId" LIKE ${'%' + steamIdRaw + '%'}` : Prisma.empty}
+        ${memberRaw ? Prisma.sql`AND COALESCE(m."rpName", m."discordDisplayName", m."discordUsername", '') ILIKE ${'%' + memberRaw + '%'}` : Prisma.empty}
+        ${Number.isFinite(daysRaw) && daysRaw > 0 ? Prisma.sql`AND b."at" >= ${new Date(Date.now() - daysRaw * 24 * 60 * 60 * 1000)}` : Prisma.empty}
+        AND ${displayableMemberSql}
+    `;
+    const total = Number(totalRows?.[0]?.count ?? 0);
+
+    const items = itemsRaw
+      .filter((item) => !item.memberId || isDisplayableStaffMember(item))
+      .map((item) => {
+      const hasMemberRow = Boolean(item.memberId);
+      const isDisplayableMember = hasMemberRow && isDisplayableStaffMember(item);
+      const resolvedName = isDisplayableMember
+        ? getMemberDisplayName(item)
+        : null;
+
+      return {
+        at: item.at,
+        type: item.type,
+        money: item.money,
+        steamId: item.steamId,
+        rpName: resolvedName,
+        isGhost: Boolean(item.isGhost),
+      };
+    });
+
+    // 🔍 DEBUG: Log unlinked records when DEBUG_BANKLOGS=1
+    if (process.env.DEBUG_BANKLOGS === "1") {
+      const ghostUsedCount = itemsRaw.filter((item) => item.isGhost && !item.rpName).length;
+      const unlinkedCount = itemsRaw.filter((item) => !item.rpName && !item.isGhost).length;
+      console.log(`[banklogs] 👻 ghostMembers used: ${ghostUsedCount}`);
+      if (unlinkedCount > 0) {
+        console.log(`\n[banklogs] ⚠️  ${unlinkedCount}/${items.length} records show "Non lié"`);
+        const unlinkedSamples = itemsRaw.filter((item) => !item.rpName && !item.isGhost).slice(0, 5);
+        unlinkedSamples.forEach((item, idx) => {
+          console.log(`   ${idx + 1}. steamId: ${item.steamId}`);
+          console.log(`      type: ${item.type} (${item.type === 1 ? "withdrawal" : "deposit"})`);
+          console.log(`      money: ${item.money}`);
+          console.log(`      JOIN field: BankLog.steamId = Member.steamId`);
+          console.log(`      Result: ❌ No Member found with steamId "${item.steamId}"`);
+          console.log(`      Family filter: familyId IN ('${familyDbId}', '${FAMILY_SLUG}')`);
+        });
+        console.log(`   💡 These steamIds don't exist in Member table for this family\n`);
+      }
+    }
 
     console.log("[banklogs] GET success", { page, limit, total, itemsCount: items.length });
     debug("[banklogs] GET success", {
@@ -245,8 +390,11 @@ export async function GET(req: Request) {
       limit,
       total,
       items: items.map((item) => ({
-        ...item,
         at: item.at.toISOString(),
+        type: item.type,
+        money: item.money,
+        steamId: item.steamId,
+        rpName: item.rpName,
       })),
     };
 
@@ -255,13 +403,22 @@ export async function GET(req: Request) {
 
     return jsonOk({ ...result, source: "db" });
   } catch (err: any) {
-    console.error("[banklogs] crash", err);
+    logger.error("banklogs", "GET failed", {
+      err: String(err),
+      stack: err?.stack,
+    });
 
-    return NextResponse.json({
-      ok: false,
-      error: "BANKLOGS_CRASH",
-      message: String(err?.message ?? err),
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "BANKLOGS_FAILED",
+        message: String(err),
+      },
+      {
+        status: 502,
+        headers: { "Cache-Control": "no-store" },
+      }
+    );
   }
 }
 
@@ -274,8 +431,10 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const guard = await requirePrivileged();
-    if (guard instanceof Response) return guard;
+    if (!hasValidIngestSecret(req)) {
+      const guard = await requirePrivileged();
+      if (guard instanceof Response) return guard;
+    }
 
     // On force slug
     const familyDbId = await resolveFamilyId(FAMILY_SLUG);
@@ -305,11 +464,12 @@ export async function POST(req: Request) {
     });
 
     if (!r.ok || !r.json) {
-      console.error("[banklogs] POST LYG fetch failed", {
+      logger.error("banklogs", "LYG fetch failed", {
         url: r.url,
         status: r.status,
         contentType: r.contentType,
         rawTextLength: r.rawText.length,
+        rawText: r.rawText,
       });
       return jsonErr("LYG banklogs fetch failed (non-JSON or HTTP error)", 502, {
         url: r.url,
@@ -398,12 +558,21 @@ export async function POST(req: Request) {
       preview: items.slice(0, 3),
     });
   } catch (err: any) {
-    console.error("[banklogs] crash", err);
+    logger.error("banklogs", "POST failed", {
+      err: String(err),
+      stack: err?.stack,
+    });
 
-    return NextResponse.json({
-      ok: false,
-      error: "BANKLOGS_CRASH",
-      message: String(err?.message ?? err),
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "BANKLOGS_FAILED",
+        message: String(err),
+      },
+      {
+        status: 502,
+        headers: { "Cache-Control": "no-store" },
+      }
+    );
   }
 }

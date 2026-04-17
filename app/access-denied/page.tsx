@@ -32,18 +32,36 @@ export default function AccessDeniedPage() {
 
         {/* Content */}
         <div className="space-y-4">
-          <h1 className="text-4xl font-bold text-white">Accès Refusé</h1>
+          <h1 className="text-4xl font-bold text-white">Accès refusé</h1>
           <p className="text-slate-400 text-lg">
-            Cette section est réservée au personnel. Vous n'avez pas les
-            permissions nécessaires pour accéder à cette page.
+            Ton compte n'est pas encore lié ou tu n'as pas accès à cet espace.
           </p>
         </div>
 
-        {/* Action Button */}
-        <div className="pt-4">
+        {/* Action Buttons */}
+        <div className="pt-4 flex gap-3 justify-center">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors duration-200"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors duration-200"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 11c0 1.657-1.343 3-3 3s-3-1.343-3-3 1.343-3 3-3 3 1.343 3 3zM8 14v6"
+              />
+            </svg>
+            Lier mon compte
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors duration-200"
           >
             <svg
               className="w-5 h-5"
@@ -58,7 +76,7 @@ export default function AccessDeniedPage() {
                 d="M10 19l-7-7m0 0l7-7m-7 7h18"
               />
             </svg>
-            Retour au tableau de bord
+            Retour à l'accueil
           </Link>
         </div>
 

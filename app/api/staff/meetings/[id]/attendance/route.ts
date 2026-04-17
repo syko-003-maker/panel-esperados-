@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
 
 type AttendanceInput = {
   memberDiscordId: string;
@@ -40,7 +41,17 @@ export async function GET(
   // Get all active members for the family
   const members = await prisma.member.findMany({
     where: { familyId: DEFAULT_FAMILY_ID, isActive: true },
-    select: { discordId: true, rpName: true, grade: true, gradeLevel: true },
+    select: {
+      discordId: true,
+      rpName: true,
+      grade: true,
+      gradeLevel: true,
+      isActive: true,
+      isGhost: true,
+      rankRoleId: true,
+      rankLabel: true,
+      discordRoleIds: true,
+    },
     orderBy: [{ gradeLevel: "desc" }, { rpName: "asc" }],
   });
 
@@ -49,7 +60,7 @@ export async function GET(
 
   // Merge members with attendance
   const mergedAttendance = members
-    .filter((m) => m.discordId)
+    .filter(isActiveMembersScopeMember)
     .map((member) => {
       const attendance = attendanceMap.get(member.discordId!);
       return {

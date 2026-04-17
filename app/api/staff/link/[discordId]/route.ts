@@ -5,6 +5,7 @@ import { DEFAULT_FAMILY_ID, getFamilyName } from "@/lib/family";
 import { makeRequestId, logInfo, logError } from "@/lib/obs";
 import { normalizeSteamId64 } from "@/lib/validation/steamid";
 import { resolveRankFromDiscord } from "@/lib/discord-rank";
+import { findBlockingSteamLink } from "@/lib/link-conflicts";
 const INGEST_SECRET = process.env.INGEST_SECRET ?? "";
 
 type Context = {
@@ -277,6 +278,11 @@ export async function POST(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const byDiscord = await tx.member.findUnique({
+        where: { familyId_discordId: { familyId: familyDbId, discordId } },
+        select: { id: true, discordId: true, steamId: true },
+      });
+
       const bySteam = steamId
         ? await tx.member.findUnique({
             where: { familyId_steamId: { familyId: familyDbId, steamId } },
@@ -284,12 +290,16 @@ export async function POST(
           })
         : null;
 
-      const byDiscord = await tx.member.findUnique({
-        where: { familyId_discordId: { familyId: familyDbId, discordId } },
-        select: { id: true, discordId: true, steamId: true },
+      const transferableBySteam = !byDiscord && bySteam ? bySteam : null;
+
+      const steamConflict = await findBlockingSteamLink(tx, {
+        familyId: familyDbId,
+        steamId,
+        excludeDiscordId: discordId,
+        excludeMemberId: transferableBySteam?.id ?? byDiscord?.id ?? null,
       });
 
-      if (bySteam?.discordId && bySteam.discordId !== discordId) {
+      if (steamConflict) {
         throw new LinkConflictError(
           "STEAM_ALREADY_LINKED",
           "Ce SteamID est déjà lié à un autre Discord."

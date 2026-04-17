@@ -7,6 +7,26 @@ import type { LegacyActivityState } from "@/lib/activity-legacy";
 type TemplateVars = Record<string, string | number | null | undefined>;
 type PrismaClientLike = PrismaClient | Prisma.TransactionClient;
 
+export type DiscordEmbedField = {
+  name: string;
+  value: string;
+  inline?: boolean;
+};
+
+export type DiscordEmbedFooter = {
+  text: string;
+  iconURL?: string;
+};
+
+export type DiscordEmbedPayload = {
+  title?: string;
+  description?: string;
+  color?: number;
+  fields?: DiscordEmbedField[];
+  footer?: DiscordEmbedFooter;
+  timestamp?: string | Date;
+};
+
 async function createOutboxJob(client: PrismaClientLike, data: Prisma.DiscordOutboxCreateInput) {
   try {
     return await client.discordOutbox.create({ data });
@@ -88,6 +108,27 @@ export async function enqueueMessage(params: {
       entity: params.entity ?? null,
       entityId: params.entityId ?? null,
       meta: params.meta ?? null,
+    },
+  });
+}
+
+export async function enqueueEmbedMessage(params: {
+  familyId: string;
+  channelId: string;
+  embeds: DiscordEmbedPayload[];
+  entity?: string | null;
+  entityId?: string | null;
+}) {
+  return prisma.discordOutbox.create({
+    data: {
+      familyId: params.familyId,
+      type: "SEND_MESSAGE",
+      status: "PENDING",
+      channelId: params.channelId,
+      content: null,
+      entity: params.entity ?? null,
+      entityId: params.entityId ?? null,
+      meta: { embeds: params.embeds },
     },
   });
 }
@@ -317,6 +358,7 @@ export async function enqueueRecruitmentDecision(params: {
   totalOn20?: number | null;
   totalPoints?: number | null;
   claimedByUserId: string;
+  discordThreadId?: string | null;
   client?: PrismaClientLike;
 }) {
   const jobType = "RECRUITMENT_DECISION";
@@ -332,6 +374,7 @@ export async function enqueueRecruitmentDecision(params: {
     totalOn20: params.totalOn20 ?? null,
     totalPoints: params.totalPoints ?? null,
     claimedByUserId: params.claimedByUserId,
+    discordThreadId: params.discordThreadId ?? null,
   };
 
   return createOutboxJob(client, {
@@ -433,10 +476,12 @@ export async function enqueueSanctionApply(params: {
   discordId: string;
   memberName: string;
   sanctionType: string;
-  reason: string;
+  reason?: string | null;
   durationHours?: number | null;
   staffName: string;
+  staffRpName?: string | null;
   appliedByUserId: string;
+  actorMemberId?: string | null;
   client?: PrismaClientLike;
 }) {
   const jobType = "SANCTION_APPLY";
@@ -450,10 +495,12 @@ export async function enqueueSanctionApply(params: {
     discordId: params.discordId,
     memberName: params.memberName,
     sanctionType: params.sanctionType,
-    reason: params.reason,
+    reason: params.reason ?? null,
     durationHours: params.durationHours ?? null,
     staffName: params.staffName,
+    staffRpName: params.staffRpName ?? null,
     appliedByUserId: params.appliedByUserId,
+    actorMemberId: params.actorMemberId ?? null,
   };
 
   return createOutboxJob(client, {

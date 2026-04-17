@@ -280,7 +280,10 @@ export async function canAccessStaffPanel(
     return { canAccess: false, source: "NONE", staffUser: null };
   }
 
-  // 1. Try DB RBAC first (primary method)
+  // Extract discordId once, used across all phases
+  const discordId = extractDiscordId(session);
+
+  // 1. Try DB RBAC first (StaffUser table)
   try {
     const staffUser = await getStaffUser(session, familyId);
     if (staffUser) {
@@ -290,12 +293,44 @@ export async function canAccessStaffPanel(
     console.error("[RBAC] canAccessStaffPanel: DB check failed", error);
   }
 
-  // 2. Try Discord roles (requires Discord API)
-  const discordId = extractDiscordId(session);
+  // 2. Try DB mirror (Member.discordRoleIds) — fast, no Discord API needed
+  // Same source used by requireRecruiterOrAbove() → consistent, reliable
   if (discordId) {
     try {
-      // Import Discord roles check
-      const { getDiscordRolesForUser, isStaffFull } = await import("@/lib/discord-roles");
+      const { isStaffFull, isRecruiter } = await import("@/lib/discord-roles");
+      const resolvedFamily = isCuid(familyId) ? familyId : await resolveFamilyId(familyId);
+      const memberRecord = await prisma.member.findUnique({
+        where: { familyId_discordId: { familyId: resolvedFamily, discordId } },
+        select: { discordRoleIds: true, discordInGuild: true, discordLastError: true },
+      });
+      if (memberRecord && !memberRecord.discordLastError && memberRecord.discordInGuild) {
+        const roles = Array.isArray(memberRecord.discordRoleIds) ? (memberRecord.discordRoleIds as string[]) : [];
+        if (roles.length > 0) {
+          if (isStaffFull(roles)) {
+            return {
+              canAccess: true,
+              source: "DB_RBAC",
+              staffUser: { id: "db-mirror", familyId, userId: null, discordId, roleId: "db-mirror", roleCode: "DISCORD_STAFF", roleName: "Discord Staff", rolePriority: 0, isActive: true, permissions: [] },
+            };
+          }
+          if (isRecruiter(roles)) {
+            return {
+              canAccess: true,
+              source: "DB_RBAC",
+              staffUser: { id: "db-mirror", familyId, userId: null, discordId, roleId: "db-mirror", roleCode: "RECRUITER", roleName: "Recruteur", rolePriority: 0, isActive: true, permissions: [] },
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[RBAC] canAccessStaffPanel: DB mirror check failed", error);
+    }
+  }
+
+  // 3. Try live Discord roles (fallback — requires Discord API + BOT_TOKEN)
+  if (discordId) {
+    try {
+      const { getDiscordRolesForUser, isStaffFull, isRecruiter } = await import("@/lib/discord-roles");
       const roles = await getDiscordRolesForUser(discordId);
       if (isStaffFull(roles)) {
         return {
@@ -309,6 +344,24 @@ export async function canAccessStaffPanel(
             roleId: "discord-only",
             roleCode: "DISCORD_STAFF",
             roleName: "Discord Staff",
+            rolePriority: 0,
+            isActive: true,
+            permissions: [],
+          },
+        };
+      }
+      if (isRecruiter(roles)) {
+        return {
+          canAccess: true,
+          source: "DISCORD_ROLES",
+          staffUser: {
+            id: "discord-only",
+            familyId,
+            userId: null,
+            discordId,
+            roleId: "discord-only",
+            roleCode: "RECRUITER",
+            roleName: "Recruteur",
             rolePriority: 0,
             isActive: true,
             permissions: [],

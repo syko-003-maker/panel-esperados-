@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requirePrivileged } from "@/lib/guards";
 import { prisma } from "@/lib/db";
-import { lygFetch } from "@/lib/lyg";
 import { FAMILY_SLUG, DEFAULT_FAMILY_ID } from "@/lib/family";
 
 type FamilyInfo = {
@@ -12,13 +11,8 @@ type FamilyInfo = {
   infoSyncedAt: Date | null;
 };
 
-async function fetchInfos() {
-  // CRITICAL: Always use FAMILY_SLUG, never parameter
-  console.log("[family-infos] Fetching family info from LYG", { slug: FAMILY_SLUG });
-  return await lygFetch<any>(`/familles/${FAMILY_SLUG}/infos`, { noStore: true });
-}
-
 export async function GET(req: Request) {
+  console.log(`[DIAG][family/infos] GET ${new Date().toISOString()} url=${req.url}`);
   try {
     const guard = await requirePrivileged();
     if (guard instanceof Response) return guard;
@@ -34,20 +28,45 @@ export async function GET(req: Request) {
       });
     }
 
-    const payload = await fetchInfos();
-    const data = payload?.data ?? payload;
-    if (!data) throw new Error("Unexpected infos response");
+    const [familyRow, infoSynced] = await Promise.all([
+      prisma.family.findUnique({
+        where: { slug: FAMILY_SLUG },
+        select: { id: true, name: true },
+      }),
+      prisma.syncState.findUnique({
+        where: { key: `infos:${FAMILY_SLUG}` },
+        select: { syncedAt: true, meta: true },
+      }),
+    ]);
 
-    const infoSynced = await prisma.syncState.findUnique({
-      where: { key: `infos:${FAMILY_SLUG}` },
-      select: { syncedAt: true },
-    });
+    const meta = (infoSynced?.meta as any) ?? {};
+    const moneyRaw = meta?.money;
+    const pointsRaw = meta?.points;
+
+    const money =
+      typeof moneyRaw === "number"
+        ? Math.trunc(moneyRaw)
+        : typeof moneyRaw === "string" && moneyRaw.trim() !== ""
+          ? Math.trunc(Number(moneyRaw.replace(/\s+/g, "")))
+          : null;
+
+    const points =
+      typeof pointsRaw === "number"
+        ? Math.trunc(pointsRaw)
+        : typeof pointsRaw === "string" && pointsRaw.trim() !== ""
+          ? Math.trunc(Number(pointsRaw.replace(/\s+/g, "")))
+          : null;
+
+    const familyName =
+      typeof meta?.name === "string" && meta.name.trim() !== ""
+        ? meta.name
+        : (familyRow?.name ?? null);
 
     const family: FamilyInfo = {
-      id: String(data.id ?? FAMILY_SLUG),
-      name: data.name != null ? String(data.name) : null,
-      money: typeof data.money === "number" ? Math.trunc(data.money) : null,
-      points: typeof data.points === "number" ? data.points : null,
+      id: String(familyRow?.id ?? FAMILY_SLUG),
+      name: familyName,
+      money,
+      points,
       infoSyncedAt: infoSynced?.syncedAt ?? null,
     };
 

@@ -3,11 +3,13 @@ export const revalidate = 0;
 
 import { requireStaffAccess } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
-import Link from "next/link";
 import DebtsClient from "./debts-client";
 import StatsClient from "./stats-client";
 import { redirect } from "next/navigation";
-import { PageShell } from "@/components/staff/ui";
+import { PageShell } from "@/components/staff/ui/PageShell";
+import { FAMILY_SLUG } from "@/lib/family";
+import { getMemberDisplayName } from "@/lib/member-display";
+import { isDisplayableStaffMember } from "@/lib/staff/member-scope";
 import {
   BarChart3,
   TrendingUp,
@@ -15,8 +17,8 @@ import {
   DollarSign,
   ArrowDown,
   AlertCircle,
+  Landmark,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 // ============================================================================
 // TYPES
@@ -39,39 +41,84 @@ type NormalizedRow = {
   rpName: string | null;
 };
 
+type FamilyBankBalanceInput = {
+  familySlug: string;
+};
+
 // ============================================================================
 // UTILITIES
 // ============================================================================
 
-function clampDays(x: number) {
-  if (!Number.isFinite(x)) return 30;
-  return Math.max(1, Math.min(365, x));
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
 }
 
-function formatMoney(value: number): string {
-  return value.toLocaleString("fr-BE");
+function parseMoneyCandidate(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const direct = Number(trimmed.replace(/\s+/g, ""));
+    if (Number.isFinite(direct)) {
+      return Math.trunc(direct);
+    }
+
+    // Accept values like "1 234 567 €" and keep sign if present.
+    const normalized = trimmed
+      .replace(/,/g, ".")
+      .replace(/[^\d.-]/g, "")
+      .replace(/(?!^)-/g, "");
+
+    if (!normalized || normalized === "-" || normalized === "." || normalized === "-.") {
+      return null;
+    }
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+  }
+
+  return null;
+}
+
+async function fetchFamilyBankBalance(input: FamilyBankBalanceInput): Promise<number | null> {
+  const syncKeys = Array.from(new Set([`infos:${input.familySlug}`, `infos:${FAMILY_SLUG}`]));
+
+  for (const key of syncKeys) {
+    const syncedInfos = await prisma.syncState.findUnique({
+      where: { key },
+      select: { meta: true },
+    });
+
+    const parsedSynced = parseMoneyCandidate((syncedInfos?.meta as any)?.money);
+    if (parsedSynced != null) {
+      return parsedSynced;
+    }
+  }
+
+  return null;
 }
 
 // ============================================================================
 // SERVER COMPONENT
 // ============================================================================
 
-type PageProps = {
-  searchParams?: { days?: string; debug?: string };
-};
-
-export default async function StaffStatsPage({ searchParams }: PageProps) {
+export default async function StaffStatsPage() {
   // ✅ RBAC: Require basic staff access (any user with canAccessStaffPanel=true)
   const guard = await requireStaffAccess();
   if (guard instanceof Response) {
     redirect("/staff/forbidden");
   }
 
-  const days = clampDays(Number(searchParams?.days ?? 30));
-  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
   // ========================================================================
-  // REQUÊTE 1: Agrégats sur la période
+  // REQUÊTE 1: Agrégats consolidés (sans filtre période)
   // ========================================================================
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT
@@ -81,7 +128,6 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
       SUM(CASE WHEN "type" = 2 THEN "money" ELSE - "money" END) AS "net",
       COUNT(*) AS "count"
     FROM "BankLog"
-    WHERE "at" >= ${from}
     GROUP BY "steamId"
   `;
 
@@ -118,15 +164,13 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
   // ========================================================================
   // Résoudre les steamIds et rpNames
   // ========================================================================
-  const steamIds = Array.from(
-    new Set(norm.map((r) => r.steamId).filter(Boolean))
-  );
+  const steamIds = Array.from(new Set(norm.map((r) => r.steamId).filter(Boolean)));
   const allTimeSteamIds = Array.from(
     new Set(allTimeNorm.map((r) => r.steamId).filter(Boolean))
   );
   const allSteamIds = Array.from(new Set([...steamIds, ...allTimeSteamIds]));
 
-  const familySlug = "esperados";
+  const familySlug = FAMILY_SLUG;
   const family = await prisma.family.findUnique({
     where: { slug: familySlug },
     select: { id: true },
@@ -137,22 +181,53 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
   const membersBySteam = allSteamIds.length
     ? await prisma.member.findMany({
         where: {
-          AND: [
-            { steamId: { in: allSteamIds } },
-            {
-              OR: [{ familyId: familyDbId }, { familyId: familySlug }],
-            },
-          ],
+          steamId: { in: allSteamIds },
+          familyId: familyDbId,
         },
-        select: { steamId: true, rpName: true },
+        select: {
+          steamId: true,
+          rpName: true,
+          discordDisplayName: true,
+          discordUsername: true,
+          discordId: true,
+          isActive: true,
+          isGhost: true,
+          discordInGuild: true,
+          missingFromLygSince: true,
+          grade: true,
+          rankRoleId: true,
+          rankLabel: true,
+          discordRoleIds: true,
+        },
         take: 2000,
       })
     : [];
 
+  const activeSteamIds = new Set(
+    membersBySteam
+      .filter((member) => {
+        const isDisplayableMember = isDisplayableStaffMember({
+          discordId: member.discordId,
+          isActive: member.isActive,
+          isGhost: member.isGhost,
+          discordInGuild: member.discordInGuild,
+          missingFromLygSince: member.missingFromLygSince,
+          grade: member.grade,
+          rankRoleId: member.rankRoleId,
+          rankLabel: member.rankLabel,
+          discordRoleIds: member.discordRoleIds,
+        });
+
+        return isDisplayableMember;
+      })
+      .map((member) => String(member.steamId ?? "").trim())
+      .filter(Boolean)
+  );
+
   const rpBySteam = new Map(
     membersBySteam
-      .filter((m) => m.steamId && m.rpName)
-      .map((m) => [String(m.steamId).trim(), String(m.rpName)])
+      .filter((m) => m.steamId)
+      .map((m) => [String(m.steamId).trim(), getMemberDisplayName(m)])
   );
 
   // ========================================================================
@@ -161,19 +236,39 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
   const enrichedMembers: NormalizedRow[] = norm.map((r) => ({
     ...r,
     rpName: rpBySteam.get(r.steamId) ?? null,
-  }));
+  })).filter((member) => activeSteamIds.has(member.steamId));
 
   const allTimeMembers: NormalizedRow[] = allTimeNorm.map((r) => ({
     ...r,
     rpName: rpBySteam.get(r.steamId) ?? null,
-  }));
+  })).filter((member) => activeSteamIds.has(member.steamId));
+
+  const activeMembersCount = new Set(enrichedMembers.map((member) => member.steamId)).size;
+  const linkedActiveCount = membersBySteam.filter((member) => {
+    const isDisplayableMember = isDisplayableStaffMember({
+      discordId: member.discordId,
+      isActive: member.isActive,
+      isGhost: member.isGhost,
+      discordInGuild: member.discordInGuild,
+      missingFromLygSince: member.missingFromLygSince,
+      grade: member.grade,
+      rankRoleId: member.rankRoleId,
+      rankLabel: member.rankLabel,
+      discordRoleIds: member.discordRoleIds,
+    });
+
+    return isDisplayableMember && Boolean(String(member.discordId ?? "").trim());
+  }).length;
+  const familyBankBalance = await fetchFamilyBankBalance({
+    familySlug,
+  });
 
   // ========================================================================
-  // KPIs PÉRIODE (7j/30j/90j)
+  // KPIs consolidés
   // ========================================================================
-  const totalDeposit = norm.reduce((sum, r) => sum + r.deposit, 0);
-  const totalWithdraw = norm.reduce((sum, r) => sum + r.withdraw, 0);
-  const totalNet = norm.reduce((sum, r) => sum + r.net, 0);
+  const totalDeposit = enrichedMembers.reduce((sum, r) => sum + r.deposit, 0);
+  const totalWithdraw = enrichedMembers.reduce((sum, r) => sum + r.withdraw, 0);
+  const totalNet = enrichedMembers.reduce((sum, r) => sum + r.net, 0);
 
   // ========================================================================
   // KPIs GLOBAL (lifetime) - INDÉPENDANT du filtre de jours
@@ -188,7 +283,7 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
   // LISTES TRIÉES
   // ========================================================================
 
-  // Top Dépôts (période)
+  // Top Dépôts (consolidé)
   const topDeposits = [...enrichedMembers]
     .sort((a, b) => b.deposit - a.deposit)
     .slice(0, 15)
@@ -198,7 +293,7 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
       amount: member.deposit,
     }));
 
-  // Top Retraits (période)
+  // Top Retraits (consolidé)
   const topWithdraws = [...enrichedMembers]
     .sort((a, b) => b.withdraw - a.withdraw)
     .slice(0, 15)
@@ -208,7 +303,7 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
       amount: member.withdraw,
     }));
 
-  // Top Net POSITIF (période) - NOUVEAU
+  // Top Net POSITIF (consolidé)
   const topNet = [...enrichedMembers]
     .filter((m) => m.net > 0)
     .sort((a, b) => b.net - a.net)
@@ -238,21 +333,8 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
   return (
     <PageShell
       title="Statistiques Banque"
-      description={`Période: ${days} jours • Membres actifs: ${steamIds.length}`}
+      description={`Vue consolidée temps réel • Membres actifs: ${activeMembersCount}`}
       icon={BarChart3}
-      actions={
-        <div className="flex gap-2">
-          <Button asChild variant={days === 7 ? "default" : "outline"} size="sm">
-            <Link href="/staff/stats?days=7">7j</Link>
-          </Button>
-          <Button asChild variant={days === 30 ? "default" : "outline"} size="sm">
-            <Link href="/staff/stats?days=30">30j</Link>
-          </Button>
-          <Button asChild variant={days === 90 ? "default" : "outline"} size="sm">
-            <Link href="/staff/stats?days=90">90j</Link>
-          </Button>
-        </div>
-      }
     >
       {/* KPI Grid - 6 cards compactes et sobres */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
@@ -288,25 +370,23 @@ export default async function StaffStatsPage({ searchParams }: PageProps) {
           color="text-red-400"
         />
         <KpiCard
-          label="Période"
-          value={days}
-          icon={BarChart3}
-          color="text-white/60"
-          isCount
+          label="Banque famille"
+          value={familyBankBalance}
+          icon={Landmark}
+          color="text-amber-300"
         />
       </div>
 
       {/* Client Component for interactive UI */}
       <StatsClient
-        days={days}
         kpis={{
           totalDeposit,
           totalWithdraw,
           net: totalNet,
           deficitMembers: globalDebtMembersCount,
           deficitTotal: globalTotalDebt,
-          activeMembers: steamIds.length,
-          linkedRatio: `${rpBySteam.size}/${steamIds.length}`,
+          activeMembers: activeMembersCount,
+          linkedRatio: `${linkedActiveCount}/${activeMembersCount}`,
         }}
         rows={enrichedMembers}
         topDeposits={topDeposits}
@@ -337,7 +417,7 @@ function KpiCard({
   isCount = false,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   icon: React.ComponentType<{ className?: string }>;
   color?: string;
   isCount?: boolean;
@@ -351,7 +431,7 @@ function KpiCard({
         <Icon className={`h-4 w-4 ${color} opacity-70 flex-shrink-0`} />
       </div>
       <div className={`text-2xl font-bold ${color}`}>
-        {isCount ? value : `${formatMoney(value)}$`}
+        {value == null ? "Indisponible" : isCount ? value : formatMoney(value)}
       </div>
     </div>
   );

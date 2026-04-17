@@ -164,18 +164,11 @@ export async function POST(request: Request) {
           inline: true,
         });
 
-        fields.push(
-          {
-            name: "Date",
-            value: `<t:${Math.floor(Date.now() / 1000)}:f>`,
-            inline: false,
-          },
-          {
-            name: "Lien Panel",
-            value: `[Aller à /staff/link](${PANEL_BASE_URL}/staff/link)`,
-            inline: false,
-          }
-        );
+        fields.push({
+          name: "Date",
+          value: `<t:${Math.floor(Date.now() / 1000)}:f>`,
+          inline: false,
+        });
 
         const embed = {
           title: "🔗 Demande de liaison",

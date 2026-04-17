@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { StatusBadge } from "@/components/staff/ui";
 
 type Tone = "green" | "red" | "yellow" | "blue" | "gray" | "orange" | "purple";
 
@@ -19,9 +20,5 @@ const toneClasses: Record<Tone, string> = {
 
 export function Badge({ children, tone = "gray" }: BadgeProps) {
   const cls = toneClasses[tone] ?? toneClasses.gray;
-  return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${cls}`}>
-      {children}
-    </span>
-  );
+  return <StatusBadge className={cls}>{children}</StatusBadge>;
 }

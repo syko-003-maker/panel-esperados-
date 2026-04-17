@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
+import { logInfo, logError, makeRequestId } from "@/lib/obs";
 
 /**
  * GET /api/staff/health/summary
@@ -12,6 +13,7 @@ import { requireChefOrEtatMajor } from "@/lib/guards";
  * - Returns comprehensive diagnostics for troubleshooting
  */
 export async function GET(req: Request) {
+  const requestId = makeRequestId();
   const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
 
@@ -37,7 +39,7 @@ export async function GET(req: Request) {
 
       // Active sanctions (ACTIVE status)
       prisma.sanction.count({
-        where: { familyId, status: "ACTIVE" },
+        where: { familyId, status: "ACTIVE", clearedAt: null },
       }),
 
       // Pending Outbox jobs
@@ -83,8 +85,10 @@ export async function GET(req: Request) {
 
     const elapsedMs = Date.now() - startTime;
 
+    logInfo("health_summary_ok", { requestId, elapsedMs, healthy: isHealthy, outboxPending });
     return NextResponse.json({
       ok: true,
+      requestId,
       timestamp: new Date().toISOString(),
       healthy: isHealthy,
       issues,
@@ -114,12 +118,13 @@ export async function GET(req: Request) {
       },
     });
   } catch (error: any) {
-    console.error("[/api/staff/health/summary GET]", error);
+    logError("health_summary_error", { requestId }, error);
     return NextResponse.json(
       {
         ok: false,
         healthy: false,
-        error: error.message ?? "Health check failed",
+        error: "INTERNAL_ERROR",
+        requestId,
         timestamp: new Date().toISOString(),
       },
       { status: 500 }

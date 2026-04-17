@@ -5,6 +5,7 @@ import { recordPanelMetric } from "@/lib/metrics";
 import { requireTicketsEnabled } from "@/lib/feature-guard";
 import { normalizeSteamId64 } from "@/lib/validation/steamid";
 import { resolveRankFromDiscord } from "@/lib/discord-rank";
+import { buildRecruitmentNotes, extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import type { RecruitmentLegacyStatus, ComplaintStatus, Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
@@ -73,15 +74,81 @@ type IngestEvent = {
 type HandlerContext = {
   prisma: typeof prisma;
   familyId: string;
+  familyDbId: string;
   fallbackUserId: string;
   now: Date;
 };
+
+async function resolveMemberIdByDiscord(params: {
+  familyDbId: string;
+  discordId?: string | null;
+}): Promise<string | null> {
+  const discordId = normalizeString(params.discordId);
+  if (!discordId) return null;
+
+  const member = await prisma.member.findUnique({
+    where: {
+      familyId_discordId: {
+        familyId: params.familyDbId,
+        discordId,
+      },
+    },
+    select: { id: true },
+  });
+
+  return member?.id ?? null;
+}
 
 type HandlerResult = 
   | { ok: true; alreadyClosed?: boolean }
   | { ok: false; error: string; status: number };
 
 type EventHandler = (ctx: HandlerContext, event: IngestEvent) => Promise<HandlerResult>;
+
+async function resolveFallbackUserId(params: {
+  familyDbId: string;
+  authorDiscordId?: string | null;
+  closedByDiscordId?: string | null;
+}): Promise<string | null> {
+  const { familyDbId, authorDiscordId, closedByDiscordId } = params;
+
+  const flaggedUser = await prisma.user.findFirst({
+    where: { OR: [{ isChef: true }, { isStaff: true }] },
+    select: { id: true },
+  });
+  if (flaggedUser) return flaggedUser.id;
+
+  const activeStaffUser = await prisma.staffUser.findFirst({
+    where: {
+      familyId: familyDbId,
+      isActive: true,
+      userId: { not: null },
+    },
+    select: { userId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (activeStaffUser?.userId) return activeStaffUser.userId;
+
+  const discordIds = [authorDiscordId, closedByDiscordId].filter(
+    (value): value is string => Boolean(value)
+  );
+  if (discordIds.length > 0) {
+    const linkedAccount = await prisma.account.findFirst({
+      where: {
+        provider: "discord",
+        providerAccountId: { in: discordIds },
+      },
+      select: { userId: true },
+    });
+    if (linkedAccount?.userId) return linkedAccount.userId;
+  }
+
+  const anyUser = await prisma.user.findFirst({
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  return anyUser?.id ?? null;
+}
 
 // ─────────────────────────────────────────────────────────────
 // Event Handlers
@@ -103,23 +170,48 @@ const handlers: Record<string, EventHandler> = {
     const steamId = (payload as any)?.steamId || null;
     const discordUsername = (payload as any)?.discordUsername || authorTag || null;
     const discordDisplayName = (payload as any)?.discordDisplayName || discordUsername || null;
+    const existingRecruitment = await ctx.prisma.recruitment.findUnique({
+      where: { ticketKey },
+      select: { notes: true },
+    });
+    const existingNotes = parseRecruitmentNotes(existingRecruitment?.notes ?? null);
+    const evaluation = extractRecruitmentEvaluation(existingNotes, payload);
+    const hasEvaluation =
+      Object.keys(evaluation.answersJson).length > 0 || Object.keys(evaluation.scoresJson).length > 0;
+    const nextNotes = hasEvaluation
+      ? buildRecruitmentNotes(existingNotes, {
+          answersJson: evaluation.answersJson,
+          scoresJson: evaluation.scoresJson,
+        })
+      : existingRecruitment?.notes ?? null;
 
     const recruitment = await ctx.prisma.recruitment.upsert({
       where: { ticketKey },
       create: {
-        familyId: ctx.familyId,
+        familyId: ctx.familyDbId,
         ticketKey,
         discordThreadId: threadId,
         discordId: authorId,
         authorTag,
         payload,
+        notes: nextNotes,
+        rpName: rpName || null,
+        steamId: steamId || null,
+        motivation: (payload as any)?.motivation || null,
+        availabilities: (payload as any)?.dispo || null,
         status: "PENDING",
         createdById: ctx.fallbackUserId,
       },
       update: {
+        familyId: ctx.familyDbId,
         discordThreadId: threadId,
         authorTag,
         payload,
+        notes: nextNotes,
+        rpName: rpName || null,
+        steamId: steamId || null,
+        motivation: (payload as any)?.motivation || null,
+        availabilities: (payload as any)?.dispo || null,
       },
     });
 
@@ -131,7 +223,7 @@ const handlers: Record<string, EventHandler> = {
         const existingMember = await ctx.prisma.member.findUnique({
           where: {
             familyId_discordId: {
-              familyId: ctx.familyId,
+              familyId: ctx.familyDbId,
               discordId: authorId,
             },
           },
@@ -158,12 +250,12 @@ const handlers: Record<string, EventHandler> = {
         const upsertedMember = await ctx.prisma.member.upsert({
           where: {
             familyId_discordId: {
-              familyId: ctx.familyId,
+              familyId: ctx.familyDbId,
               discordId: authorId,
             },
           },
           create: {
-            family: { connect: { id: ctx.familyId } },
+            familyId: ctx.familyDbId,
             discordId: authorId,
             rpName: rpName || null,
             discordUsername: discordUsername || null,
@@ -200,7 +292,7 @@ const handlers: Record<string, EventHandler> = {
 
     // Get Discord config for recruitment channel
     const discordConfig = await ctx.prisma.discordConfig.findUnique({
-      where: { familyId: ctx.familyId },
+      where: { familyId: ctx.familyDbId },
       select: { recruitmentChannelId: true },
     });
 
@@ -212,7 +304,7 @@ const handlers: Record<string, EventHandler> = {
         data: {
           status: "PENDING",
           type: "SANCTION_NOTIFY",
-          familyId: ctx.familyId,
+          familyId: ctx.familyDbId,
           entityId: recruitment.id,
           channelId: discordConfig.recruitmentChannelId,
           dedupeKey: `RECRUITMENT_CREATED:${recruitment.id}:${Date.now()}`,
@@ -258,7 +350,7 @@ const handlers: Record<string, EventHandler> = {
     await ctx.prisma.recruitment.upsert({
       where: { ticketKey },
       create: {
-        familyId: ctx.familyId,
+        familyId: ctx.familyDbId,
         ticketKey,
         discordThreadId: threadId,
         discordId: "unknown",
@@ -271,6 +363,7 @@ const handlers: Record<string, EventHandler> = {
         createdById: ctx.fallbackUserId,
       },
       update: {
+        familyId: ctx.familyDbId,
         status: "ARCHIVED" as RecruitmentLegacyStatus,
         closedAt: ctx.now,
         closedByDiscordId: closedById,
@@ -290,8 +383,17 @@ const handlers: Record<string, EventHandler> = {
 
     const authorTag = event.author?.tag ?? null;
     const payload = (event.payload ?? {}) as Prisma.InputJsonValue;
+    const complaintPayload = (event.payload ?? {}) as Record<string, unknown>;
     const ticketKey = event.ticketKey;
     const threadId = event.threadId;
+    const complainantId = await resolveMemberIdByDiscord({
+      familyDbId: ctx.familyDbId,
+      discordId: authorId,
+    });
+    const reason = normalizeString(complaintPayload.reason) ?? `Plainte ${ticketKey}`;
+    const details = normalizeString(complaintPayload.details) ?? "-";
+    const targetName = normalizeString(complaintPayload.target);
+    const authorDisplayName = normalizeString(complaintPayload.authorDisplayName);
 
     const complaint = await ctx.prisma.complaint.upsert({
       where: { ticketKey },
@@ -300,11 +402,13 @@ const handlers: Record<string, EventHandler> = {
         ticketKey,
         discordThreadId: threadId,
         authorDiscordId: authorId,
-        complainantId: authorId,
+        complainantId: complainantId ?? undefined,
         authorTag,
         payload,
-        title: `Plainte ${ticketKey}`,
-        description: "-",
+        title: reason,
+        description: details,
+        targetName: targetName ?? undefined,
+        authorRpName: authorDisplayName ?? undefined,
         status: "OPEN",
         createdById: ctx.fallbackUserId,
       },
@@ -312,6 +416,10 @@ const handlers: Record<string, EventHandler> = {
         discordThreadId: threadId,
         authorTag,
         payload,
+        title: reason,
+        description: details,
+        targetName: targetName ?? undefined,
+        authorRpName: authorDisplayName ?? undefined,
       },
     });
 
@@ -393,7 +501,6 @@ const handlers: Record<string, EventHandler> = {
         ticketKey,
         discordThreadId: threadId,
         authorDiscordId: "unknown",
-        complainantId: "unknown",
         authorTag: null,
         payload: {} as Prisma.InputJsonValue,
         title: `Plainte ${ticketKey}`,
@@ -522,19 +629,20 @@ export async function POST(req: Request) {
     // ─────────────────────────────────────────────────────────────
     // FK SAFETY: Ensure Family exists
     // ─────────────────────────────────────────────────────────────
-    await prisma.family.upsert({
+    const family = await prisma.family.upsert({
       where: { slug: familyId },
       create: { slug: familyId, name: getFamilyName(familyId) },
       update: {},
+      select: { id: true, slug: true },
     });
 
-    // Find a staff/chef user for createdById
-    const fallbackUser = await prisma.user.findFirst({
-      where: { OR: [{ isChef: true }, { isStaff: true }] },
-      select: { id: true },
+    const fallbackUserId = await resolveFallbackUserId({
+      familyDbId: family.id,
+      authorDiscordId: event.author?.id ?? null,
+      closedByDiscordId: event.closedBy?.id ?? null,
     });
 
-    if (!fallbackUser) {
+    if (!fallbackUserId) {
       return NextResponse.json(
         { ok: false, error: "No staff user found" },
         { status: 500 }
@@ -547,7 +655,8 @@ export async function POST(req: Request) {
     const ctx: HandlerContext = {
       prisma,
       familyId,
-      fallbackUserId: fallbackUser.id,
+      familyDbId: family.id,
+      fallbackUserId,
       now: new Date(),
     };
 

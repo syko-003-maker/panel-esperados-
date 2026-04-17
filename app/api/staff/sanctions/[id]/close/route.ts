@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged } from "@/lib/guards";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueSanctionNotify } from "@/lib/discord/discord";
 
@@ -19,7 +19,7 @@ function mapTypeToApi(type: string) {
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requirePrivileged();
+  const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

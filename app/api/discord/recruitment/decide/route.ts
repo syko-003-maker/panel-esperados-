@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { makeRequestId, logInfo, logWarn, logError } from "@/lib/obs";
+import { enqueueRecruitmentDecision, enqueueAssignRole } from "@/lib/discord/discord";
+import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 
 const FAMILY_ID = "esperados";
+const GUILD_ID = process.env.GUILD_ID ?? "1312845998753710151";
 const STAFF_LEVEL = 5; // GRADE_LEVELS.STAFF
 const INGEST_SECRET = process.env.INGEST_SECRET;
+
+// Rôles attribués automatiquement lors de l'acceptation d'un recrutement
+const RECRUITMENT_ACCEPT_ROLE_IDS = [
+  "1408492476351778836", // Novato
+  "1312845999340781643", // En Test
+  "1312845999340781646", // Los Esperados
+  "1408484776708673686", // Homme de rang
+  "1325929087079813232", // Sans spé
+] as const;
 
 /**
  * POST /api/discord/recruitment/decide
@@ -52,10 +64,23 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    const family = await prisma.family.findUnique({
+      where: { slug: FAMILY_ID },
+      select: { id: true },
+    });
+
+    if (!family) {
+      logWarn("recruitment_decide_family_not_found", { requestId, familySlug: FAMILY_ID });
+      return NextResponse.json(
+        { ok: false, error: "Family not found" },
+        { status: 404 }
+      );
+    }
     
     // Verify staff permissions
     const staffMember = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: FAMILY_ID, discordId: staffDiscordId } },
+      where: { familyId_discordId: { familyId: family.id, discordId: staffDiscordId } },
       select: { id: true, isActive: true, gradeLevel: true, rpName: true, discordId: true },
     });
     
@@ -77,6 +102,7 @@ export async function POST(req: Request) {
         steamId: true,
         discordId: true,
         discordThreadId: true,
+        notes: true,
       },
     });
     
@@ -127,6 +153,58 @@ export async function POST(req: Request) {
       staffDiscordId,
       staffRpName: staffMember.rpName,
     });
+
+    // Resolve claimedByUserId for the outbox job (recruiter who claimed this ticket)
+    const notes = parseRecruitmentNotes(recruitment.notes ?? null);
+    let claimedByUserId = notes.claimedById ?? "";
+    if (!claimedByUserId) {
+      // Fallback: find the User account linked to this staffDiscordId
+      const staffAccount = await prisma.account.findFirst({
+        where: { provider: "discord", providerAccountId: staffDiscordId },
+        select: { userId: true },
+      });
+      claimedByUserId = staffAccount?.userId ?? "";
+    }
+
+    // Enqueue outbox job for log + whitelist + ticket close (unified path)
+    // liveChannelId = the actual Discord channel where the button was clicked
+    const liveChannelId = channelId || null;
+    try {
+      await enqueueRecruitmentDecision({
+        familyId: FAMILY_ID,
+        ticketId: updated.id,
+        decision: decision === "APPROVE" ? "ACCEPT" : "REJECT",
+        candidateRpName: updated.rpName ?? updated.discordId ?? "Unknown",
+        candidateDiscordId: updated.discordId ?? undefined,
+        candidateSteamId: updated.steamId ?? undefined,
+        claimedByUserId,
+        discordThreadId: liveChannelId || updated.discordThreadId || null,
+      });
+    } catch (enqueueErr) {
+      logError("recruitment_decide_enqueue_failed", { requestId, ticketKey }, enqueueErr as Error);
+    }
+
+    // Attribution automatique des rôles Discord lors de l'acceptation
+    if (decision === "APPROVE") {
+      const candidateDiscordId = (updated.discordId ?? "").trim();
+      const isValidDiscordId = /^\d{17,20}$/.test(candidateDiscordId);
+      if (isValidDiscordId) {
+        await Promise.all(
+          RECRUITMENT_ACCEPT_ROLE_IDS.map((roleId) =>
+            enqueueAssignRole({
+              familyId: FAMILY_ID,
+              guildId: GUILD_ID,
+              userDiscordId: candidateDiscordId,
+              roleId,
+              entity: "recruitment_ticket",
+              entityId: updated.id,
+            }).catch((err) => {
+              logError("recruitment_decide_assign_role_failed", { requestId, ticketKey, roleId, candidateDiscordId }, err);
+            })
+          )
+        );
+      }
+    }
     
     return NextResponse.json({
       ok: true,

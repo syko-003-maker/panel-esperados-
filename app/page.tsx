@@ -34,15 +34,15 @@ export default async function Home() {
     redirect("/login?reason=not_linked");
   }
 
-  // Member is linked: check if staff
+  // Member is linked: check if staff (full staff only — recruteur reste dans l'espace membre)
   const staffAccess = await canAccessStaffPanel(session);
 
-  if (staffAccess.canAccess) {
-    // Staff: go to staff dashboard
+  if (staffAccess.canAccess && staffAccess.staffUser?.roleCode !== "RECRUITER") {
+    // Staff complet: go to staff dashboard
     redirect("/staff/dashboard");
   }
 
-  // Simple member: go to member space
-  redirect("/me");
+  // Membre normal ou recruteur: go to member space
+  redirect("/dashboard");
 }
 

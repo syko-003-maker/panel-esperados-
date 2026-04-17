@@ -21,9 +21,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const session = await getSession();
   const userId = session?.user?.id ?? (session as any)?.userId;
+  const actorMemberId = (session as any)?.member?.id ?? null;
   if (!userId) {
     return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
   }
+
+  const actorRpName = actorMemberId
+    ? (
+        await prisma.member.findFirst({
+          where: { id: actorMemberId, familyId: FAMILY_ID },
+          select: { rpName: true },
+        })
+      )?.rpName ?? null
+    : null;
 
   const sanction = await prisma.sanction.findUnique({
     where: { id },
@@ -35,6 +45,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   if (!sanction) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  if (sanction.discordStatus === "PENDING") {
+    return NextResponse.json({ ok: false, error: "ALREADY_QUEUED" }, { status: 409 });
   }
 
   if (sanction.discordStatus === "APPLIED") {
@@ -49,6 +63,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
+  const expiresAt = sanction.expiresAt ?? sanction.endAt;
+
   // Queue the Discord action
   await enqueueSanctionApply({
     familyId: FAMILY_ID,
@@ -57,11 +73,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     memberName: sanction.member?.rpName ?? "Unknown",
     sanctionType: sanction.type,
     reason: sanction.reason ?? "No reason provided",
-    durationHours: sanction.endAt
-      ? Math.max(1, Math.ceil((sanction.endAt.getTime() - Date.now()) / (60 * 60 * 1000)))
+    durationHours: expiresAt
+      ? Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / (60 * 60 * 1000)))
       : null,
     staffName: sanction.createdBy?.name ?? "Unknown",
+    staffRpName: actorRpName,
     appliedByUserId: userId,
+    actorMemberId,
   });
 
   // Mark as pending (worker will apply)

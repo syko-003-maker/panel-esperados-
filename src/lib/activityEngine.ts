@@ -5,6 +5,9 @@
 
 import type { PrismaClient, ActivityStatus, ActivityRule, Sanction } from "@prisma/client";
 import { DEFAULT_FAMILY_ID } from "./family";
+import { enqueueSanctionApply } from "./discord/discord";
+import { evaluateSanctionRules } from "./sanction-rules";
+import { getSanctionExpirationDate } from "./sanctions";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -394,10 +397,10 @@ export async function produceSanctions(
     // Get member
     const member = await prisma.member.findFirst({
       where: { familyId, discordId: action.memberDiscordId },
-      select: { id: true },
+      select: { id: true, rpName: true },
     });
 
-    // Create sanction
+    const startAt = new Date();
     const sanction = await prisma.sanction.create({
       data: {
         familyId,
@@ -406,9 +409,39 @@ export async function produceSanctions(
         type: action.sanctionType as any,
         source: "ACTIVITY",
         reason: action.reason,
+        startAt,
+        expiresAt: getSanctionExpirationDate(action.sanctionType, startAt),
+        status: "ACTIVE",
+        discordStatus: "PENDING",
         createdById: systemUserId,
       },
     });
+
+    const outbox = await enqueueSanctionApply({
+      familyId,
+      sanctionId: sanction.id,
+      discordId: action.memberDiscordId,
+      memberName: member?.rpName ?? action.memberDiscordId,
+      sanctionType: action.sanctionType,
+      reason: action.reason,
+      durationHours: sanction.expiresAt
+        ? Math.max(1, Math.ceil((sanction.expiresAt.getTime() - Date.now()) / (60 * 60 * 1000)))
+        : null,
+      staffName: "Système",
+      appliedByUserId: systemUserId,
+      client: prisma,
+    });
+
+    await prisma.sanction.update({
+      where: { id: sanction.id },
+      data: { outboxJobId: outbox?.id ?? null } as any,
+    });
+
+    if (member?.id) {
+      await evaluateSanctionRules(member.id, familyId).catch((err) => {
+        console.error("[produceSanctions] Error evaluating rules:", err);
+      });
+    }
 
     await prisma.activityLog.create({
       data: {

@@ -9,6 +9,7 @@ import {
 import { loadFamilyActivityState } from "@/lib/activity-legacy";
 import { activityConfigToRules, getActivityConfig } from "@/lib/activity-config";
 import { normalizeActivityState } from "@/lib/activity-backfill";
+import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
 
 const DEFAULT_FAMILY_ID = "esperados";
 
@@ -43,18 +44,28 @@ export async function GET(req: Request) {
 
   const members = await prisma.member.findMany({
     where: { familyId },
-    select: { discordId: true, rpName: true },
+    select: {
+      discordId: true,
+      rpName: true,
+      grade: true,
+      isActive: true,
+      isGhost: true,
+      rankRoleId: true,
+      rankLabel: true,
+      discordRoleIds: true,
+    },
     orderBy: { rpName: "asc" },
   });
 
+  const scopedMembers = members.filter(isActiveMembersScopeMember);
+
   const state = await loadFamilyActivityState(prisma, familyId);
-  normalizeActivityState(state, members);
+  normalizeActivityState(state, scopedMembers);
   const config = await getActivityConfig(prisma, familyId);
   const rules = activityConfigToRules(config);
   const now = new Date();
 
-  const items = members
-    .filter((member) => member.discordId)
+  const items = scopedMembers
     .map((member) => {
       const discordId = String(member.discordId);
       const memberState = state.members?.[discordId];

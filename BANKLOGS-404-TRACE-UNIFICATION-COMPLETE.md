@@ -274,7 +274,7 @@ Quand vous voyez en prod:
 
 ### Avant:
 ```
-[sync/all] Banklogs sync warning: HTTP 404: Not Found
+[sync/all] Banklogs sync warning: HTTP 044: Not Found
   → Aucun debug, aucune visibilité
   → Impossible de savoir pourquoi
   → Incohérence: 2 routes proxy différentes

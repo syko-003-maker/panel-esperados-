@@ -139,9 +139,6 @@ export default function StaffNav({
           </Link>
         ) : null}
 
-        <Link href="/staff/link" style={linkStyle("/staff/link")}>
-          Liaison
-        </Link>
       </>
     );
   }

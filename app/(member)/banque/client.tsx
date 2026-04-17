@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TrendingUp, TrendingDown, Minus, Banknote, ChevronLeft, ChevronRight } from "lucide-react";
 
 type BankLogItem = {
   at: string;
@@ -38,11 +39,16 @@ function formatDate(dateStr: string) {
   });
 }
 
-function getTypeColor(type: number) {
+function TxIcon({ type }: { type: number }) {
+  if (type === 1) return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />;
+  if (type === 0) return <TrendingDown className="h-3.5 w-3.5 text-red-400" />;
+  return <Minus className="h-3.5 w-3.5 text-slate-400" />;
+}
+
+function txColor(type: number) {
   if (type === 1) return "text-emerald-300";
   if (type === 0) return "text-red-300";
-  if (type === 2) return "text-blue-300";
-  return "text-slate-300";
+  return "text-blue-300";
 }
 
 export function BankPageClient() {
@@ -64,22 +70,20 @@ export function BankPageClient() {
         const json = (await res.json()) as BankLogsResponse;
         if (!mounted) return;
         if (!res.ok || !json.ok) {
-          setError((json as any).error || "Unknown error");
+          setError((json as any).error || "Erreur inconnue");
           setData(json);
           return;
         }
         setData(json);
       } catch (err) {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : "Unknown error");
+        setError(err instanceof Error ? err.message : "Erreur inconnue");
       } finally {
         if (mounted) setLoading(false);
       }
     };
     load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [page]);
 
   const logs = data && data.ok ? data.data : [];
@@ -87,68 +91,84 @@ export function BankPageClient() {
   const totalItems = data && data.ok ? data.total : 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-4xl font-bold text-white">Banque</h1>
-        <p className="text-slate-400">
-          Historique de vos transactions{" "}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-300/70 mb-2">
+          Espace Membre
+        </p>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-50 md:text-3xl">
+          Banque
+        </h1>
+        <p className="text-sm text-slate-400 mt-1">
+          Historique de vos transactions
           {totalItems > 0 && (
-            <span className="text-slate-500">
-              ({totalItems} au total)
-            </span>
+            <span className="text-slate-500 ml-1">({totalItems} au total)</span>
           )}
         </p>
       </div>
 
-      {/* Content */}
+      {/* Loading */}
       {loading && (
-        <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-6 text-slate-300">
-          Chargement des transactions...
+        <div className="space-y-2">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-12 rounded-xl border border-white/8 bg-white/[0.03] animate-pulse" />
+          ))}
         </div>
       )}
 
+      {/* Error */}
       {!loading && error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-300">
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-sm text-red-300">
           {error}
         </div>
       )}
 
+      {/* Empty */}
       {!loading && !error && logs.length === 0 && (
-        <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-6 text-slate-300 text-center">
-          Aucune transaction
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-12 flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
+            <Banknote className="h-5 w-5 text-slate-500" />
+          </div>
+          <p className="text-sm font-medium text-slate-400">Aucune transaction</p>
+          <p className="text-xs text-slate-600">Vos transactions apparaîtront ici.</p>
         </div>
       )}
 
+      {/* Table */}
       {!loading && !error && logs.length > 0 && (
         <>
-          {/* Table */}
-          <div className="bg-slate-900/50 border border-slate-700 rounded-lg overflow-hidden">
+          <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-800 border-b border-slate-700">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-300">
+                <thead>
+                  <tr className="border-b border-white/8">
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Date
                     </th>
-                    <th className="px-4 py-3 text-left font-semibold text-slate-300">
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Type
                     </th>
-                    <th className="px-4 py-3 text-right font-semibold text-slate-300">
+                    <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Montant
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700">
+                <tbody>
                   {logs.map((log, idx) => (
                     <tr
                       key={`${page}-${idx}`}
-                      className={`hover:bg-slate-800/50 transition ${getTypeColor(log.type)}`}
+                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
                     >
-                      <td className="px-4 py-3">{formatDate(log.at)}</td>
-                      <td className="px-4 py-3">{formatType(log.type)}</td>
-                      <td className="px-4 py-3 text-right font-semibold">
-                        {log.type === 1 ? "+" : "-"}
+                      <td className="px-5 py-3.5 text-slate-400">{formatDate(log.at)}</td>
+                      <td className="px-5 py-3.5">
+                        <span className="flex items-center gap-2">
+                          <TxIcon type={log.type} />
+                          <span className="text-slate-300">{formatType(log.type)}</span>
+                        </span>
+                      </td>
+                      <td className={`px-5 py-3.5 text-right font-semibold tabular-nums ${txColor(log.type)}`}>
+                        {log.type === 1 ? "+" : "−"}
                         {formatAmount(Math.abs(log.money))}
                       </td>
                     </tr>
@@ -161,23 +181,26 @@ export function BankPageClient() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <div className="text-sm text-slate-400">
-                Page {page} sur {totalPages}
-              </div>
+              <p className="text-xs text-slate-500">
+                Page <span className="text-slate-300">{page}</span> sur{" "}
+                <span className="text-slate-300">{totalPages}</span>
+              </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page === 1}
-                  className="px-3 py-2 rounded border border-slate-700 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:border-slate-500 transition"
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300 transition hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  ← Précédent
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Précédent
                 </button>
                 <button
                   onClick={() => setPage(Math.min(totalPages, page + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-2 rounded border border-slate-700 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:border-slate-500 transition"
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300 transition hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Suivant →
+                  Suivant
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>

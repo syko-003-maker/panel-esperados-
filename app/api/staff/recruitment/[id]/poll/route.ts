@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
-import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -31,6 +31,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       steamId: true,
       discordId: true,
       notes: true,
+      payload: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -44,7 +45,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   const notes = parseRecruitmentNotes(recruitment.notes ?? null);
-  const totals = computeRecruitmentTotals(notes.scoresJson);
+  const evaluation = extractRecruitmentEvaluation(notes, recruitment.payload);
+  const totals = computeRecruitmentTotals(evaluation.scoresJson);
   const statusLabel =
     recruitment.status === "ACCEPTED"
       ? "CLOSED_ACCEPTED"
@@ -73,8 +75,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       claimedById: notes.claimedById ?? null,
       claimedAt: notes.claimedAt ?? null,
       claimedBy: notes.claimedById ? { id: notes.claimedById, name: null } : null,
-      answersJson: notes.answersJson ?? null,
-      scoresJson: notes.scoresJson ?? null,
+      answersJson: Object.keys(evaluation.answersJson).length > 0 ? evaluation.answersJson : null,
+      scoresJson: Object.keys(evaluation.scoresJson).length > 0 ? evaluation.scoresJson : null,
       totalPoints: totals.totalPoints,
       totalOn20: totals.totalOn20,
       staffNotes: notes.staffNotes ?? null,

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
-import { buildRecruitmentNotes, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { buildRecruitmentNotes, extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -60,6 +60,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     },
   });
 
+  const evaluation = extractRecruitmentEvaluation(notes, null);
+
   return NextResponse.json({
     ok: true,
     ticket: {
@@ -75,8 +77,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       claimedById: userId,
       claimedAt,
       claimedBy: { id: userId, name: null },
-      answersJson: notes.answersJson ?? null,
-      scoresJson: notes.scoresJson ?? null,
+      answersJson: Object.keys(evaluation.answersJson).length > 0 ? evaluation.answersJson : null,
+      scoresJson: Object.keys(evaluation.scoresJson).length > 0 ? evaluation.scoresJson : null,
       totalPoints: null,
       totalOn20: null,
       staffNotes: notes.staffNotes ?? null,
