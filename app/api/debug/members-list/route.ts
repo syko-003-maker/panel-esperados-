@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
-import {
-  parseOffsetParams,
-  buildOffsetResult,
-} from "@/lib/pagination";
+import { parseOffsetParams, buildOffsetResult } from "@/lib/pagination";
+import { requirePrivileged } from "@/lib/guards";
 
 /**
  * PUBLIC DEBUG: /api/debug/members-list
  * No auth required - for testing
  */
 export async function GET(req: NextRequest) {
+  const guard = await requirePrivileged();
+  if (guard instanceof Response) return guard;
+
   try {
     const searchParams = req.nextUrl.searchParams;
     const { page, pageSize, skip } = parseOffsetParams(searchParams);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { formatBanklogTime } from "@/lib/banklogs-formatter";
+import { computeAbsenceUiStatus, parseAbsenceMeta } from "@/lib/meetings";
 
 export async function GET(
   _req: Request,
@@ -106,6 +107,47 @@ export async function GET(
       },
     }) : [];
 
+    const absences = await prisma.absence.findMany({
+      where: { memberId: member.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        reason: true,
+        notes: true,
+        status: true,
+        startAt: true,
+        endAt: true,
+        createdAt: true,
+        decidedAt: true,
+      },
+    });
+
+    const now = Date.now();
+    const mappedAbsences = absences.map((absence) => {
+      const meta = parseAbsenceMeta(absence.notes);
+      const isActive =
+        absence.status === "APPROVED" &&
+        absence.startAt.getTime() <= now &&
+        absence.endAt.getTime() >= now;
+
+      return {
+        id: absence.id,
+        type: meta.type,
+        meetingDate: meta.meetingDate,
+        reason: absence.reason,
+        notes: meta.memberNotes,
+        status: absence.status,
+        uiStatus: computeAbsenceUiStatus(absence.status, absence.endAt),
+        rejectionReason: meta.rejectionReason,
+        isActive,
+        startAt: absence.startAt.toISOString(),
+        endAt: absence.endAt.toISOString(),
+        decidedAt: absence.decidedAt?.toISOString() ?? null,
+        createdAt: absence.createdAt.toISOString(),
+      };
+    });
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -132,6 +174,8 @@ export async function GET(
           at: b.at instanceof Date ? b.at.toISOString() : b.at,
           formattedAt: formatBanklogTime(b.at),
         })),
+        absences: mappedAbsences,
+        activeAbsence: mappedAbsences.find((absence) => absence.isActive) ?? null,
       },
     });
   } catch (error: any) {

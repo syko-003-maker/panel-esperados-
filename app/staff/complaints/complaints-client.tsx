@@ -2,51 +2,69 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { StaffPage } from "../ui/StaffPage";
-import { StatCards } from "../ui/StatCards";
-import { StaffTable } from "../ui/StaffTable";
-import { Badge } from "../ui/Badge";
-import { Input } from "@/components/ui/input";
+import { AlertCircle, Search } from "lucide-react";
+import { DataTile } from "@/components/staff/ui/DataTile";
+import { EmptyState } from "@/components/staff/ui/EmptyState";
+import { MotionButtonFrame } from "@/components/staff/ui/motion";
+import { SectionCard } from "@/components/staff/ui/SectionCard";
+import { SkeletonTable } from "@/components/staff/ui/Skeletons";
+import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Download, ArrowRight } from "lucide-react";
-import { PageHeader, Section } from "@/components/staff/ui-components";
+import { Input } from "@/components/ui/input";
 
-type Ticket = {
+type Complaint = {
   id: string;
-  channelId: string;
-  status: "OPEN" | "TREATED" | "UNTREATED" | "CLOSED";
-  createdAtDiscord: string;
-  closedAtDiscord: string | null;
-  lastMessageAtDiscord: string | null;
-  messagesCount: number;
+  ticketKey: string | null;
+  title: string;
+  status: "OPEN" | "IN_REVIEW" | "RESOLVED" | "REJECTED" | "CLOSED";
+  authorDiscordId: string | null;
+  authorTag: string | null;
+  targetName: string | null;
+  reason: string | null;
+  discordThreadId: string | null;
+  closedAt: string | null;
+  closedByDiscordId: string | null;
+  closeReason: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
-const STATUSES: Ticket["status"][] = ["OPEN", "TREATED", "UNTREATED", "CLOSED"];
+const VALID_STATUSES: Complaint["status"][] = ["OPEN", "IN_REVIEW", "RESOLVED", "REJECTED", "CLOSED"];
+
+const STATUS_LABELS: Record<Complaint["status"], string> = {
+  OPEN: "Ouverte",
+  IN_REVIEW: "En cours",
+  RESOLVED: "Résolue",
+  REJECTED: "Refusée",
+  CLOSED: "Fermée",
+};
+
+const STATUS_TONES: Record<Complaint["status"], "danger" | "info" | "success" | "warning" | "neutral"> = {
+  OPEN: "danger",
+  IN_REVIEW: "info",
+  RESOLVED: "success",
+  REJECTED: "warning",
+  CLOSED: "neutral",
+};
 
 function fmtDate(iso: string | null) {
-  if (!iso) return "-";
+  if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString("fr-FR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function statusBadge(status: Ticket["status"]) {
-  const styles = {
-    OPEN: { background: "#fef3c7", color: "#b45309", label: "🔴 Ouvert" },
-    TREATED: { background: "#d1fae5", color: "#065f46", label: "✅ Traité" },
-    UNTREATED: { background: "#fee2e2", color: "#991b1b", label: "❌ Refusé" },
-    CLOSED: { background: "#e5e7eb", color: "#374151", label: "⊘ Clôturé" },
-  };
-  return styles[status];
-}
-
 export default function ComplaintsClient() {
-  const [items, setItems] = useState<Ticket[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"" | "OPEN" | "TREATED" | "UNTREATED" | "CLOSED">("");
+  const [items, setItems] = useState<Complaint[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"" | Complaint["status"]>("");
   const [q, setQ] = useState("");
+  const [pendingQ, setPendingQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   async function load() {
     setLoading(true);
@@ -54,24 +72,17 @@ export default function ComplaintsClient() {
     try {
       const qs = new URLSearchParams();
       if (statusFilter) qs.set("status", statusFilter);
-      if (q.trim()) qs.set("q", q.trim());
+      if (q) qs.set("q", q);
+      qs.set("page", String(page));
+      qs.set("pageSize", String(pageSize));
       const res = await fetch(`/api/staff/complaints?${qs.toString()}`, { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load");
-      
-      // Sort: OPEN first, then by lastMessageAtDiscord or createdAtDiscord
-      const sorted = (data.data ?? []).sort((a: Ticket, b: Ticket) => {
-        if (a.status === "OPEN" && b.status !== "OPEN") return -1;
-        if (a.status !== "OPEN" && b.status === "OPEN") return 1;
-        const aTime = (a.lastMessageAtDiscord || a.createdAtDiscord) ? new Date(a.lastMessageAtDiscord || a.createdAtDiscord).getTime() : 0;
-        const bTime = (b.lastMessageAtDiscord || b.createdAtDiscord) ? new Date(b.lastMessageAtDiscord || b.createdAtDiscord).getTime() : 0;
-        return bTime - aTime;
-      });
-      setItems(sorted);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Échec du chargement");
+      setItems(data.data ?? []);
+      setTotal(data.total ?? 0);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
       setItems([]);
-      setError(message);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -79,202 +90,204 @@ export default function ComplaintsClient() {
 
   useEffect(() => {
     load();
-  }, [statusFilter]);
-
-  function exportToCSV() {
-    if (items.length === 0) return;
-
-    const headers = ["ID", "Canal", "Statut", "Créé", "Clôturé", "Dernier message", "Messages"];
-    const rows = items.map((it) => [
-      it.id,
-      it.channelId,
-      it.status,
-      fmtDate(it.createdAtDiscord),
-      fmtDate(it.closedAtDiscord),
-      fmtDate(it.lastMessageAtDiscord),
-      it.messagesCount.toString(),
-    ]);
-
-    const csvContent = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${cell}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `plaintes_${new Date().toISOString().split("T")[0]}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, q, page]);
 
   const stats = {
-    total: items.length,
+    total,
     open: items.filter((i) => i.status === "OPEN").length,
-    treated: items.filter((i) => i.status === "TREATED").length,
-    untreated: items.filter((i) => i.status === "UNTREATED").length,
-    closed: items.filter((i) => i.status === "CLOSED").length,
+    inReview: items.filter((i) => i.status === "IN_REVIEW").length,
+    resolved: items.filter((i) => i.status === "RESOLVED").length,
+    closed: items.filter((i) => i.status === "REJECTED" || i.status === "CLOSED").length,
   };
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <PageHeader 
-        title="Plaintes"
-        description="Gestion des plaintes Discord et tickets"
-      />
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <div className="rounded-lg border border-border bg-card/50 p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total</p>
-          <p className="text-2xl font-bold mt-1">{loading ? <Skeleton className="h-8 w-12" /> : stats.total}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card/50 p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">🔴 Ouvertes</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">{loading ? <Skeleton className="h-8 w-12" /> : stats.open}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card/50 p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">✅ Traitées</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">{loading ? <Skeleton className="h-8 w-12" /> : stats.treated}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card/50 p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">❌ Refusées</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">{loading ? <Skeleton className="h-8 w-12" /> : stats.untreated}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card/50 p-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">⊘ Clôturées</p>
-          <p className="text-2xl font-bold text-slate-500 mt-1">{loading ? <Skeleton className="h-8 w-12" /> : stats.closed}</p>
-        </div>
+    <div className="grid gap-6">
+      <div className="flex justify-end">
+        <MotionButtonFrame>
+          <Button onClick={() => load()} variant="outline" size="sm" className="rounded-2xl border-white/10 bg-white/[0.04]">
+            Recharger
+          </Button>
+        </MotionButtonFrame>
       </div>
 
-      {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher un canal..."
-            className="pl-10 bg-card border-border"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
-          className="text-sm bg-card border border-border rounded-md px-3 py-2 text-foreground"
-        >
-          <option value="">Tous les statuts</option>
-          <option value="OPEN">🔴 Ouverts</option>
-          <option value="TREATED">✅ Traités</option>
-          <option value="UNTREATED">❌ Refusés</option>
-          <option value="CLOSED">⊘ Clôturés</option>
-        </select>
-        <Button onClick={load} variant="default" size="sm">
-          Chercher
-        </Button>
-        <Button
-          onClick={exportToCSV}
-          disabled={items.length === 0}
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          <Download className="h-4 w-4" />
-          <span className="hidden sm:inline">CSV</span>
-        </Button>
-      </div>
-
-      {/* Error State */}
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-          <p className="text-sm text-destructive">❌ Erreur: {error}</p>
-        </div>
-      )}
-
-      {/* Loading State */}
-      {loading && (
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "Total", value: total, tone: "default" as const },
+            { label: "Ouvertes", value: stats.open, tone: "danger" as const },
+            { label: "En cours", value: stats.inReview, tone: "info" as const },
+            { label: "Résolues", value: stats.resolved, tone: "success" as const },
+          ].map(({ label, value, tone }) => (
+            <DataTile key={label} label={label} value={<span className="text-2xl font-semibold">{value}</span>} tone={tone} />
           ))}
         </div>
-      )}
 
-      {/* Table Section */}
-      {!loading && (
-        <Section title="Liste des plaintes">
-          <div className="rounded-lg border border-border overflow-hidden bg-card/30">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-card/50">
-                    <th className="px-4 py-3 text-left font-semibold">Canal</th>
-                    <th className="px-4 py-3 text-left font-semibold">Statut</th>
-                    <th className="px-4 py-3 text-left font-semibold">Créé</th>
-                    <th className="px-4 py-3 text-left font-semibold">Clôturé</th>
-                    <th className="px-4 py-3 text-left font-semibold">Dernier msg</th>
-                    <th className="px-4 py-3 text-center font-semibold">Msgs</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {items.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                        Aucune plainte trouvée
-                      </td>
-                    </tr>
-                  ) : (
-                    items.map((it) => {
-                      const badge = statusBadge(it.status);
-                      const badgeClasses = {
-                        OPEN: "bg-amber-500/10 text-amber-700 border-amber-200",
-                        TREATED: "bg-green-500/10 text-green-700 border-green-200",
-                        UNTREATED: "bg-red-500/10 text-red-700 border-red-200",
-                        CLOSED: "bg-slate-500/10 text-slate-700 border-slate-200",
-                      };
-                      return (
-                        <tr key={it.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-4 font-medium">
-                            <Link
-                              href={`/staff/complaints/${it.id}`}
-                              className="text-primary hover:underline"
-                            >
-                              #{it.channelId.slice(-6)}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-4">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClasses[it.status]}`}
-                            >
-                              {badge.label}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-xs text-muted-foreground whitespace-nowrap">
-                            {fmtDate(it.createdAtDiscord)}
-                          </td>
-                          <td className={`px-4 py-4 text-xs whitespace-nowrap ${it.closedAtDiscord ? "text-foreground" : "text-muted-foreground"}`}>
-                            {fmtDate(it.closedAtDiscord) || "—"}
-                          </td>
-                          <td className="px-4 py-4 text-xs text-muted-foreground whitespace-nowrap">
-                            {fmtDate(it.lastMessageAtDiscord)}
-                          </td>
-                          <td className="px-4 py-4 text-center font-semibold text-foreground">
-                            {it.messagesCount}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+        {/* Filters */}
+        <SectionCard
+          title="Liste des plaintes"
+          description={`${total} plainte${total !== 1 ? "s" : ""} au total`}
+          icon={Search}
+          actions={statusFilter || q ? <StatusBadge tone="info">Filtres actifs</StatusBadge> : <StatusBadge>{pageSize} / page</StatusBadge>}
+        >
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+              <div className="flex-1 flex gap-2">
+                <Input
+                  type="text"
+                  value={pendingQ}
+                  onChange={(e) => setPendingQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { setQ(pendingQ); setPage(1); }
+                  }}
+                  placeholder="Rechercher ticket, auteur, cible..."
+                  className="bg-card/70 border-white/8"
+                />
+                <MotionButtonFrame>
+                  <Button
+                    variant="outline"
+                    onClick={() => { setQ(pendingQ); setPage(1); }}
+                    className="rounded-2xl border-white/10 bg-white/[0.04]"
+                  >
+                    Chercher
+                  </Button>
+                </MotionButtonFrame>
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
+                className="px-3 py-2 rounded-lg bg-card/70 border border-white/8 text-foreground text-sm focus:outline-none"
+              >
+                <option value="">Tous les statuts</option>
+                {VALID_STATUSES.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+              {(statusFilter || q) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setStatusFilter(""); setQ(""); setPendingQ(""); setPage(1); }}
+                  className="rounded-2xl"
+                >
+                  Réinitialiser
+                </Button>
+              )}
             </div>
+
+            {error && (
+              <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                <span className="shrink-0">❌</span>
+                <div>{error}</div>
+              </div>
+            )}
+
+            {loading ? (
+              <SkeletonTable rows={5} cols={6} />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title="Aucune plainte"
+                description="Aucune plainte trouvée pour les filtres actuels"
+                icon="⚠️"
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-white/8">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/8 bg-card/40">
+                      {["Ticket", "Auteur", "Cible", "Raison", "Statut", "Créée le", ""].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((c, idx) => (
+                      <tr
+                        key={c.id}
+                        className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors ${idx % 2 === 0 ? "bg-white/[0.015]" : ""}`}
+                      >
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs text-amber-400">
+                            {c.ticketKey ?? c.id.slice(0, 8)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-foreground text-sm">{c.authorTag ?? "—"}</div>
+                          {c.authorDiscordId && (
+                            <div className="text-[11px] text-muted-foreground font-mono">{c.authorDiscordId}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                          {c.targetName ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 max-w-[220px]">
+                          <div className="text-xs text-foreground truncate" title={c.reason ?? undefined}>
+                            {c.reason ?? c.title ?? "—"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge tone={STATUS_TONES[c.status]}>
+                            {STATUS_LABELS[c.status]}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {fmtDate(c.createdAt)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/staff/complaints/${c.id}`}
+                            className="text-xs text-primary hover:underline whitespace-nowrap"
+                          >
+                            Voir →
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {total > 0 && (
+              <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                <span>
+                  Page {page} / {totalPages} · {total} plainte{total !== 1 ? "s" : ""}
+                </span>
+                <div className="flex gap-2">
+                  <MotionButtonFrame>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className="rounded-2xl border-white/10 bg-white/[0.04]"
+                    >
+                      Précédent
+                    </Button>
+                  </MotionButtonFrame>
+                  <MotionButtonFrame>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      className="rounded-2xl border-white/10 bg-white/[0.04]"
+                    >
+                      Suivant
+                    </Button>
+                  </MotionButtonFrame>
+                </div>
+              </div>
+            )}
           </div>
-        </Section>
-      )}
+        </SectionCard>
     </div>
   );
 }

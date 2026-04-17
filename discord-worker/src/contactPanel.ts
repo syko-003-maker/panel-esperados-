@@ -51,69 +51,75 @@ export async function ensureTicketsPanel(client: Client) {
     throw new Error("CONTACT_CHANNEL_ID introuvable ou pas un salon texte");
   }
 
-  const panels = await readPanels();
-  const existingTicketsId = panels["tickets_panel_message_id"];
-
-  // Si le message a déjà été créé (même s'il a été supprimé),
-  // on ne crée rien. Le panel Tickets est figé et ne doit pas être modifié.
-  if (existingTicketsId) {
-    try {
-      const msg = await channel.messages.fetch(existingTicketsId);
-      log("tickets_panel_exists_frozen", { messageId: existingTicketsId, status: "active" });
-      return;
-    } catch (e) {
-      // Message supprimé intentionnellement ou accidentellement
-      // ON NE RECREE PAS — Le panel est figé
-      log("tickets_panel_frozen", { 
-        messageId: existingTicketsId, 
-        status: "deleted_by_design",
-        note: "Panel is frozen and will not be recreated"
-      });
-      return;
-    }
-  }
-
-  // Créer le message Tickets UNE SEULE FOIS
-  log("tickets_panel_creating_first_time");
   const embed = new EmbedBuilder()
-    .setTitle("🎫 Tickets — Los Esperados")
+    .setTitle("📩 Tickets — Los Esperados")
     .setDescription(
       "**Conditions d'admission :**\n" +
-        "• Compter de 5 à 15 joueurs actifs\n" +
-        "• Avoir une cohésion minimum\n" +
-        "• Respecter le règlement\n\n" +
-        "**Sélectionne une section ci-dessous :**"
+        "• 2500 minutes minimum sur LYG\n" +
+        "• 17 ans minimum\n" +
+        "• 1 warn actif maximum\n\n" +
+        "➡️ Exception possible avec l'accord du Chef Recruteur ou Chef de famille\n\n" +
+        "Des preuves peuvent être demandées.\n\n" +
+        "Si vous souhaitez nous rejoindre, ouvrez un ticket ci-dessous."
     )
     .addFields(
       {
-        name: "📋 Recrutement",
-        value: "Candidature ou whitelist",
+        name: "📌 Recrutement",
+        value: "Pour rejoindre la famille Los Esperados.",
         inline: true,
       },
       {
-        name: "⚠️ Plainte",
-        value: "Signalement ou litige",
+        name: "⚖️ Plainte",
+        value: "Signaler un problème ou un abus.",
         inline: true,
       }
     )
     .setColor(0x5865f2)
-    .setFooter({ text: "tickets-panel:immutable" });
+    ;
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(CUSTOM_ID.PANEL_RECRUIT)
       .setLabel("Ouvrir un recrutement")
-      .setStyle(ButtonStyle.Primary),
+      .setEmoji("📌")
+      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(CUSTOM_ID.PANEL_COMPLAINT)
       .setLabel("Ouvrir une plainte")
+      .setEmoji("⚖️")
       .setStyle(ButtonStyle.Danger)
   );
 
+  const panels = await readPanels();
+  const existingTicketsId = panels["tickets_panel_message_id"];
+
+  // Si le message existe encore, on le met à jour pour refléter le texte courant.
+  if (existingTicketsId) {
+    try {
+      const msg = await channel.messages.fetch(existingTicketsId);
+      await msg.edit({ embeds: [embed], components: [row] });
+      log("tickets_panel_updated", { messageId: existingTicketsId, status: "active" });
+      return;
+    } catch (e) {
+      // Message introuvable ou obsolète: on reposte et on remplace l'id stocké.
+      log("tickets_panel_missing_recreate", {
+        messageId: existingTicketsId, 
+        status: "stale_or_deleted",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  log(existingTicketsId ? "tickets_panel_recreated" : "tickets_panel_creating_first_time");
   const newMsg = await channel.send({ embeds: [embed], components: [row] });
   panels["tickets_panel_message_id"] = newMsg.id;
+  panels["last_updated"] = new Date().toISOString();
   await savePanels(panels);
-  log("tickets_panel_created_first_time", { messageId: newMsg.id, channel: IDS.CONTACT_CHANNEL_ID });
+  log(existingTicketsId ? "tickets_panel_recreated_success" : "tickets_panel_created_first_time", {
+    messageId: newMsg.id,
+    previousMessageId: existingTicketsId ?? null,
+    channel: IDS.CONTACT_CHANNEL_ID,
+  });
 }
 
 /**

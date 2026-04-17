@@ -8,6 +8,7 @@
 import { debug, error as logError } from "./logger";
 
 const ROLE_ID_REGEX = /^[0-9]{17,20}$/;
+export const DEMOTE_ROLE_ID = "1340837563753304075";
 
 interface StaffRoleConfig {
   roleIds: string[];
@@ -101,10 +102,33 @@ export function getStaffRoleIds(): string[] {
  * @returns true if user has any staff role
  */
 export function hasStaffRole(userRoleIds: string[]): boolean {
-  const staffRoleIds = getStaffRoleIds();
+  return isActiveStaff(userRoleIds);
+}
+
+/**
+ * Check if user has Démote role (global exclusion role)
+ */
+export function isDemoted(roles: string[]): boolean {
+  if (!Array.isArray(roles) || roles.length === 0) return false;
+  return roles.includes(DEMOTE_ROLE_ID);
+}
+
+/**
+ * Active staff means: has a staff role AND is not demoted.
+ */
+export function isActiveStaff(
+  roles: string[],
+  requiredRoleIds?: string[]
+): boolean {
+  if (!Array.isArray(roles) || roles.length === 0) return false;
+  if (isDemoted(roles)) return false;
+
+  const staffRoleIds = (requiredRoleIds && requiredRoleIds.length > 0)
+    ? requiredRoleIds
+    : getStaffRoleIds();
   if (staffRoleIds.length === 0) return false;
-  
-  return userRoleIds.some(id => staffRoleIds.includes(id));
+
+  return roles.some(id => staffRoleIds.includes(id));
 }
 
 /**

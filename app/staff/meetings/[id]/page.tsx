@@ -1,19 +1,16 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/auth";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
-import MeetingSheetClient from "./meeting-sheet-client";
 import { MeetingDecisionsClient } from "./meeting-decisions-client";
+import { PageShell } from "@/components/staff/ui/PageShell";
+import { CalendarDays } from "lucide-react";
 
 export default async function MeetingSheetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session?.user) {
-    redirect("/api/auth/signin");
-  }
-
-  const user = session.user as any;
-  if (!user?.isStaff) {
-    redirect("/");
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) {
+    const location = guard.headers.get("Location") ?? "/staff/forbidden";
+    redirect(location);
   }
 
   // Fetch meeting to get status
@@ -27,12 +24,15 @@ export default async function MeetingSheetPage({ params }: { params: Promise<{ i
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <MeetingSheetClient meetingId={id} />
+    <PageShell
+      title={meeting.title || "Réunion staff"}
+      description={`Suivi de la réunion ${meeting.weekKey} et décisions staff.`}
+      icon={CalendarDays}
+    >
       <MeetingDecisionsClient
         meetingId={id}
         meetingStatus={meeting.status}
       />
-    </div>
+    </PageShell>
   );
 }

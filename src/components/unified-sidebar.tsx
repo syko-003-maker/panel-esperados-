@@ -37,6 +37,7 @@ export function UnifiedSidebar({ role }: SidebarProps) {
   const links = role === "member" ? memberLinks : staffLinks;
   const panelTitle = role === "member" ? "Member Panel" : "Staff Panel";
   const panelColor = role === "member" ? "emerald" : "purple";
+  const disablePrefetch = role !== "member";
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
@@ -46,6 +47,7 @@ export function UnifiedSidebar({ role }: SidebarProps) {
       <div className="p-4 border-b border-slate-700">
         <Link
           href={role === "member" ? "/dashboard" : "/staff/dashboard"}
+          prefetch={disablePrefetch ? false : undefined}
           className="flex items-center gap-3 group"
         >
           <div className="w-12 h-12 rounded-xl overflow-hidden ring-2 ring-white/10 group-hover:ring-white/20 transition-all">
@@ -71,6 +73,7 @@ export function UnifiedSidebar({ role }: SidebarProps) {
             <Link
               key={link.href}
               href={link.href}
+              prefetch={disablePrefetch ? false : undefined}
               className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                 active
                   ? `bg-${panelColor}-600/20 text-${panelColor}-400 border border-${panelColor}-500/30`

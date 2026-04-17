@@ -177,7 +177,7 @@ export default function MemberSanctionsPage({
                     )}
 
                     <div className="grid grid-cols-2 gap-4 text-xs text-gray-600">
-                      <div>Créée: {fmtDate(sanction.createdAt)}</div>
+                      <div>Date de création: {fmtDate(sanction.createdAt)}</div>
                       {sanction.expiresAt && (
                         <div>Expire: {fmtDate(sanction.expiresAt)}</div>
                       )}

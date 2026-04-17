@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged } from "@/lib/guards";
+import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
 import { getSession } from "@/auth";
 import type { MeetingDecisionAction } from "@prisma/client";
+import { isMeetingLocked } from "@/lib/meetings";
 
 type DecisionInput = {
   memberDiscordId: string;
@@ -20,7 +21,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requirePrivileged();
+  const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
 
   const { id: meetingId } = await params;
@@ -85,9 +86,9 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Meeting not found" }, { status: 404 });
   }
 
-  if (meeting.status === "FINAL") {
+  if (isMeetingLocked(meeting.status)) {
     return NextResponse.json(
-      { ok: false, error: "Meeting is finalized, decisions cannot be modified" },
+      { ok: false, error: "Meeting is locked, decisions cannot be modified" },
       { status: 409 }
     );
   }
@@ -111,7 +112,7 @@ export async function POST(
       continue;
     }
 
-    const validActions: MeetingDecisionAction[] = ["PROMOTE", "DEMOTE", "KEEP", "EXCLUDE"];
+    const validActions: MeetingDecisionAction[] = ["DEMOTE", "KEEP", "EXCLUDE"];
     if (!validActions.includes(decision.action)) {
       results.errors.push({
         memberDiscordId: decision.memberDiscordId,
@@ -199,9 +200,9 @@ export async function DELETE(
     return NextResponse.json({ ok: false, error: "Meeting not found" }, { status: 404 });
   }
 
-  if (meeting.status === "FINAL") {
+  if (isMeetingLocked(meeting.status)) {
     return NextResponse.json(
-      { ok: false, error: "Meeting is finalized" },
+      { ok: false, error: "Meeting is locked" },
       { status: 409 }
     );
   }

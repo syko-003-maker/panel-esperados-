@@ -1,7 +1,175 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged, requireActiveMember, GRADE_LEVELS } from "@/lib/guards";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 import { getSession } from "@/auth";
+
+const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
+
+const STATUS_MAP: Record<string, string> = {
+  TRAITE: "RESOLVED",
+  NON_RESOLUE: "REJECTED",
+  REFUSE: "REJECTED",
+  IN_REVIEW: "IN_REVIEW",
+  CLOSED: "CLOSED",
+};
+
+function pickDisplayName(values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+async function resolveClosedByDisplayName(discordId: string | null, familySlug: string) {
+  if (!discordId) return null;
+
+  const [member, staffUser] = await Promise.all([
+    prisma.member.findFirst({
+      where: {
+        discordId,
+        family: { slug: familySlug },
+      },
+      select: {
+        rpName: true,
+        discordDisplayName: true,
+        discordUsername: true,
+      },
+    }),
+    prisma.staffUser.findFirst({
+      where: {
+        discordId,
+        family: { slug: familySlug },
+      },
+      select: {
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return pickDisplayName([
+    member?.rpName,
+    member?.discordDisplayName,
+    member?.discordUsername,
+    staffUser?.user?.name,
+    discordId,
+  ]);
+}
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
+
+  const complaint = await prisma.complaint.findFirst({
+    where: { id, familyId: FAMILY_ID },
+  });
+  if (!complaint) {
+    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  const payload = (complaint.payload as Record<string, unknown>) ?? {};
+  const closedByDisplayName = await resolveClosedByDisplayName(complaint.closedByDiscordId ?? null, FAMILY_ID);
+
+  return NextResponse.json({
+    ok: true,
+    complaint: {
+      id: complaint.id,
+      ticketKey: complaint.ticketKey ?? null,
+      title: complaint.title,
+      description: complaint.description,
+      status: complaint.status,
+      authorDiscordId: complaint.authorDiscordId ?? null,
+      authorTag: complaint.authorTag ?? null,
+      authorRpName: complaint.authorRpName ?? null,
+      targetName: complaint.targetName ?? null,
+      targetId: complaint.targetId ?? null,
+      discordThreadId: complaint.discordThreadId ?? null,
+      reason: (payload.reason as string) ?? complaint.description ?? null,
+      details: (payload.details as string) ?? null,
+      targetFrom: (payload.target as string) ?? complaint.targetName ?? null,
+      summary: complaint.summary ?? null,
+      closedAt: complaint.closedAt?.toISOString() ?? null,
+      closedByDiscordId: complaint.closedByDiscordId ?? null,
+      closedByDisplayName,
+      closeReason: complaint.closeReason ?? null,
+      createdAt: complaint.createdAt.toISOString(),
+      updatedAt: complaint.updatedAt.toISOString(),
+    },
+  });
+}
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
+
+  const session = await getSession();
+  const actorDiscordId = (session?.user as any)?.discordId ?? null;
+
+  const complaint = await prisma.complaint.findFirst({
+    where: { id, familyId: FAMILY_ID },
+    select: { id: true, status: true, closedAt: true },
+  });
+  if (!complaint) {
+    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
+  }
+
+  const decisionRaw = String((body as any).decision ?? "").trim().toUpperCase();
+  const summaryText = String((body as any).summary ?? "").trim() || null;
+
+  if (!STATUS_MAP[decisionRaw]) {
+    return NextResponse.json({ ok: false, error: "INVALID_DECISION" }, { status: 400 });
+  }
+
+  const newStatus = STATUS_MAP[decisionRaw] as any;
+  const isClosed = ["RESOLVED", "REJECTED", "CLOSED"].includes(newStatus);
+
+  const updated = await prisma.complaint.update({
+    where: { id },
+    data: {
+      status: newStatus,
+      summary: summaryText ?? undefined,
+      closedAt: isClosed ? new Date() : undefined,
+      closedByDiscordId: isClosed ? (actorDiscordId ?? "panel") : undefined,
+      closeReason: isClosed ? decisionRaw : undefined,
+    },
+  });
+
+  const payload = (updated.payload as Record<string, unknown>) ?? {};
+  const closedByDisplayName = await resolveClosedByDisplayName(updated.closedByDiscordId ?? null, FAMILY_ID);
+
+  return NextResponse.json({
+    ok: true,
+    complaint: {
+      id: updated.id,
+      ticketKey: updated.ticketKey ?? null,
+      title: updated.title,
+      status: updated.status,
+      authorDiscordId: updated.authorDiscordId ?? null,
+      authorTag: updated.authorTag ?? null,
+      targetName: updated.targetName ?? null,
+      reason: (payload.reason as string) ?? null,
+      details: (payload.details as string) ?? null,
+      summary: updated.summary ?? null,
+      closedAt: updated.closedAt?.toISOString() ?? null,
+      closedByDiscordId: updated.closedByDiscordId ?? null,
+      closedByDisplayName,
+      closeReason: updated.closeReason ?? null,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    },
+  });
+}
 
 const STATUSES = ["OPEN", "TREATED", "UNTREATED", "CLOSED"] as const;
 
@@ -9,191 +177,4 @@ type TicketStatus = (typeof STATUSES)[number];
 
 function isValidStatus(value: string) {
   return STATUSES.includes(value as TicketStatus);
-}
-
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const guard = await requirePrivileged();
-  if (guard instanceof Response) return guard;
-
-  const ticket = await prisma.complaintTicket.findUnique({ where: { id } });
-  if (!ticket) {
-    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-  }
-
-  const [messagesCount, lastMessage] = await Promise.all([
-    prisma.complaintMessage.count({ where: { ticketId: ticket.id } }),
-    prisma.complaintMessage.findFirst({
-      where: { ticketId: ticket.id },
-      orderBy: { createdAtDiscord: "desc" },
-      select: {
-        content: true,
-        authorNameSnapshot: true,
-        createdAtDiscord: true,
-      },
-    }),
-  ]);
-
-  return NextResponse.json({
-    ok: true,
-    ticket,
-    messagesCount,
-    lastMessagePreview: lastMessage
-      ? {
-          content: lastMessage.content,
-          authorNameSnapshot: lastMessage.authorNameSnapshot,
-          createdAtDiscord: lastMessage.createdAtDiscord,
-        }
-      : null,
-  });
-}
-
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const guard = await requirePrivileged();
-  if (guard instanceof Response) return guard;
-
-  const existing = await prisma.complaintTicket.findUnique({ where: { id } });
-  if (!existing) {
-    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-  }
-
-  const body = await req.json().catch(() => null);
-  if (!body) {
-    return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
-  }
-
-  // Handle decision action
-  if ("action" in body && body.action === "decision") {
-    return handleComplaintDecision(id, body, existing);
-  }
-
-  const updateData: Record<string, unknown> = {};
-
-  if ("status" in body) {
-    const value = String(body.status ?? "").trim();
-    if (!isValidStatus(value)) {
-      return NextResponse.json({ ok: false, error: "INVALID_STATUS" }, { status: 400 });
-    }
-    updateData.status = value;
-    updateData.closedAtDiscord = value === "CLOSED" ? new Date() : null;
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ ok: false, error: "NO_FIELDS" }, { status: 400 });
-  }
-
-  const updated = await prisma.complaintTicket.update({
-    where: { id },
-    data: updateData,
-  });
-
-  return NextResponse.json({ ok: true, ticket: updated });
-}
-
-async function handleComplaintDecision(
-  complaintId: string,
-  body: any,
-  existing: any
-): Promise<Response> {
-  try {
-    // Validate staff authorization
-    const guardResult = await requireActiveMember(GRADE_LEVELS.STAFF);
-    if (guardResult instanceof Response) return guardResult;
-
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ ok: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
-    }
-
-    const decision = String(body.decision ?? "").trim().toUpperCase();
-    if (!["TRAITE", "NON_RESOLU", "REFUSE"].includes(decision)) {
-      return NextResponse.json({ ok: false, error: "INVALID_DECISION" }, { status: 400 });
-    }
-
-    const note = body.note ? String(body.note).trim() : null;
-
-    // Get complaint from new Complaint table (not ComplaintTicket)
-    const complaint = await prisma.complaint.findUnique({
-      where: { id: complaintId },
-      select: { 
-        id: true, 
-        title: true,
-        discordThreadId: true, 
-        ticketKey: true,
-        status: true,
-        authorRpName: true,
-        targetName: true 
-      },
-    });
-
-    if (!complaint) {
-      return NextResponse.json({ ok: false, error: "COMPLAINT_NOT_FOUND" }, { status: 404 });
-    }
-
-    // Get staff member info
-    const staffMember = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: "esperados", discordId: session.user!.id! } },
-      select: { rpName: true, discordId: true },
-    });
-
-    if (!staffMember) {
-      return NextResponse.json({ ok: false, error: "STAFF_NOT_FOUND" }, { status: 404 });
-    }
-
-    // Map decision to ComplaintStatus enum
-    let newStatus: string = "OPEN";
-    if (decision === "TRAITE") {
-      newStatus = "RESOLVED";
-    } else if (decision === "NON_RESOLU") {
-      newStatus = "IN_REVIEW";
-    } else if (decision === "REFUSE") {
-      newStatus = "REJECTED";
-    }
-
-    const updatedComplaint = await prisma.complaint.update({
-      where: { id: complaintId },
-      data: {
-        status: newStatus as any,
-        closedAt: (decision === "TRAITE" || decision === "REFUSE") ? new Date() : null,
-        closeReason: note || `Décision: ${decision}`,
-        closedByDiscordId: staffMember.discordId,
-      },
-    });
-
-    // Enqueue Discord outbox job for TICKET_DECISION
-    await prisma.discordOutbox.create({
-      data: {
-        status: "PENDING",
-        type: "SANCTION_NOTIFY",
-        familyId: "esperados",
-        entityId: complaintId,
-        attempt: 0,
-        maxAttempts: 5,
-        nextAttemptAt: new Date(),
-        meta: {
-          kind: "TICKET_DECISION",
-          ticketKind: "COMPLAINT",
-          ticketKey: complaint.ticketKey || complaint.discordThreadId,
-          decision: decision,
-          note: note,
-          staffName: staffMember.rpName ?? "Unknown",
-          staffDiscordId: staffMember.discordId,
-          complaintTitle: complaint.title,
-          authorName: complaint.authorRpName,
-          targetName: complaint.targetName,
-        },
-      },
-    });
-
-    console.log(`[complaints] Decision recorded: complaintId=${complaintId} decision=${decision} staff=${staffMember.discordId} threadId=${complaint.ticketKey || complaint.discordThreadId}`);
-
-    return NextResponse.json({ ok: true, complaint: updatedComplaint });
-  } catch (err: any) {
-    console.error("[complaints] Decision error:", err);
-    return NextResponse.json(
-      { ok: false, error: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
-  }
 }

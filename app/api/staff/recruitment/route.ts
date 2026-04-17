@@ -3,12 +3,13 @@ import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 
-const STATUSES = ["OPEN", "CLAIMED", "CLOSED_ACCEPTED", "CLOSED_REJECTED"] as const;
+// Statuts DB bruts acceptés comme filtre
+const DB_STATUSES = ["PENDING", "ACCEPTED", "REJECTED", "ARCHIVED"] as const;
+type DbStatus = (typeof DB_STATUSES)[number];
 
-type TicketStatus = (typeof STATUSES)[number];
-
-function isValidStatus(value: string | null) {
-  return value ? STATUSES.includes(value as TicketStatus) : true;
+function isValidStatusFilter(value: string | null): boolean {
+  if (!value) return true;
+  return DB_STATUSES.includes(value as DbStatus);
 }
 
 export async function GET(req: Request) {
@@ -17,16 +18,24 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  const q = (searchParams.get("q") ?? "").trim();
 
-  if (!isValidStatus(status)) {
+  if (!isValidStatusFilter(status)) {
     return NextResponse.json({ ok: false, error: "INVALID_STATUS" }, { status: 400 });
   }
 
   const where: Record<string, unknown> = {};
   if (status) {
-    if (status === "CLOSED_ACCEPTED") where.status = "ACCEPTED";
-    else if (status === "CLOSED_REJECTED") where.status = "REJECTED";
-    else where.status = "PENDING";
+    where.status = status; // filtre direct sur la valeur DB
+  }
+  if (q) {
+    (where as any).OR = [
+      { rpName: { contains: q, mode: "insensitive" } },
+      { discordId: { contains: q, mode: "insensitive" } },
+      { steamId: { contains: q, mode: "insensitive" } },
+      { ticketKey: { contains: q, mode: "insensitive" } },
+      { authorTag: { contains: q, mode: "insensitive" } },
+    ];
   }
 
   const rows = await prisma.recruitment.findMany({
@@ -38,34 +47,69 @@ export async function GET(req: Request) {
       rpName: true,
       discordId: true,
       steamId: true,
+      ticketKey: true,
+      discordThreadId: true,
       createdAt: true,
       updatedAt: true,
       notes: true,
     },
   });
 
-  const data = rows.map((row) => {
-    const notes = parseRecruitmentNotes(row.notes ?? null);
-    const isClaimed = Boolean(notes.claimedById);
-    const statusLabel =
-      row.status === "ACCEPTED"
-        ? "CLOSED_ACCEPTED"
-        : row.status === "REJECTED" || row.status === "ARCHIVED"
-          ? "CLOSED_REJECTED"
-          : isClaimed
-            ? "CLAIMED"
-            : "OPEN";
+  // Résolution des noms de recruteurs : claimedById est un userId NextAuth (CUID)
+  // Priorité : rpName (Member) > displayName Discord > username Discord
+  const allNotes = rows.map((row) => parseRecruitmentNotes(row.notes ?? null));
+  const claimedUserIds = [...new Set(
+    allNotes.map((n) => n.claimedById).filter((id): id is string => Boolean(id))
+  )];
+  const claimedUsers = claimedUserIds.length > 0
+    ? await prisma.user.findMany({
+        where: { id: { in: claimedUserIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  // userId → discordId via Account
+  const accounts = claimedUserIds.length > 0
+    ? await prisma.account.findMany({
+        where: { userId: { in: claimedUserIds }, provider: "discord" },
+        select: { userId: true, providerAccountId: true },
+      })
+    : [];
+  const discordIdByUserId = new Map(accounts.map((a) => [a.userId, a.providerAccountId]));
+  // discordId → rpName via Member
+  const claimedDiscordIds = [...new Set(accounts.map((a) => a.providerAccountId))];
+  const claimedMembers = claimedDiscordIds.length > 0
+    ? await prisma.member.findMany({
+        where: { discordId: { in: claimedDiscordIds } },
+        select: { discordId: true, rpName: true },
+      })
+    : [];
+  const rpNameByDiscordId = new Map(
+    claimedMembers.filter((m): m is typeof m & { discordId: string } => Boolean(m.discordId))
+      .map((m) => [m.discordId, m.rpName])
+  );
+  const userNameMap = new Map(claimedUsers.map((u) => {
+    const discordId = discordIdByUserId.get(u.id);
+    const rpName = discordId ? rpNameByDiscordId.get(discordId) : null;
+    return [u.id, rpName ?? u.name ?? null];
+  }));
 
+  const data = rows.map((row, i) => {
+    const notes = allNotes[i];
+    const claimedById = notes.claimedById ?? null;
+    const claimedByName = claimedById ? (userNameMap.get(claimedById) ?? null) : null;
     return {
       id: row.id,
-      status: statusLabel,
+      status: row.status as DbStatus,
+      isClaimed: Boolean(claimedById),
       candidateRpName: row.rpName ?? row.discordId ?? "Unknown",
       candidateSteamId: row.steamId ?? null,
       candidateDiscordId: row.discordId ?? null,
+      ticketKey: (row as any).ticketKey ?? null,
+      discordThreadId: (row as any).discordThreadId ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       claimedAt: notes.claimedAt ?? null,
-      claimedBy: notes.claimedById ? { id: notes.claimedById, name: null } : null,
+      claimedBy: claimedById ? { id: claimedById, name: claimedByName } : null,
     };
   });
 

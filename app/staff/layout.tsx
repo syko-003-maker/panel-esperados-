@@ -3,6 +3,15 @@ import { StaffLayout } from "@/components/staff-layout";
 import { redirect } from "next/navigation";
 import { canAccessStaffPanel } from "@/lib/rbac";
 
+function AppBackground() {
+  return (
+    <div className="absolute inset-0 -z-10 overflow-hidden">
+      <div className="absolute -top-24 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-blue-500/10 blur-3xl" />
+      <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
+    </div>
+  );
+}
+
 /**
  * ✅ Layout staff - SÉCURISÉ
  * ✅ Vérifie staff/recruteur AVANT de rendre le layout
@@ -17,6 +26,18 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
+  if (process.env.THEME_DEBUG_BYPASS === "1") {
+    return (
+      <div className="relative min-h-screen">
+        <AppBackground />
+        <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-amber-500 px-4 py-1 text-xs font-semibold uppercase tracking-wider text-black shadow-lg">
+          BYPASS MODE
+        </div>
+        <StaffLayout accessLevel="full">{children}</StaffLayout>
+      </div>
+    );
+  }
+
   const session = await auth();
 
   // Not authenticated: redirect to login
@@ -71,10 +92,7 @@ export default async function Layout({
           <div className="space-y-4">
             <h1 className="text-4xl font-bold text-white">Erreur de connexion</h1>
             <p className="text-slate-400 text-lg">
-              Impossible de vérifier vos permissions. Le système d'authentification rencontre un problème.
-            </p>
-            <p className="text-sm text-amber-400/80 font-mono bg-black/30 p-3 rounded border border-amber-500/20">
-              {fetchError}
+              Impossible de vérifier vos permissions en ce moment. Si votre compte Discord n'est pas lié, veuillez le lier.
             </p>
           </div>
 
@@ -100,9 +118,8 @@ export default async function Layout({
               Réessayer
             </a>
             <a
-              href="/api/debug/explain-access"
-              target="_blank"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors duration-200"
+              href="/dashboard"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors duration-200"
             >
               <svg
                 className="w-5 h-5"
@@ -114,10 +131,10 @@ export default async function Layout({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  d="M12 11c0 1.657-1.343 3-3 3s-3-1.343-3-3 1.343-3 3-3 3 1.343 3 3zM8 14v6"
                 />
               </svg>
-              Debug Info
+              Lier mon compte
             </a>
           </div>
 
@@ -163,21 +180,36 @@ export default async function Layout({
 
           {/* Content */}
           <div className="space-y-4">
-            <h1 className="text-4xl font-bold text-white">Accès Refusé</h1>
+            <h1 className="text-4xl font-bold text-white">Accès refusé</h1>
             <p className="text-slate-400 text-lg">
-              Cette section est réservée au personnel. Vous n'avez pas les
-              permissions nécessaires pour accéder à cette page.
-            </p>
-            <p className="text-xs text-slate-500 font-mono bg-black/30 p-2 rounded border border-slate-700/30">
-              Source d'accès vérifiée: {accessCheck.source}
+              Ton compte n'est pas encore lié ou tu n'as pas accès à cet espace.
             </p>
           </div>
 
-          {/* Action Button */}
-          <div className="pt-4">
+          {/* Action Buttons */}
+          <div className="pt-4 flex gap-3 justify-center">
             <a
               href="/dashboard"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors duration-200"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors duration-200"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 11c0 1.657-1.343 3-3 3s-3-1.343-3-3 1.343-3 3-3 3 1.343 3 3zM8 14v6"
+                />
+              </svg>
+              Lier mon compte
+            </a>
+            <a
+              href="/"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors duration-200"
             >
               <svg
                 className="w-5 h-5"
@@ -192,18 +224,7 @@ export default async function Layout({
                   d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
-              Retour au tableau de bord
-            </a>
-          </div>
-
-          {/* Debug Link */}
-          <div className="pt-2">
-            <a
-              href="/api/debug/explain-access"
-              target="_blank"
-              className="text-sm text-slate-500 hover:text-slate-400 underline"
-            >
-              Voir pourquoi l'accès est refusé
+              Retour à l'accueil
             </a>
           </div>
 
@@ -221,8 +242,10 @@ export default async function Layout({
 
   // Staff: render normal staff layout
   return (
-    <StaffLayout accessLevel={accessLevel}>
-      {children}
-    </StaffLayout>
+    <div className="relative">
+      <StaffLayout accessLevel={accessLevel}>
+        {children}
+      </StaffLayout>
+    </div>
   );
 }

@@ -4,7 +4,8 @@ import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { lygProbeInfos } from "@/lib/lyg-probe-infos";
 import { debug } from "@/lib/logger";
 
-export async function GET() {
+export async function GET(req: Request) {
+  console.log(`[DIAG][lyg/infos] GET ${new Date().toISOString()} url=${req.url} trigger=GET-route`);
   const guard = await requirePrivileged();
   if (guard instanceof Response) return guard;
 

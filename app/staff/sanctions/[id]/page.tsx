@@ -20,7 +20,15 @@ export default async function SanctionDetailPage({ params }: { params: { id: str
     notFound();
   }
 
-  const audit = await getEntityAuditLogs("Sanction", sanction.id, 50);
+  const [audit, outbox] = await Promise.all([
+    getEntityAuditLogs("Sanction", sanction.id, 50),
+    sanction.outboxJobId
+      ? prisma.discordOutbox.findUnique({
+          where: { id: sanction.outboxJobId },
+          select: { status: true },
+        })
+      : Promise.resolve(null),
+  ]);
 
   return (
     <SanctionDetailClient
@@ -32,6 +40,7 @@ export default async function SanctionDetailPage({ params }: { params: { id: str
         status: sanction.status,
         reason: sanction.reason,
         discordStatus: sanction.discordStatus,
+        outboxStatus: outbox?.status ?? null,
         discordError: sanction.discordError,
         expiresAt: sanction.expiresAt?.toISOString() ?? null,
         clearedAt: sanction.clearedAt?.toISOString() ?? null,

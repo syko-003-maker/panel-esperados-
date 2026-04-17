@@ -3,8 +3,9 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { enqueueJustificationEvent } from "@/lib/discord/discord";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
-const FAMILY_ID = "esperados";
+const FAMILY_ID = DEFAULT_FAMILY_ID;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,6 +24,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { discordId } = scope;
 
+  const familyDbId = await resolveFamilyId(FAMILY_ID);
+
   const body = await req.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
@@ -37,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const absence = await prisma.absence.findFirst({
-    where: { id, familyId: FAMILY_ID, discordId: String(discordId) },
+    where: { id, familyId: familyDbId, discordId: String(discordId) },
   });
   if (!absence) {
     return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
@@ -46,7 +49,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const justification = await prisma.$transaction(async (tx) => {
     const created = await tx.absenceJustification.create({
       data: {
-        familyId: FAMILY_ID,
+        familyId: familyDbId,
         absenceId: absence.id,
         authorDiscordId: String(discordId),
         message,
@@ -55,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     try {
       await enqueueJustificationEvent({
-        familyId: FAMILY_ID,
+        familyId: familyDbId,
         discordId: String(discordId),
         memberId: scope.memberId,
         justificationId: created.id,

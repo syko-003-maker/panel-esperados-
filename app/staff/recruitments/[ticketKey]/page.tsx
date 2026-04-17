@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
-import { RecruitmentDetailClient } from "./recruitment-detail-client";
+import RecruitmentDetailClient from "../../recruitment/[id]/recruitment-detail-client";
 
 export default async function RecruitmentDetailPage({
   params,
@@ -24,25 +24,13 @@ export default async function RecruitmentDetailPage({
     notFound();
   }
 
-  const data = {
-    id: recruitment.id,
-    ticketKey: recruitment.ticketKey!,
-    status: (recruitment.closedAt ? "FINI" : "OPEN") as "OPEN" | "FINI",
-    dbStatus: recruitment.status,
-    authorDiscordId: recruitment.discordId,
-    authorTag: recruitment.authorTag,
-    steamId: recruitment.steamId,
-    rpName: recruitment.rpName,
-    motivation: recruitment.motivation,
-    availabilities: recruitment.availabilities,
-    payload: recruitment.payload as Record<string, unknown> | null,
-    threadId: recruitment.discordThreadId,
-    createdAt: recruitment.createdAt.toISOString(),
-    updatedAt: recruitment.updatedAt.toISOString(),
-    closedAt: recruitment.closedAt?.toISOString() ?? null,
-    closedByDiscordId: recruitment.closedByDiscordId,
-    closeReason: recruitment.closeReason,
-  };
-
-  return <RecruitmentDetailClient recruitment={data} />;
+  return (
+    <div className="px-6 py-6">
+      <RecruitmentDetailClient
+        ticketId={recruitment.id}
+        backHref="/staff/recruitments"
+        backLabel="← Retour à la gestion des recrutements"
+      />
+    </div>
+  );
 }

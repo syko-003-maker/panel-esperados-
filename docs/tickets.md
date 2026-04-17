@@ -9,6 +9,7 @@ Le système de tickets permet aux utilisateurs Discord de créer des demandes de
 ```
 1. User clique sur bouton (Recrutement / Plainte)
 2. Modal s'ouvre → User remplit les champs
+2bis. Recrutement: second modal pour le questionnaire RP complet
 3. Submit → Thread créé dans TICKETS_PARENT_CHANNEL
 4. Message initial posté avec embed + boutons staff
 5. Ingest vers Panel → Ticket créé en DB
@@ -162,7 +163,15 @@ Header: x-ingest-secret: <SECRET>
   "ticketKey": "R-20260120-XXXX",
   "threadId": "1234567890123456789",
   "author": { "id": "9876543210987654321", "tag": "User#0000" },
-  "payload": { "steamId": "...", "rpName": "...", "motivation": "...", "dispo": "..." }
+  "payload": {
+    "steamId": "...",
+    "rpName": "...",
+    "motivation": "...",
+    "dispo": "...",
+    "questionnaireRaw": "1. ...\n2. ...\n...\n22. ...",
+    "questionsGenerales": ["...", "..."],
+    "questionsPieges": ["...", "..."]
+  }
 }
 ```
 

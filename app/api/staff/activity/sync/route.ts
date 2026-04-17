@@ -15,6 +15,7 @@ import {
 import { enqueueActivityAlert, enqueueActivityDigest } from "@/lib/discord/discord";
 import { activityConfigToRules, getActivityConfig } from "@/lib/activity-config";
 import { normalizeActivityState } from "@/lib/activity-backfill";
+import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
 
 const DEFAULT_FAMILY_ID = "esperados";
 
@@ -39,10 +40,20 @@ export async function POST(req: Request) {
 
   const members = await prisma.member.findMany({
     where: { familyId },
-    select: { discordId: true, rpName: true },
+    select: {
+      discordId: true,
+      rpName: true,
+      grade: true,
+      isActive: true,
+      isGhost: true,
+      rankRoleId: true,
+      rankLabel: true,
+      discordRoleIds: true,
+    },
   });
+  const scopedMembers = members.filter(isActiveMembersScopeMember);
   const memberMap = new Map<string, { discordId: string; rpName: string | null }>();
-  for (const member of members) {
+  for (const member of scopedMembers) {
     if (member.discordId) {
       memberMap.set(String(member.discordId), { discordId: member.discordId, rpName: member.rpName });
     }
@@ -52,10 +63,7 @@ export async function POST(req: Request) {
   const rules = activityConfigToRules(config);
   const snapshot = await fetchPlaytimeSnapshot(familyId);
   const state = await loadFamilyActivityState(prisma, familyId);
-  normalizeActivityState(state, [
-    ...members,
-    ...snapshot.map((item) => ({ discordId: item.discordId })),
-  ]);
+  normalizeActivityState(state, scopedMembers);
   const now = new Date();
   const nowIso = now.toISOString();
   const cooldownMs = Math.max(0, config.discordCooldownMinutes) * 60 * 1000;
@@ -66,6 +74,7 @@ export async function POST(req: Request) {
   for (const item of snapshot) {
     const discordId = String(item.discordId ?? "").trim();
     if (!discordId) continue;
+    if (!memberMap.has(discordId)) continue;
     syncedCount += 1;
 
     const member = memberMap.get(discordId) ?? null;
@@ -180,7 +189,7 @@ export async function POST(req: Request) {
       familyId,
       bucket,
       config,
-      members,
+      members: scopedMembers,
       state,
       now,
     });

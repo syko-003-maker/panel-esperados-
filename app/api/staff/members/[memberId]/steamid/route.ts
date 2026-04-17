@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { createAuditLog } from "@/lib/audit";
 import { debug, error as logError } from "@/lib/logger";
+import { findBlockingSteamLink } from "@/lib/link-conflicts";
 
 /**
  * ✅ PATCH /api/staff/members/[memberId]/steamid
@@ -73,12 +74,11 @@ async function handleUpdate(
 
     // If setting new steamId, check uniqueness
     if (steamId && steamId !== member.steamId) {
-      const existingMember = await prisma.member.findFirst({
-        where: {
-          familyId: member.familyId,
-          steamId: steamId,
-          id: { not: memberId }, // Different member
-        },
+      const existingMember = await findBlockingSteamLink(prisma, {
+        familyId: member.familyId,
+        steamId,
+        excludeMemberId: memberId,
+        excludeDiscordId: member.discordId,
       });
 
       if (existingMember) {

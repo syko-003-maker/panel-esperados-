@@ -2,9 +2,11 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  CategoryChannel,
   ChannelType,
   EmbedBuilder,
   ModalBuilder,
+  PermissionFlagsBits,
   TextInputBuilder,
   TextInputStyle,
   type ButtonInteraction,
@@ -86,6 +88,33 @@ function makeTicketKey(prefix: "R" | "C"): string {
   return `${prefix}-${todayYYYYMMDD()}-${rand4Base36()}`;
 }
 
+function isValidSteamId64(value: string): boolean {
+  return /^7656119\d{10}$/.test(value);
+}
+
+function slugifyTicketName(value: string, fallback: string): string {
+  const base = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  const safe = base || fallback;
+  return safe.slice(0, 80).replace(/-+$/g, "") || fallback;
+}
+
+function buildTicketChannelName(
+  type: "recruitment" | "complaint",
+  authorName: string
+): string {
+  const prefix = type === "recruitment" ? "recrutement" : "plainte";
+  const slug = slugifyTicketName(authorName, "joueur");
+  return `${prefix}-${slug}`;
+}
+
+
 // Retry with new ticketKey on collision
 async function ingestWithRetry(
   event: { type: string; ticketKey: string; threadId: string; [key: string]: unknown },
@@ -116,6 +145,15 @@ function getStaffPing(guild: Guild | null): string | null {
   const mentions = [
     safeRoleMention(guild, IDS.CHEF_FAMILLE_ROLE_ID, "(rôle chef-famille)"),
     safeRoleMention(guild, IDS.ETAT_MAJOR_ROLE_ID, "(rôle état-major)"),
+  ].filter(Boolean).join(" ");
+  return mentions || null;
+}
+
+function getRecruitmentStaffPing(guild: Guild | null): string | null {
+  const mentions = [
+    safeRoleMention(guild, IDS.CHEF_FAMILLE_ROLE_ID, "(rôle chef-famille)"),
+    safeRoleMention(guild, IDS.ETAT_MAJOR_ROLE_ID, "(rôle état-major)"),
+    safeRoleMention(guild, IDS.RECRUTEUR_ROLE_ID, "(rôle recruteur)"),
   ].filter(Boolean).join(" ");
   return mentions || null;
 }
@@ -168,6 +206,113 @@ async function createTicketThread(
   }
 }
 
+function getComplaintStaffRoleIds(): string[] {
+  return [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID].filter(
+    (roleId): roleId is string => Boolean(roleId)
+  );
+}
+
+function getRecruitmentStaffRoleIds(): string[] {
+  return [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
+    (roleId): roleId is string => Boolean(roleId)
+  );
+}
+
+async function createTicketTextChannel(
+  parent: CategoryChannel,
+  name: string,
+  type: "recruitment" | "complaint",
+  authorId: string,
+  guild: Guild
+): Promise<TextChannel | null> {
+  try {
+    const me = guild.members.me ?? (await guild.members.fetchMe());
+    const staffRoleIds = type === "complaint" ? getComplaintStaffRoleIds() : getRecruitmentStaffRoleIds();
+    const permissionOverwrites = [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionFlagsBits.ViewChannel],
+      },
+      {
+        id: authorId,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+        ],
+      },
+      {
+        id: me.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.ManageChannels,
+          PermissionFlagsBits.ManageMessages,
+        ],
+      },
+      ...staffRoleIds.map((roleId) => ({
+        id: roleId,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+        ],
+      })),
+    ];
+
+    const channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildText,
+      parent: parent.id,
+      topic: `Ticket Esperados • ${name}`,
+      reason: `Ticket Esperados (${authorId})`,
+      permissionOverwrites,
+    });
+
+    log("ticket_channel_created", { type: "text", name, channelId: channel.id, parentId: parent.id });
+    return channel;
+  } catch (err) {
+    log("ticket_channel_create_failed", {
+      name,
+      parentId: parent.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+async function createTicketContainer(
+  parent: TextChannel | CategoryChannel,
+  name: string,
+  type: "recruitment" | "complaint",
+  authorId: string,
+  guild: Guild
+): Promise<TextChannel | ThreadChannel | null> {
+  if (parent.type === ChannelType.GuildCategory) {
+    return createTicketTextChannel(parent, name, type, authorId, guild);
+  }
+
+  return createTicketThread(parent, name, authorId);
+}
+
+async function resolveTicketsParentChannel(
+  interaction: ModalSubmitInteraction
+): Promise<TextChannel | CategoryChannel | null> {
+  const configuredParent = await interaction.client.channels
+    .fetch(IDS.TICKETS_PARENT_CHANNEL_ID)
+    .catch(() => null);
+
+  if (
+    configuredParent?.type === ChannelType.GuildText ||
+    configuredParent?.type === ChannelType.GuildCategory
+  ) {
+    return configuredParent;
+  }
+
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Anti-spam check
 // ─────────────────────────────────────────────────────────────
@@ -199,38 +344,20 @@ async function checkOpenLimit(
 // Button rows for staff actions
 // ─────────────────────────────────────────────────────────────
 
-function staffRecruitmentRow(ticketKey: string) {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${CUSTOM_ID.STAFF_RECRUIT_FINISH_PREFIX}${ticketKey}`)
-      .setLabel("FIN_RECRUTEMENT")
-      .setStyle(ButtonStyle.Success)
-  );
-}
-
 function staffComplaintRow(ticketKey: string) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`${CUSTOM_ID.STAFF_COMPLAINT_CLOSE_PREFIX}TRAITE:${ticketKey}`)
-      .setLabel("TRAITÉ")
+      .setLabel("✅ Traité")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`${CUSTOM_ID.STAFF_COMPLAINT_CLOSE_PREFIX}NON_RESOLUE:${ticketKey}`)
-      .setLabel("NON_RÉSOLUE")
+      .setLabel("⏳ En attente")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${CUSTOM_ID.STAFF_COMPLAINT_CLOSE_PREFIX}REFUSE:${ticketKey}`)
-      .setLabel("REFUSÉ")
+      .setLabel("❌ Refusé")
       .setStyle(ButtonStyle.Danger)
-  );
-}
-
-function panelLinkRow(type: "recruitment" | "complaint", ticketKey: string) {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setLabel("OUVRIR SUR LE PANEL")
-      .setStyle(ButtonStyle.Link)
-      .setURL(getPanelUrl(type, ticketKey))
   );
 }
 
@@ -247,7 +374,7 @@ export async function openRecruitmentModal(interaction: ButtonInteraction) {
     .setCustomId("steamId")
     .setLabel("Steam ID (obligatoire)")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Ex: 7656119...")
+    .setPlaceholder("Exemple : 76561198012345678")
     .setRequired(true)
     .setMinLength(1)
     .setMaxLength(50);
@@ -256,6 +383,7 @@ export async function openRecruitmentModal(interaction: ButtonInteraction) {
     .setCustomId("rpName")
     .setLabel("Nom RP")
     .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Exemple : Diego Alvarez")
     .setRequired(true)
     .setMinLength(1)
     .setMaxLength(100);
@@ -264,14 +392,16 @@ export async function openRecruitmentModal(interaction: ButtonInteraction) {
     .setCustomId("motivation")
     .setLabel("Motivation")
     .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder("Présente brièvement ton parcours, ta motivation et ce que tu peux apporter à la famille.")
     .setRequired(true)
     .setMinLength(10)
     .setMaxLength(1500);
 
   const dispo = new TextInputBuilder()
     .setCustomId("dispo")
-    .setLabel("Disponibilités")
+    .setLabel("Disponibilités pour passer le recrutement")
     .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder("Indique tes disponibilités pour échanger avec le staff et passer le recrutement.")
     .setRequired(true)
     .setMinLength(5)
     .setMaxLength(500);
@@ -285,6 +415,7 @@ export async function openRecruitmentModal(interaction: ButtonInteraction) {
 
   await interaction.showModal(modal);
 }
+
 
 export async function openComplaintModal(interaction: ButtonInteraction) {
   const modal = new ModalBuilder()
@@ -330,6 +461,23 @@ export async function openComplaintModal(interaction: ButtonInteraction) {
 export async function handleRecruitmentSubmit(
   interaction: ModalSubmitInteraction
 ) {
+  // Étape unique : le candidat soumet ses informations de base, le ticket est créé immédiatement.
+  // Le questionnaire d’évaluation (Q1–Q22) est rempli par le recruteur depuis la fiche sur le site,
+  // après création du ticket — il n’apparaît plus dans la modale candidat.
+
+  const steamId = interaction.fields.getTextInputValue("steamId").trim();
+  const rpName = interaction.fields.getTextInputValue("rpName").trim();
+  const motivation = interaction.fields.getTextInputValue("motivation").trim();
+  const dispo = interaction.fields.getTextInputValue("dispo").trim();
+
+  // Validation rapide avant de différer la réponse
+  if (!isValidSteamId64(steamId)) {
+    return interaction.reply({
+      content: "❌ Le Steam ID fourni est invalide. Merci d’entrer un SteamID64 valide (format : 76561198XXXXXXXXX).",
+      ephemeral: true,
+    });
+  }
+
   await interaction.deferReply({ ephemeral: true });
 
   // Rate limit check (cooldown)
@@ -348,29 +496,23 @@ export async function handleRecruitmentSubmit(
   // Set cooldown
   setCooldown(interaction.user.id, "recruitment");
 
-  const steamId = interaction.fields.getTextInputValue("steamId").trim();
-  const rpName = interaction.fields.getTextInputValue("rpName").trim();
-  const motivation = interaction.fields.getTextInputValue("motivation").trim();
-  const dispo = interaction.fields.getTextInputValue("dispo").trim();
+  const channelName = buildTicketChannelName("recruitment", rpName || interaction.user.username);
 
-  const parent = await interaction.client.channels.fetch(
-    IDS.TICKETS_PARENT_CHANNEL_ID
-  );
-  if (!parent || parent.type !== ChannelType.GuildText) {
-    return interaction.editReply(
-      "❌ Parent tickets introuvable ou pas un salon texte."
-    );
+  const parent = await resolveTicketsParentChannel(interaction);
+  if (!parent) {
+    return interaction.editReply("❌ Canal parent introuvable. Contacte un membre du staff.");
   }
 
   let ticketKey = makeTicketKey("R");
-  
-  const thread = await createTicketThread(
+
+  const thread = await createTicketContainer(
     parent,
-    `recrutement-${ticketKey}`,
-    interaction.user.id
+    channelName,
+    "recruitment",
+    interaction.user.id,
+    interaction.guild!
   );
 
-  // If thread creation fails entirely, inform user
   if (!thread) {
     log("thread_creation_failed", { type: "recruitment", userId: interaction.user.id });
     return interaction.editReply("❌ Impossible de créer le thread. Contacte un membre du staff.");
@@ -388,7 +530,6 @@ export async function handleRecruitmentSubmit(
       rpName,
       motivation,
       dispo,
-      // ✅ PATCH: Include Discord user info for Member tracking
       discordUsername: interaction.user.username,
       discordDisplayName: (interaction.member as any)?.nickname || interaction.user.globalName || interaction.user.username,
     },
@@ -397,20 +538,16 @@ export async function handleRecruitmentSubmit(
   const ing = await ingestWithRetry(event, "R");
   ticketKey = event.ticketKey; // May have changed on retry
 
-  // ✅ PATCH: Set Discord nickname to rpName (source of truth)
+  // Set Discord nickname to rpName (source of truth)
   if (rpName && interaction.guild) {
     try {
       const member = await interaction.guild.members.fetch(interaction.user.id);
       if (member && member.manageable) {
-        await member.edit({ 
+        await member.edit({
           nick: rpName,
-          reason: `Recrutement ticket: ${ticketKey}` 
+          reason: `Recrutement ticket: ${ticketKey}`,
         });
-        log("member_nickname_updated", {
-          userId: interaction.user.id,
-          newNick: rpName,
-          ticketKey,
-        });
+        log("member_nickname_updated", { userId: interaction.user.id, newNick: rpName, ticketKey });
       } else {
         log("member_nickname_update_failed", {
           userId: interaction.user.id,
@@ -420,15 +557,10 @@ export async function handleRecruitmentSubmit(
       }
     } catch (nickErr) {
       const error = nickErr instanceof Error ? nickErr.message : String(nickErr);
-      log("member_nickname_update_error", {
-        userId: interaction.user.id,
-        error,
-        ticketKey,
-      });
+      log("member_nickname_update_error", { userId: interaction.user.id, error, ticketKey });
     }
   }
 
-  // Log the creation
   log("ticket_create", {
     type: "recruitment",
     ticketKey,
@@ -439,33 +571,38 @@ export async function handleRecruitmentSubmit(
     ingestError: ing.ok ? undefined : (ing as any).error,
   });
 
-  // Build first message content
-  const staffPing = getStaffPing(interaction.guild);
+  const staffPing = getRecruitmentStaffPing(interaction.guild);
   const contentParts: string[] = [];
   if (staffPing) contentParts.push(`${staffPing} Nouveau recrutement !`);
-  if (!ing.ok) contentParts.push(`⚠️ Ingest KO: ${(ing as any).error}`);
+  if (!ing.ok) {
+    log("ticket_ingest_failed", {
+      type: "recruitment",
+      ticketKey,
+      channelId: thread.id,
+      error: (ing as any).error,
+    });
+  }
 
   const embed = new EmbedBuilder()
-    .setTitle("� Recrutement")
-    .setDescription("📸 SCREEN OBLIGATOIRE : Un membre du staff te demandera un screen de tes sanctions actives.\n\nMerci pour ta demande.\nUn État-Major ou Chef prendra contact ici.")
+    .setTitle("📌 Recrutement")
+    .setDescription(
+      "Merci pour ta demande de recrutement.\n" +
+      "Un recruteur prendra contact avec toi ici pour la suite.\n" +
+      "Le questionnaire sera conduit lors de l’entretien."
+    )
     .setColor(0x3b82f6)
     .addFields(
-      { name: "👤 RP Name", value: rpName || "-", inline: true },
-      { name: "🎮 Steam ID", value: steamId || "-", inline: true },
-      { name: "🔢 Âge", value: "-", inline: true },
-      { name: "⚠️ Sanctions actives", value: "0", inline: true },
-      { name: "🆔 Discord", value: `<@${interaction.user.id}>`, inline: true },
-      { name: "Ticket", value: ticketKey, inline: true },
+      { name: "Auteur", value: `${interaction.user.tag} (<@${interaction.user.id}>)`, inline: false },
+      { name: "Nom RP", value: rpName || "-", inline: true },
+      { name: "Steam ID", value: steamId || "-", inline: true },
       { name: "Motivation", value: motivation.slice(0, 1024), inline: false },
-      { name: "Dispos", value: dispo.slice(0, 1024), inline: false }
+      { name: "Disponibilités", value: dispo.slice(0, 1024), inline: false }
     )
-    .setFooter({ text: `Thread: discussion uniquement ici • ${ticketKey}` })
     .setTimestamp();
 
   await thread.send({
     content: contentParts.length > 0 ? contentParts.join("\n") : undefined,
     embeds: [embed],
-    components: [staffRecruitmentRow(ticketKey), panelLinkRow("recruitment", ticketKey)],
   });
 
   await interaction.editReply(`✅ Ticket créé : <#${thread.id}>`);
@@ -495,11 +632,14 @@ export async function handleComplaintSubmit(
   const target = interaction.fields.getTextInputValue("target").trim();
   const reason = interaction.fields.getTextInputValue("reason").trim();
   const details = interaction.fields.getTextInputValue("details").trim();
+  const authorName =
+    (interaction.member as { nickname?: string | null } | null)?.nickname ||
+    interaction.user.globalName ||
+    interaction.user.username;
+  const channelName = buildTicketChannelName("complaint", authorName);
 
-  const parent = await interaction.client.channels.fetch(
-    IDS.TICKETS_PARENT_CHANNEL_ID
-  );
-  if (!parent || parent.type !== ChannelType.GuildText) {
+  const parent = await resolveTicketsParentChannel(interaction);
+  if (!parent) {
     return interaction.editReply(
       "❌ Parent tickets introuvable ou pas un salon texte."
     );
@@ -507,10 +647,12 @@ export async function handleComplaintSubmit(
 
   let ticketKey = makeTicketKey("C");
   
-  const thread = await createTicketThread(
+  const thread = await createTicketContainer(
     parent,
-    `plainte-${ticketKey}`,
-    interaction.user.id
+    channelName,
+    "complaint",
+    interaction.user.id,
+    interaction.guild!
   );
 
   // If thread creation fails entirely, inform user
@@ -526,7 +668,15 @@ export async function handleComplaintSubmit(
     ticketKey,
     threadId: thread.id,
     author: { id: interaction.user.id, tag: interaction.user.tag },
-    payload: { target: target || null, reason, details },
+    payload: {
+      target: target || null,
+      reason,
+      details,
+      authorDisplayName:
+        (interaction.member as { nickname?: string | null } | null)?.nickname ||
+        interaction.user.globalName ||
+        interaction.user.username,
+    },
   };
 
   const ing = await ingestWithRetry(event, "C");
@@ -546,25 +696,31 @@ export async function handleComplaintSubmit(
   const staffPing = getStaffPing(interaction.guild);
   const contentParts: string[] = [];
   if (staffPing) contentParts.push(`${staffPing} Nouvelle plainte !`);
-  if (!ing.ok) contentParts.push(`⚠️ Ingest KO: ${(ing as any).error}`);
+  if (!ing.ok) {
+    log("ticket_ingest_failed", {
+      type: "complaint",
+      ticketKey,
+      channelId: thread.id,
+      error: (ing as any).error,
+    });
+  }
 
   const embed = new EmbedBuilder()
     .setTitle("📌 Plainte")
+    .setDescription("Merci pour ton signalement. Un membre du staff reviendra vers toi ici.")
     .setColor(0xef4444)
     .addFields(
-      { name: "Ticket", value: ticketKey, inline: true },
       { name: "Auteur", value: `${interaction.user.tag} (<@${interaction.user.id}>)`, inline: false },
       { name: "Cible", value: target || "—", inline: false },
       { name: "Raison", value: reason, inline: false },
       { name: "Détails", value: details.slice(0, 1024), inline: false }
     )
-    .setFooter({ text: `Thread: discussion uniquement ici • ${ticketKey}` })
     .setTimestamp();
 
   await thread.send({
     content: contentParts.length > 0 ? contentParts.join("\n") : undefined,
     embeds: [embed],
-    components: [staffComplaintRow(ticketKey), panelLinkRow("complaint", ticketKey)],
+    components: [staffComplaintRow(ticketKey)],
   });
 
   await interaction.editReply(`✅ Ticket créé : <#${thread.id}>`);

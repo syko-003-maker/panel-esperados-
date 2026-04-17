@@ -1,0 +1,3 @@
+MainPID=1459876
+ExecStart={ path=/usr/bin/npm ; argv[]=/usr/bin/npm run start ; ignore_errors=no ; start_time=[Wed 2026-04-01 07:31:29 UTC] ; stop_time=[n/a] ; pid=1459876 ; code=(null) ; status=0/0 }
+WorkingDirectory=/home/ubuntu/panel

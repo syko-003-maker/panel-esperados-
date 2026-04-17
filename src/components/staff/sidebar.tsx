@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion";
 import {
   LayoutDashboard,
   Users,
@@ -15,9 +16,7 @@ import {
   Banknote,
   Briefcase,
   Clock,
-  Link2,
   BarChart3,
-  MessageSquare,
 } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
@@ -31,7 +30,7 @@ const SIDEBAR_ITEMS = [
   {
     section: "Gestion",
     items: [
-      { icon: Briefcase, label: "Recrutement", href: "/staff/recruitment" },
+      { icon: Briefcase, label: "Recrutements", href: "/staff/recruitments" },
       { icon: FileText, label: "Plaintes", href: "/staff/complaints" },
       { icon: AlertCircle, label: "Sanctions", href: "/staff/sanctions" },
       { icon: Clock, label: "Absences", href: "/staff/absences" },
@@ -48,8 +47,6 @@ const SIDEBAR_ITEMS = [
   {
     section: "Outils",
     items: [
-      { icon: MessageSquare, label: "Activité", href: "/staff/activity" },
-      { icon: Link2, label: "Liaison", href: "/staff/link" },
       { icon: Settings, label: "Paramètres", href: "/staff/settings" },
     ],
   },
@@ -102,20 +99,29 @@ export function Sidebar({
 
                 return (
                   <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onClose}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-foreground hover:bg-muted/50"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4 flex-shrink-0" />
-                      <span className="text-sm font-medium truncate">
-                        {item.label}
-                      </span>
-                    </Link>
+                    <MotionListItem>
+                      <Link
+                        href={item.href}
+                        prefetch={false}
+                        onClick={onClose}
+                        className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-all duration-200 ease-in-out ${
+                          active
+                            ? "border-[#7a1f2b]/35 bg-[#7a1f2b]/18 text-slate-50 shadow-[0_14px_32px_-26px_rgba(122,31,43,0.60)]"
+                            : "border-transparent text-foreground/80 hover:border-white/8 hover:bg-white/[0.04] hover:text-foreground"
+                        }`}
+                      >
+                        <Icon
+                          className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${
+                            active
+                              ? "text-amber-300 opacity-100"
+                              : "opacity-70 group-hover:opacity-100"
+                          }`}
+                        />
+                        <span className="truncate text-sm font-medium">
+                          {item.label}
+                        </span>
+                      </Link>
+                    </MotionListItem>
                   </li>
                 );
               })}
@@ -126,17 +132,19 @@ export function Sidebar({
 
       {/* Logout Button */}
       <div className="px-3 py-4 border-t border-border">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
-          asChild
-        >
-          <a href="/auth/signout">
-            <LogOut className="h-4 w-4 mr-2" />
-            Déconnexion
-          </a>
-        </Button>
+        <MotionButtonFrame className="w-full">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start rounded-2xl text-destructive hover:bg-destructive/10 hover:text-destructive"
+            asChild
+          >
+            <a href="/auth/signout">
+              <LogOut className="mr-2 h-4 w-4" />
+              Déconnexion
+            </a>
+          </Button>
+        </MotionButtonFrame>
       </div>
     </nav>
   );

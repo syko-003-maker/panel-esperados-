@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
-import { logInfo } from "@/lib/obs";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
+import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { auditStaffAction } from "@/lib/audit";
 import { evaluateSanctionRules } from "@/lib/sanction-rules";
+import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import type { SanctionType } from "@prisma/client";
+import { enqueueRemoveRole, enqueueSanctionApply } from "@/lib/discord/discord";
+import {
+  BLOCKING_SANCTION_TYPES,
+  getAvertRoleId,
+  getSanctionExpirationDate,
+  isValidSanctionType,
+  SANCTION_TYPES,
+} from "@/lib/sanctions";
+import { getEffectiveSanctionStatus } from "@/lib/sanction-status-labels";
 
 const STATUSES = ["ACTIVE", "EXPIRED", "CLOSED"] as const;
-const TYPES = [
-  "AVERT_ORAL_PLAYTIME",
-  "AVERT_ORAL_REUNION",
-  "AVERT_LEGER",
-  "AVERT_LOURD",
-  "DEMOTE",
-  "RESERVISTE",
-  "BLACKLIST",
-] as const;
 const DISCORD_STATUSES = ["PENDING", "APPLIED", "FAILED"] as const;
 
 function parsePageParams(searchParams: URLSearchParams) {
@@ -32,7 +33,7 @@ function isValidStatus(value: string | null) {
 }
 
 function isValidType(value: string | null) {
-  return value ? TYPES.includes(value as (typeof TYPES)[number]) : true;
+  return value ? SANCTION_TYPES.includes(value as (typeof SANCTION_TYPES)[number]) : true;
 }
 
 function isValidDiscordStatus(value: string | null) {
@@ -43,8 +44,82 @@ function toIso(value: Date | null) {
   return value ? value.toISOString() : null;
 }
 
+async function resolveActorStaffContext(params: {
+  session: any;
+  familyId: string;
+  actorId: string;
+  actorMemberIdFromSession: string | null;
+}) {
+  const actorDiscordId = await getUserDiscordIdFromSession(params.session);
+
+  let actorMemberId =
+    typeof params.actorMemberIdFromSession === "string" && params.actorMemberIdFromSession.trim()
+      ? params.actorMemberIdFromSession.trim()
+      : null;
+  let actorRpName: string | null = null;
+
+  if (actorMemberId) {
+    const actorMember = await prisma.member.findFirst({
+      where: { id: actorMemberId, familyId: params.familyId },
+      select: { id: true, rpName: true },
+    });
+    if (actorMember?.id) {
+      actorMemberId = actorMember.id;
+      actorRpName = actorMember.rpName?.trim() || null;
+    } else {
+      actorMemberId = null;
+    }
+  }
+
+  if (!actorMemberId && actorDiscordId) {
+    const linkedMember = await prisma.member.findUnique({
+      where: {
+        familyId_discordId: {
+          familyId: params.familyId,
+          discordId: actorDiscordId,
+        },
+      },
+      select: { id: true, rpName: true },
+    });
+    if (linkedMember?.id) {
+      actorMemberId = linkedMember.id;
+      actorRpName = linkedMember.rpName?.trim() || null;
+    }
+  }
+
+  if (!actorMemberId) {
+    const staffUser = await prisma.staffUser.findFirst({
+      where: {
+        familyId: params.familyId,
+        isActive: true,
+        OR: [{ userId: params.actorId }, ...(actorDiscordId ? [{ discordId: actorDiscordId }] : [])],
+      },
+      select: { discordId: true },
+    });
+
+    if (staffUser?.discordId) {
+      const staffMember = await prisma.member.findUnique({
+        where: {
+          familyId_discordId: {
+            familyId: params.familyId,
+            discordId: staffUser.discordId,
+          },
+        },
+        select: { id: true, rpName: true },
+      });
+
+      if (staffMember?.id) {
+        actorMemberId = staffMember.id;
+        actorRpName = staffMember.rpName?.trim() || null;
+      }
+    }
+  }
+
+  return { actorMemberId, actorRpName };
+}
+
 export async function GET(req: Request) {
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requirePrivileged();
   if (guard instanceof Response) return guard;
 
   const startTime = Date.now();
@@ -62,7 +137,7 @@ export async function GET(req: Request) {
 
   try {
     const { searchParams } = new URL(req.url);
-    const familyId = searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+    const familyId = await resolveFamilyId(DEFAULT_FAMILY_ID);
     const status = searchParams.get("status");
     const discordStatus = searchParams.get("discordStatus");
     const type = searchParams.get("type");
@@ -80,14 +155,55 @@ export async function GET(req: Request) {
 
     const { page, pageSize, skip } = parsePageParams(searchParams);
     const now = new Date();
+    const guildId = process.env.DISCORD_GUILD_ID ?? process.env.GUILD_ID ?? "";
 
-    await prisma.sanction.updateMany({
-      where: { familyId, status: "ACTIVE", endAt: { lt: now } },
-      data: { status: "EXPIRED" },
+    const expiredSanctions = await prisma.sanction.findMany({
+      where: { familyId, status: "ACTIVE", expiresAt: { lt: now } },
+      select: {
+        id: true,
+        familyId: true,
+        discordId: true,
+        type: true,
+      },
     });
+
+    for (const sanction of expiredSanctions) {
+      const roleId = getAvertRoleId(sanction.type);
+      const shouldQueueCleanup = Boolean(roleId && sanction.discordId && guildId);
+
+      await prisma.sanction.update({
+        where: { id: sanction.id },
+        data: {
+          status: "EXPIRED",
+          closedAt: now,
+          clearedStatus: shouldQueueCleanup ? "PENDING" : undefined,
+          clearedError: shouldQueueCleanup ? null : undefined,
+        } as any,
+      });
+
+      if (shouldQueueCleanup) {
+        await enqueueRemoveRole({
+          familyId: sanction.familyId,
+          guildId,
+          userDiscordId: sanction.discordId!,
+          roleId: roleId!,
+          entity: "Sanction",
+          entityId: sanction.id,
+          meta: {
+            sanctionId: sanction.id,
+            sanctionType: sanction.type,
+            setClearedAt: false,
+          },
+        });
+      }
+    }
 
     const where: any = { familyId };
     if (status) where.status = status;
+    if (status === "ACTIVE") {
+      where.clearedAt = null;
+      where.NOT = { clearedStatus: "APPLIED" };
+    }
     if (discordStatus) where.discordStatus = discordStatus;
     if (type) where.type = type;
     if (memberId) where.memberId = memberId;
@@ -101,6 +217,7 @@ export async function GET(req: Request) {
         select: {
           id: true,
           memberId: true,
+          outboxJobId: true,
           discordId: true,
           type: true,
           source: true,
@@ -124,16 +241,26 @@ export async function GET(req: Request) {
     ]);
 
     const memberIds = Array.from(new Set(data.map((item: any) => item.memberId).filter(Boolean)));
+    const outboxIds = Array.from(new Set(data.map((item: any) => item.outboxJobId).filter(Boolean)));
     const members = memberIds.length
       ? await prisma.member.findMany({
           where: { id: { in: memberIds as string[] } },
           select: { id: true, rpName: true, discordId: true },
         })
       : [];
+    const outboxes = outboxIds.length
+      ? await prisma.discordOutbox.findMany({
+          where: { id: { in: outboxIds as string[] } },
+          select: { id: true, status: true },
+        })
+      : [];
     const memberMap = new Map(members.map((m) => [m.id, m]));
+    const outboxMap = new Map(outboxes.map((outbox) => [outbox.id, outbox.status]));
 
     const items = data.map((item: any) => {
       const member = item.memberId ? memberMap.get(item.memberId) : null;
+      const effectiveDiscordStatus =
+        item.discordStatus === "PENDING" && item.discordAppliedAt ? "APPLIED" : item.discordStatus;
       return {
         id: item.id,
         memberId: item.memberId,
@@ -141,7 +268,7 @@ export async function GET(req: Request) {
         memberName: member?.rpName ?? "Unknown",
         type: item.type,
         source: item.source,
-        status: item.status,
+        status: getEffectiveSanctionStatus(item.status, item.clearedAt, item.clearedStatus),
         reason: item.reason ?? null,
         startAt: item.startAt.toISOString(),
         endAt: toIso(item.endAt),
@@ -151,7 +278,8 @@ export async function GET(req: Request) {
         clearedError: item.clearedError ?? null,
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
-        discordStatus: item.discordStatus,
+        discordStatus: effectiveDiscordStatus,
+        outboxStatus: item.outboxJobId ? outboxMap.get(item.outboxJobId) ?? null : null,
         discordAppliedAt: toIso(item.discordAppliedAt),
         discordError: item.discordError ?? null,
         createdById: item.createdById,
@@ -169,11 +297,13 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const requestId = makeRequestId();
+
   const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) return guard;
 
   const actorId = (guard.session as any)?.user?.id ?? (guard.session as any)?.userId;
-  const actorMemberId = (guard.session as any)?.member?.id ?? null;
+  const actorMemberIdFromSession = (guard.session as any)?.member?.id ?? null;
   const actorName = (guard.session as any)?.user?.name ?? null;
   if (!actorId) {
     return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
@@ -184,50 +314,72 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
   }
 
-  const familyId = DEFAULT_FAMILY_ID;
-  const typeRaw = String(body.type ?? "").trim().toUpperCase();
-  const reasonRaw = String(body.reason ?? "").trim();
+  try {
 
-  if (!typeRaw || !isValidType(typeRaw)) {
-    return NextResponse.json({ ok: false, error: "INVALID_TYPE" }, { status: 400 });
-  }
-  if (!reasonRaw) {
-    return NextResponse.json({ ok: false, error: "MISSING_REASON" }, { status: 400 });
+  const familyId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+  const { actorMemberId, actorRpName } = await resolveActorStaffContext({
+    session: guard.session,
+    familyId,
+    actorId,
+    actorMemberIdFromSession,
+  });
+  const typeRaw = String(body.type ?? "").trim().toUpperCase();
+  const reasonRaw = typeof body.reason === "string" ? body.reason.trim() : "";
+
+  if (!typeRaw || !isValidSanctionType(typeRaw)) {
+    return NextResponse.json({ ok: false, error: "INVALID_TYPE", requestId }, { status: 400 });
   }
 
   const memberId = body.memberId ? String(body.memberId).trim() : null;
   const memberDiscordId = body.memberDiscordId ? String(body.memberDiscordId).trim() : null;
 
   if (!memberId && !memberDiscordId) {
-    return NextResponse.json({ ok: false, error: "MISSING_MEMBER" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "MISSING_MEMBER", requestId }, { status: 400 });
   }
 
   const member = memberId
-    ? await prisma.member.findUnique({
-        where: { id: memberId },
-        select: { id: true, discordId: true, rpName: true },
+    ? await prisma.member.findFirst({
+        where: { id: memberId, familyId },
+        select: { id: true, discordId: true, rpName: true, isActive: true, isGhost: true },
       })
     : await prisma.member.findUnique({
         where: { familyId_discordId: { familyId, discordId: memberDiscordId! } },
-        select: { id: true, discordId: true, rpName: true },
+        select: { id: true, discordId: true, rpName: true, isActive: true, isGhost: true },
       });
 
   if (!member || !member.discordId) {
-    return NextResponse.json({ ok: false, error: "MEMBER_NOT_FOUND" }, { status: 404 });
+    logWarn("sanction_create_member_not_found", { requestId, memberId, memberDiscordId });
+    return NextResponse.json({ ok: false, error: "MEMBER_NOT_FOUND", requestId }, { status: 404 });
+  }
+
+  if (!member.isActive || member.isGhost) {
+    logWarn("sanction_create_member_not_active", { requestId, memberId: member.id, rpName: member.rpName });
+    return NextResponse.json({ ok: false, error: "MEMBER_NOT_ACTIVE", requestId }, { status: 400 });
+  }
+
+  const blockingSanction = await prisma.sanction.findFirst({
+    where: {
+      familyId,
+      memberId: member.id,
+      status: "ACTIVE",
+      clearedAt: null,
+      type: { in: [...BLOCKING_SANCTION_TYPES] },
+    },
+    select: { id: true, type: true },
+  });
+
+  if (blockingSanction) {
+    return NextResponse.json(
+      { ok: false, error: "MEMBER_NOT_SANCTIONABLE", blockingType: blockingSanction.type },
+      { status: 409 }
+    );
   }
 
   const startAt = new Date();
+  const expiresAt = getSanctionExpirationDate(typeRaw, startAt);
 
-  // Calculate expiresAt based on sanction type
-  let expiresAt: Date | null = null;
-  if (typeRaw === "AVERT_ORAL_PLAYTIME" || typeRaw === "AVERT_ORAL_REUNION" || typeRaw === "AVERT_LEGER") {
-    // 7 days expiration
-    expiresAt = new Date(startAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-  } else if (typeRaw === "AVERT_LOURD") {
-    // 14 days expiration
-    expiresAt = new Date(startAt.getTime() + 14 * 24 * 60 * 60 * 1000);
-  }
-  // DEMOTE, RESERVISTE, BLACKLIST have no expiration (null)
+  // Optional: link to complaint if provided
+  const complaintId = body.complaintId ? String(body.complaintId).trim() : null;
 
   const sanction = (await prisma.sanction.create({
     data: {
@@ -235,12 +387,13 @@ export async function POST(req: Request) {
       discordId: member.discordId,
       memberId: member.id,
       type: typeRaw as SanctionType,
-      reason: reasonRaw,
+      reason: reasonRaw || null,
       startAt,
       expiresAt,
       status: "ACTIVE",
       discordStatus: "PENDING",
       createdById: actorId,
+      complaintId: complaintId || null,
     } as any,
   })) as any;
 
@@ -252,76 +405,47 @@ export async function POST(req: Request) {
       memberId: member.id,
       memberDiscordId: member.discordId,
       type: sanction.type,
-      reason: sanction.reason,
+      reason: sanction.reason ?? null,
+      complaintId: complaintId ?? null,
       expiresAt: expiresAt?.toISOString() ?? null,
     },
   });
 
-  const logChannelId = process.env.SANCTION_LOG_CHANNEL_ID ?? null;
-  if (!logChannelId) {
-    await prisma.sanction.update({
-      where: { id: sanction.id },
-      data: {
-        discordStatus: "FAILED",
-        discordError: "SANCTION_LOG_CHANNEL_ID_MISSING",
-      } as any,
-    });
+  const durationHours = expiresAt
+    ? Math.max(1, Math.ceil((expiresAt.getTime() - startAt.getTime()) / (60 * 60 * 1000)))
+    : null;
 
-    await auditStaffAction(actorId, actorName, "SANCTION_FAILED", "Sanction", sanction.id, {
-      familyId,
-      entityName: member.rpName ?? undefined,
-      meta: {
-        actorMemberId,
-        reason: "SANCTION_LOG_CHANNEL_ID_MISSING",
-      },
-    });
-
-    return NextResponse.json({
-      ok: true,
-      sanction: {
-        id: sanction.id,
-        memberId: sanction.memberId,
-        memberDiscordId: member.discordId,
-        memberName: member.rpName ?? "Unknown",
-        type: sanction.type,
-        reason: sanction.reason,
-        status: sanction.status,
-        discordStatus: "FAILED",
-        discordError: "SANCTION_LOG_CHANNEL_ID_MISSING",
-        createdAt: sanction.createdAt.toISOString(),
-      },
-    });
-  }
-
-  const outbox = await prisma.discordOutbox.create({
-    data: {
-      familyId,
-      type: "SANCTION_APPLY",
-      status: "PENDING",
-      channelId: logChannelId,
-      userDiscordId: member.discordId,
-      entity: "Sanction",
-      entityId: sanction.id,
-      meta: {
-        sanctionId: sanction.id,
-        memberId: member.id,
-        memberDiscordId: member.discordId,
-        memberName: member.rpName,
-        type: sanction.type,
-        reason: sanction.reason,
-        expiresAt: expiresAt?.toISOString() ?? null,
-      },
-    } as any,
+  const outbox = await enqueueSanctionApply({
+    familyId,
+    sanctionId: sanction.id,
+    discordId: member.discordId,
+    memberName: member.rpName ?? "Unknown",
+    sanctionType: sanction.type,
+    reason: sanction.reason,
+    durationHours,
+    staffName: actorName ?? "Staff inconnu",
+    staffRpName: actorRpName,
+    appliedByUserId: actorId,
+    actorMemberId,
   });
 
   await prisma.sanction.update({
     where: { id: sanction.id },
-    data: { outboxJobId: outbox.id } as any,
+    data: { outboxJobId: outbox?.id ?? null } as any,
   });
 
   // Evaluate auto sanction rules
   await evaluateSanctionRules(member.id, familyId).catch((err) => {
-    console.error("[POST /api/staff/sanctions] Error evaluating rules:", err);
+    logError("sanction_create_rules_evaluation_failed", { requestId, sanctionId: sanction.id, memberId: member.id }, err);
+  });
+
+  logInfo("sanction_created", {
+    requestId,
+    sanctionId: sanction.id,
+    memberId: member.id,
+    rpName: member.rpName ?? "Unknown",
+    type: sanction.type,
+    actorId,
   });
 
   return NextResponse.json({
@@ -336,8 +460,12 @@ export async function POST(req: Request) {
       status: sanction.status,
       discordStatus: sanction.discordStatus,
       expiresAt: expiresAt?.toISOString() ?? null,
-      outboxJobId: outbox.id,
+      outboxJobId: outbox?.id ?? null,
       createdAt: sanction.createdAt.toISOString(),
     },
   });
+  } catch (err) {
+    logError("sanction_create_error", { requestId }, err);
+    return NextResponse.json({ ok: false, error: "INTERNAL_ERROR", requestId }, { status: 500 });
+  }
 }

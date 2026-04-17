@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 export async function GET(
   _req: Request,
@@ -15,12 +15,12 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "MISSING_DISCORD_ID" }, { status: 400 });
   }
 
-  const familyId = DEFAULT_FAMILY_ID;
+  const familyId = await resolveFamilyId(DEFAULT_FAMILY_ID);
 
   try {
     // Find member by discordId
-    const member = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId, discordId } },
+    const member = await prisma.member.findFirst({
+      where: { familyId, discordId },
       select: { id: true, rpName: true, discordId: true },
     });
 

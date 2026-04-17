@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { debug, error as logError } from "@/lib/logger";
+import { parseAbsenceMeta } from "@/lib/meetings";
 import {
   parsePaginationParams,
   parseSearchParams,
@@ -11,6 +12,10 @@ import {
   parseOffsetParams,
   buildOffsetResult,
 } from "@/lib/pagination";
+import {
+  isActiveMembersScopeMember,
+  isDisplayableStaffMember,
+} from "@/lib/staff/member-scope";
 
 /**
  * GET /api/staff/list/members
@@ -113,23 +118,72 @@ export async function GET(req: NextRequest) {
           rankRoleId: true,
           rankLabel: true,
           isActive: true,
+          isGhost: true,
+          discordRoleIds: true,
           createdAt: true,
         },
       });
 
+      const scopedItems = items.filter(activeOnly ? isActiveMembersScopeMember : isDisplayableStaffMember);
+
+      const now = new Date();
+      const memberIds = scopedItems.map((item) => item.id);
+      const discordIds = scopedItems
+        .map((item) => item.discordId)
+        .filter((value): value is string => typeof value === "string" && value.trim() !== "");
+      const activeAbsences = (memberIds.length > 0 || discordIds.length > 0)
+        ? await prisma.absence.findMany({
+            where: {
+              familyId: familyDbId,
+              status: "APPROVED",
+              startAt: { lte: now },
+              endAt: { gte: now },
+              OR: [
+                ...(memberIds.length > 0 ? [{ memberId: { in: memberIds } }] : []),
+                ...(discordIds.length > 0 ? [{ discordId: { in: discordIds } }] : []),
+              ],
+            },
+            orderBy: [{ endAt: "asc" }, { createdAt: "desc" }],
+            select: { id: true, memberId: true, discordId: true, reason: true, notes: true, startAt: true, endAt: true },
+          })
+        : [];
+
+      const activeByMemberId = new Map<string, any>();
+      const activeByDiscordId = new Map<string, any>();
+      for (const absence of activeAbsences) {
+        const meta = parseAbsenceMeta(absence.notes);
+        const payload = {
+          id: absence.id,
+          type: meta.type,
+          meetingDate: meta.meetingDate,
+          reason: absence.reason,
+          startAt: absence.startAt.toISOString(),
+          endAt: absence.endAt.toISOString(),
+        };
+        if (absence.memberId && !activeByMemberId.has(absence.memberId)) activeByMemberId.set(absence.memberId, payload);
+        if (absence.discordId && !activeByDiscordId.has(absence.discordId)) activeByDiscordId.set(absence.discordId, payload);
+      }
+
+      const itemsWithAbsence = scopedItems.map((item) => ({
+        ...item,
+        activeAbsence:
+          activeByMemberId.get(item.id) ??
+          (item.discordId ? activeByDiscordId.get(item.discordId) ?? null : null),
+      }));
+
       // Debug: Log total in DB vs returned
       const totalInDb = await prisma.member.count({ where });
       console.log(`[Cursor] Query where:`, JSON.stringify(where, null, 2));
-      console.log(`[Cursor] Total in DB: ${totalInDb}, Returned: ${items.length}`);
+      console.log(`[Cursor] Total in DB: ${totalInDb}, Returned in scope: ${scopedItems.length}`);
       
       debug("[staff/list/members] Cursor pagination result", {
         totalInDb,
-        returned: items.length,
+        returned: scopedItems.length,
         familyDbId,
-        firstItem: items[0] ? { id: items[0].id, rpName: items[0].rpName } : null,
+        firstItem: scopedItems[0] ? { id: scopedItems[0].id, rpName: scopedItems[0].rpName } : null,
       });
 
-      const result = buildPaginatedResult(items, limit);
+      const result = buildPaginatedResult(itemsWithAbsence, limit);
 
       return NextResponse.json({
         ok: true,
@@ -156,26 +210,75 @@ export async function GET(req: NextRequest) {
             rankRoleId: true,
             rankLabel: true,
             isActive: true,
+            isGhost: true,
+            discordRoleIds: true,
             createdAt: true,
           },
         }),
         prisma.member.count({ where }),
       ]);
 
+        const scopedItems = items.filter(activeOnly ? isActiveMembersScopeMember : isDisplayableStaffMember);
+
+      const now = new Date();
+        const memberIds = scopedItems.map((item) => item.id);
+        const discordIds = scopedItems
+        .map((item) => item.discordId)
+        .filter((value): value is string => typeof value === "string" && value.trim() !== "");
+      const activeAbsences = (memberIds.length > 0 || discordIds.length > 0)
+        ? await prisma.absence.findMany({
+            where: {
+              familyId: familyDbId,
+              status: "APPROVED",
+              startAt: { lte: now },
+              endAt: { gte: now },
+              OR: [
+                ...(memberIds.length > 0 ? [{ memberId: { in: memberIds } }] : []),
+                ...(discordIds.length > 0 ? [{ discordId: { in: discordIds } }] : []),
+              ],
+            },
+            orderBy: [{ endAt: "asc" }, { createdAt: "desc" }],
+            select: { id: true, memberId: true, discordId: true, reason: true, notes: true, startAt: true, endAt: true },
+          })
+        : [];
+
+      const activeByMemberId = new Map<string, any>();
+      const activeByDiscordId = new Map<string, any>();
+      for (const absence of activeAbsences) {
+        const meta = parseAbsenceMeta(absence.notes);
+        const payload = {
+          id: absence.id,
+          type: meta.type,
+          meetingDate: meta.meetingDate,
+          reason: absence.reason,
+          startAt: absence.startAt.toISOString(),
+          endAt: absence.endAt.toISOString(),
+        };
+        if (absence.memberId && !activeByMemberId.has(absence.memberId)) activeByMemberId.set(absence.memberId, payload);
+        if (absence.discordId && !activeByDiscordId.has(absence.discordId)) activeByDiscordId.set(absence.discordId, payload);
+      }
+
+      const itemsWithAbsence = scopedItems.map((item) => ({
+        ...item,
+        activeAbsence:
+          activeByMemberId.get(item.id) ??
+          (item.discordId ? activeByDiscordId.get(item.discordId) ?? null : null),
+      }));
+
       // Debug: Log total in DB vs returned
       console.log(`[Offset] Query where:`, JSON.stringify(where, null, 2));
-      console.log(`[Offset] Total in DB: ${total}, Returned: ${items.length}`);
+      console.log(`[Offset] Total in DB: ${total}, Returned in scope: ${scopedItems.length}`);
 
       debug("[staff/list/members] Offset pagination result", {
         total,
-        returned: items.length,
+        returned: scopedItems.length,
         page,
         pageSize,
         familyDbId,
-        firstItem: items[0] ? { id: items[0].id, rpName: items[0].rpName } : null,
+        firstItem: scopedItems[0] ? { id: scopedItems[0].id, rpName: scopedItems[0].rpName } : null,
       });
 
-      const result = buildOffsetResult(items, page, pageSize, total);
+      const result = buildOffsetResult(itemsWithAbsence, page, pageSize, total);
 
       return NextResponse.json({
         ok: true,

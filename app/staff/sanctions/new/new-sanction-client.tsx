@@ -2,8 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { getSanctionLabel } from "@/lib/sanctions";
 
 const TYPES = ["AVERT_ORAL_PLAYTIME", "AVERT_ORAL_REUNION", "AVERT_LEGER", "AVERT_LOURD", "DEMOTE", "RESERVISTE", "BLACKLIST"] as const;
+
+const SANCTION_TYPE_OPTIONS = TYPES.map((value) => ({
+  value,
+  label: getSanctionLabel(value),
+}));
 
 type SanctionType = (typeof TYPES)[number];
 
@@ -45,15 +61,15 @@ export default function NewSanctionClient() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border border-slate-800/70 bg-[linear-gradient(180deg,rgba(15,23,42,0.9),rgba(15,23,42,0.72))] p-6 shadow-[0_18px_60px_-28px_rgba(0,0,0,0.75)]">
       {error ? (
-        <div className="p-3 border border-red-200 bg-red-50 text-red-800 rounded text-sm">{error}</div>
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
       ) : null}
 
-      <label className="block text-sm">
-        Discord ID du membre
-        <input
-          className="mt-1 w-full border border-slate-800 rounded px-3 py-2 bg-slate-900/40 text-foreground"
+      <label className="block space-y-2 text-sm">
+        <span className="font-semibold text-slate-100">Discord ID du membre</span>
+        <Input
+          className="h-12 rounded-xl border-slate-700/80 bg-slate-900/90 px-4 text-slate-100 placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-violet-500/70"
           value={form.memberDiscordId}
           onChange={(e) => setForm((prev) => ({ ...prev, memberDiscordId: e.target.value }))}
           placeholder="123456789012345678"
@@ -61,39 +77,48 @@ export default function NewSanctionClient() {
         />
       </label>
 
-      <label className="block text-sm">
-        Type
-        <select
-          className="mt-1 w-full border border-slate-800 rounded px-3 py-2 bg-slate-900/40 text-foreground"
+      <label className="block space-y-2 text-sm">
+        <span className="font-semibold text-slate-100">Type</span>
+        <Select
           value={form.type}
-          onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value as SanctionType }))}
+          onValueChange={(value) => setForm((prev) => ({ ...prev, type: value as SanctionType }))}
         >
-          {TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="h-12 rounded-xl border-slate-700/80 bg-slate-900/90 px-4 text-left text-slate-100 focus:ring-2 focus:ring-violet-500/70 focus:ring-offset-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="border-slate-700 bg-slate-950/98 text-slate-100 shadow-2xl">
+            {SANCTION_TYPE_OPTIONS.map((option) => (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                className="rounded-md py-2.5 text-sm text-slate-100 focus:bg-slate-800 focus:text-white"
+              >
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </label>
 
-      <label className="block text-sm">
-        Raison
-        <textarea
-          className="mt-1 w-full border border-slate-800 rounded px-3 py-2 bg-slate-900/40 text-foreground"
+      <label className="block space-y-2 text-sm">
+        <span className="font-semibold text-slate-100">Raison</span>
+        <Textarea
+          className="min-h-[112px] rounded-xl border-slate-700/80 bg-slate-900/90 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-violet-500/70"
           rows={3}
           value={form.reason}
           onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
+          placeholder="Préciser le contexte de la sanction"
           required
         />
       </label>
 
-      <button
+      <Button
         type="submit"
         disabled={saving}
-        className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
+        className="h-12 w-full rounded-xl bg-gradient-to-r from-violet-600 via-violet-500 to-indigo-500 text-sm font-semibold text-white shadow-[0_14px_30px_-14px_rgba(139,92,246,0.9)] hover:from-violet-500 hover:via-violet-400 hover:to-indigo-400"
       >
-        {saving ? "Création..." : "Créer"}
-      </button>
+        {saving ? "Création..." : "Créer la sanction"}
+      </Button>
     </form>
   );
 }

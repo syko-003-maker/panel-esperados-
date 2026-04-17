@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { MotionButtonFrame, MotionCard, MotionSection } from "@/components/staff/ui/motion";
 
 interface PageHeaderProps {
   title: string;
@@ -10,15 +11,16 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+    <MotionSection className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="flex-1 min-w-0">
-        <h1 className="text-4xl font-bold tracking-tight">{title}</h1>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Vue staff</div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">{title}</h1>
         {description && (
-          <p className="text-muted-foreground mt-2">{description}</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
+    </MotionSection>
   );
 }
 
@@ -38,28 +40,26 @@ export function StatCard({
   className = "",
 }: StatCardProps) {
   return (
-    <div
-      className={`rounded-lg border border-border bg-card/50 p-6 space-y-2 ${className}`}
-    >
+    <MotionCard className={`rounded-[22px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.72),rgba(10,3,5,0.82))] p-5 shadow-[0_22px_58px_-36px_rgba(2,0,1,0.80)] backdrop-blur-xl ${className}`}>
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground font-medium">{label}</p>
-        {icon && <div className="text-muted-foreground">{icon}</div>}
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+        {icon && <div className="text-slate-400">{icon}</div>}
       </div>
-      <div className="flex items-baseline justify-between">
-        <p className="text-3xl font-bold">{value}</p>
+      <div className="mt-3 flex items-baseline justify-between gap-4">
+        <p className="text-3xl font-semibold text-slate-50">{value}</p>
         {trend && (
           <span
             className={`text-xs font-semibold ${
               trend.direction === "up"
-                ? "text-green-600"
-                : "text-red-600"
+                ? "text-emerald-300"
+                : "text-red-300"
             }`}
           >
             {trend.direction === "up" ? "↑" : "↓"} {Math.abs(trend.value)}%
           </span>
         )}
       </div>
-    </div>
+    </MotionCard>
   );
 }
 
@@ -71,15 +71,15 @@ interface TableProps {
 
 export function DataTable({ headers, children, empty }: TableProps) {
   return (
-    <div className="rounded-lg border border-border overflow-hidden bg-card/30">
+    <MotionSection className="overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.68),rgba(10,3,5,0.78))] shadow-[0_24px_64px_-38px_rgba(2,0,1,0.75)] backdrop-blur-xl">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border bg-card/50">
+            <tr className="border-b border-white/8 bg-white/[0.03]">
               {headers.map((header, idx) => (
                 <th
                   key={idx}
-                  className={`px-4 py-3 text-left font-semibold text-foreground ${
+                  className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 ${
                     header.className || ""
                   }`}
                 >
@@ -88,13 +88,13 @@ export function DataTable({ headers, children, empty }: TableProps) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-white/8">
             {children}
           </tbody>
         </table>
-        {empty && <div className="p-8 text-center text-muted-foreground">{empty}</div>}
+        {empty && <div className="p-8 text-center text-slate-400">{empty}</div>}
       </div>
-    </div>
+    </MotionSection>
   );
 }
 
@@ -107,14 +107,14 @@ interface SectionProps {
 
 export function Section({ title, description, children, className = "" }: SectionProps) {
   return (
-    <div className={`space-y-4 ${className}`}>
+    <MotionSection className={`space-y-4 ${className}`}>
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-50">{title}</h2>
         {description && (
-          <p className="text-muted-foreground mt-1">{description}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
         )}
       </div>
       {children}
-    </div>
+    </MotionSection>
   );
 }

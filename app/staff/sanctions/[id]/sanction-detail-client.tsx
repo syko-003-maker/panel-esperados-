@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { canClearSanction, canDeleteSanction, getSanctionLabel } from "@/lib/sanctions";
+import { getEffectiveSanctionStatus, getSanctionStatusLabel } from "@/lib/sanction-status-labels";
 
 type SanctionDetailProps = {
   sanction: {
@@ -12,6 +14,7 @@ type SanctionDetailProps = {
     status: string;
     reason: string | null;
     discordStatus: string;
+    outboxStatus: string | null;
     discordError: string | null;
     expiresAt: string | null;
     clearedAt: string | null;
@@ -31,6 +34,7 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
   const [retrying, setRetrying] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleApply() {
@@ -75,7 +79,11 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
   }
 
   async function handleClear() {
-    if (!confirm("Retirer immédiatement cette sanction ?")) return;
+    const isReserviste = sanction.type === "RESERVISTE";
+    const confirmMessage = isReserviste
+      ? "Retirer l'état Réserviste ? Cette action retirera le rôle Réserviste sur Discord."
+      : "Supprimer la sanction appliquée ? Cette action retirera son effet Discord.";
+    if (!confirm(confirmMessage)) return;
 
     setClearing(true);
     setError(null);
@@ -85,7 +93,7 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
         method: "POST",
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Clear failed");
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Suppression failed");
       router.refresh();
     } catch (err: any) {
       setError(String(err?.message ?? err));
@@ -94,16 +102,61 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
     }
   }
 
+  async function handleDelete() {
+    if (!confirm("Supprimer cette sanction ? Cette action est irréversible.")) return;
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/staff/sanctions/${sanction.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        if (json?.error === "SANCTION_DELETE_BLOCKED_ALREADY_APPLIED") {
+          throw new Error(
+            "Une sanction déjà appliquée ne peut pas être supprimée. Utilisez plutôt Supprimer ou Clôturer."
+          );
+        }
+
+        if (json?.error === "SANCTION_DELETE_BLOCKED_OUTBOX_ALREADY_SENT_OR_RUNNING") {
+          throw new Error(
+            "Impossible de supprimer cette sanction car son traitement Discord est déjà en cours ou terminé. Utilisez plutôt Clôturer ou Supprimer."
+          );
+        }
+
+        if (res.status === 409 && typeof json?.details?.message === "string") {
+          throw new Error(json.details.message);
+        }
+
+        throw new Error(json?.error || "Delete failed");
+      }
+
+      router.push("/staff/sanctions");
+      router.refresh();
+    } catch (err: any) {
+      setError(String(err?.message ?? err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const effectiveStatus = getEffectiveSanctionStatus(
+    sanction.status,
+    sanction.clearedAt,
+    sanction.clearedStatus
+  );
   const canRetry = sanction.discordStatus === "FAILED";
-  const canApply = sanction.discordStatus === "PENDING" && sanction.status === "ACTIVE";
+  const canApply =
+    sanction.discordStatus === "PENDING" &&
+    effectiveStatus === "ACTIVE" &&
+    !sanction.outboxStatus;
   const isApplied = sanction.discordStatus === "APPLIED";
-  const AVERT_TYPES = [
-    "AVERT_ORAL_PLAYTIME",
-    "AVERT_ORAL_REUNION",
-    "AVERT_LEGER",
-    "AVERT_LOURD",
-  ];
-  const canClear = AVERT_TYPES.includes(sanction.type) && !sanction.clearedAt;
+  const clearActionLabel = sanction.type === "RESERVISTE" ? "Retirer réserviste" : "Supprimer";
+  const canClear = canClearSanction(sanction);
+  const canDelete = canDeleteSanction(sanction);
 
   return (
     <div className="p-6 max-w-4xl space-y-6">
@@ -113,7 +166,7 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
       </div>
 
       {error ? (
-        <div className="p-3 border border-red-200 bg-red-50 text-red-800 rounded text-sm">{error}</div>
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -125,15 +178,15 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
         </div>
         <div className="p-4 border rounded">
           <div className="text-xs text-gray-500">Type</div>
-          <div className="font-semibold">{sanction.type}</div>
+          <div className="font-semibold">{getSanctionLabel(sanction.type)}</div>
         </div>
         <div className="p-4 border rounded">
           <div className="text-xs text-gray-500">Statut</div>
-          <div className="font-semibold">{sanction.status}</div>
+          <div className="font-semibold">{getSanctionStatusLabel(effectiveStatus)}</div>
         </div>
         <div className="p-4 border rounded">
           <div className="text-xs text-gray-500">Discord</div>
-          <div className="font-semibold">{sanction.discordStatus}</div>
+          <div className="font-semibold">{getSanctionStatusLabel(sanction.discordStatus)}</div>
           {sanction.discordError ? (
             <div className="text-xs text-red-600 mt-1">{sanction.discordError}</div>
           ) : null}
@@ -148,12 +201,16 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
             <div className="font-semibold">{new Date(sanction.expiresAt).toLocaleString("fr-FR")}</div>
           </div>
         ) : null}
-        {sanction.clearedAt ? (
+        {sanction.clearedAt || sanction.clearedStatus || sanction.clearedError ? (
           <div className="p-4 border rounded">
             <div className="text-xs text-gray-500">Levée le</div>
-            <div className="font-semibold">{new Date(sanction.clearedAt).toLocaleString("fr-FR")}</div>
+            <div className="font-semibold">
+              {sanction.clearedAt ? new Date(sanction.clearedAt).toLocaleString("fr-FR") : "En cours"}
+            </div>
             {sanction.clearedStatus ? (
-              <div className="text-xs text-gray-600 mt-1">Statut: {sanction.clearedStatus}</div>
+              <div className="text-xs text-gray-600 mt-1">
+                Statut: {getSanctionStatusLabel(`CLEAR_${sanction.clearedStatus}`)}
+              </div>
             ) : null}
             {sanction.clearedError ? (
               <div className="text-xs text-red-600 mt-1">Erreur: {sanction.clearedError}</div>
@@ -210,8 +267,26 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
             disabled={clearing}
             className="px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
           >
-            {clearing ? "Retrait..." : "Retirer maintenant"}
+            {clearing ? "Suppression..." : clearActionLabel}
           </button>
+        </div>
+      ) : null}
+
+      {canDelete ? (
+        <div className="flex gap-3">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-4 py-2 text-sm font-semibold rounded bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
+          >
+            {deleting ? "Suppression..." : "Supprimer"}
+          </button>
+        </div>
+      ) : null}
+
+      {isApplied ? (
+        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Une sanction déjà appliquée ne peut pas être supprimée. Utilisez plutôt Supprimer ou Clôturer.
         </div>
       ) : null}
 

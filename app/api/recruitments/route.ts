@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { buildRecruitmentStorage } from '@/lib/recruitment/ingest';
 
 const PARENT_CHANNEL_ID = process.env.DISCORD_TICKET_PARENT_CHANNEL_ID;
 
@@ -34,6 +35,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
+  const storage = buildRecruitmentStorage(body ?? {});
 
   const recruitment = await prisma.recruitment.create({
     data: {
@@ -41,6 +43,11 @@ export async function POST(req: Request) {
       discordId: body.discordId,
       rpName: body.rpName,
       steamId: body.steamId ?? null,
+      age: typeof body.age === 'number' ? body.age : null,
+      payload: storage.payload as any,
+      notes: storage.notes,
+      motivation: storage.motivation,
+      availabilities: storage.availabilities,
       status: 'PENDING',
       createdById: body.createdById ?? "system",
     },
@@ -52,6 +59,7 @@ export async function POST(req: Request) {
     rpName: recruitment.rpName,
     discordId: recruitment.discordId,
     steamId: recruitment.steamId,
+    payload: storage.payload,
     createdAt: new Date().toISOString(),
   }, recruitment.id);
 

@@ -16,7 +16,7 @@ import { prisma } from "@/lib/db";
 import { debug, warn, error as logError } from "@/lib/logger";
 import { createDelay } from "@/lib/utils/delay";
 
-const DISCORD_TOKEN = (process.env.DISCORD_TOKEN ?? process.env.DISCORD_BOT_TOKEN ?? "").trim();
+const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
 const GUILD_ID = (process.env.GUILD_ID ?? process.env.DISCORD_GUILD_ID ?? "").trim();
 const WORKER_SECRET = (process.env.DISCORD_WORKER_SECRET ?? "").trim();
 
@@ -29,6 +29,23 @@ type JobPayload = {
   roles?: string[]; // For APPLY_ROLES / REMOVE_ROLES
   reason?: string;
 };
+
+async function updateMemberDiscordMirror(params: {
+  discordId: string;
+  inGuild: boolean;
+  roles?: string[];
+}) {
+  const now = new Date();
+  await prisma.member.updateMany({
+    where: { discordId: params.discordId },
+    data: {
+      discordInGuild: params.inGuild,
+      discordRoleIds: params.inGuild ? (params.roles ?? []) : [],
+      discordRolesUpdatedAt: now,
+      discordLastError: null,
+    },
+  });
+}
 
 async function applyRoles(
   discordId: string,
@@ -263,6 +280,12 @@ async function processJob(jobId: number) {
 
       // Refresh DiscordSnapshot if we have fresh data
       if (job.type === "SYNC_MEMBER" && result.inGuild !== undefined) {
+        await updateMemberDiscordMirror({
+          discordId,
+          inGuild: result.inGuild,
+          roles: result.roles || [],
+        });
+
         await prisma.discordSnapshot.upsert({
           where: { discordId },
           create: {

@@ -1,5 +1,4 @@
 import { auth } from "@/auth";
-import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserRole } from "@/server/auth/rbac";
@@ -8,7 +7,6 @@ import { postDiscordMessage } from "@/server/worker/post-discord";
 import { enforceRateLimit } from "@/server/rate-limit";
 
 const DISCORD_CHANNEL_ID = "1409028569203740792";
-const FAMILY_ID = "esperados";
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,19 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     const discordId = linkedMember.discordId;
-
-    // Get full member info for message
-    const member = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: FAMILY_ID, discordId: discordId || "" } },
-      select: { id: true, rpName: true },
-    });
-
-    if (!member) {
-      return NextResponse.json(
-        { error: "Member not found" },
-        { status: 403 }
-      );
-    }
+    const member = { id: linkedMember.memberId, rpName: linkedMember.rpName };
 
     // Rate limit (3 per 10 minutes)
     const rate = await enforceRateLimit({

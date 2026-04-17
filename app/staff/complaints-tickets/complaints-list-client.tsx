@@ -106,6 +106,7 @@ export function ComplaintsListClient({
                   {c.authorDiscordId ? (
                     <Link
                       href={`/staff/members/by-discord/${c.authorDiscordId}`}
+                      prefetch={false}
                       className="text-blue-600 hover:underline"
                     >
                       {c.authorTag ?? c.authorDiscordId}

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { getMemberScopeFlags, isActiveMembersScopeMember } from "@/lib/staff/member-scope";
 import { ActivitySnapshotsClient } from "./snapshots-client";
 
 export default async function ActivitySnapshotsPage() {
@@ -28,20 +29,42 @@ export default async function ActivitySnapshotsPage() {
   const discordIds = [...new Set(snapshots.map((s) => s.memberDiscordId))];
   const members = await prisma.member.findMany({
     where: { familyId, discordId: { in: discordIds } },
-    select: { discordId: true, rpName: true, grade: true },
+    select: {
+      discordId: true,
+      rpName: true,
+      grade: true,
+      isActive: true,
+      isGhost: true,
+      rankRoleId: true,
+      rankLabel: true,
+      discordRoleIds: true,
+    },
   });
 
-  const memberMap = Object.fromEntries(members.map((m) => [m.discordId, m]));
+  const scopedMembers = members
+    .filter(isActiveMembersScopeMember)
+    .map((member) => ({
+      ...member,
+      grade: getMemberScopeFlags(member).gradeInfo.grade,
+    }));
+  const allowedDiscordIds = new Set(
+    scopedMembers
+      .map((member) => member.discordId)
+      .filter((discordId): discordId is string => typeof discordId === "string" && discordId.trim() !== "")
+  );
+  const memberMap = Object.fromEntries(scopedMembers.map((m) => [m.discordId, m]));
 
-  const enrichedSnapshots = snapshots.map((s) => ({
-    ...s,
-    member: memberMap[s.memberDiscordId] ?? null,
-  }));
+  const enrichedSnapshots = snapshots
+    .filter((snapshot) => allowedDiscordIds.has(snapshot.memberDiscordId))
+    .map((s) => ({
+      ...s,
+      member: memberMap[s.memberDiscordId] ?? null,
+    }));
 
   // Stats
-  const latestPeriod = snapshots[0]?.periodEnd ?? null;
+  const latestPeriod = enrichedSnapshots[0]?.periodEnd ?? null;
   const latestSnapshots = latestPeriod
-    ? snapshots.filter((s) => s.periodEnd.getTime() === latestPeriod.getTime())
+    ? enrichedSnapshots.filter((s) => s.periodEnd.getTime() === latestPeriod.getTime())
     : [];
 
   const stats = {

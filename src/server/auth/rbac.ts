@@ -52,13 +52,15 @@ export async function getUserRole(session: any): Promise<Role> {
     return "chef";
   }
 
+  // Un recruteur reste dans l'espace membre — il accède au recrutement via le lien sidebar
+  // Ne pas retourner "staff" ici car ça le redirigerait vers /staff/dashboard
   const isRecruiter = hasAnyRole(roles, [RECRUTEUR_ROLE_ID]);
   if (isRecruiter) {
-    logger.debug("rbac", `getUserRole: ${discordId} => staff (recruiter)`);
+    logger.debug("rbac", `getUserRole: ${discordId} => member (recruiter)`);
     if (shouldLogRbac()) {
-      debug("✅ RBAC: User is RECRUTEUR", { discordId });
+      debug("✅ RBAC: User is RECRUTEUR (treated as member for routing)", { discordId });
     }
-    return "staff";
+    return "member";
   }
 
   logger.debug("rbac", `getUserRole: ${discordId} => member`);

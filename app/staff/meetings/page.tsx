@@ -1,6 +1,8 @@
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import MeetingsClient from "./meetings-client";
 import { redirect } from "next/navigation";
+import { PageShell } from "@/components/staff/ui/PageShell";
+import { Calendar } from "lucide-react";
 
 export default async function StaffMeetingsPage() {
   // ✅ PATCH: Unified staff protection (session + isStaff + member linked)
@@ -11,9 +13,12 @@ export default async function StaffMeetingsPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Reunions</h1>
+    <PageShell
+      title="Réunions staff"
+      description="Créez, suivez et ouvrez rapidement les réunions de la famille."
+      icon={Calendar}
+    >
       <MeetingsClient />
-    </div>
+    </PageShell>
   );
 }

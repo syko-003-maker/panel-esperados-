@@ -145,7 +145,7 @@ export default function TimelineClient({ memberId }: { memberId: string }) {
               </div>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{item.description}</p>
               <div className="text-xs text-gray-600 dark:text-gray-400">
-                <span>Créé: {formatBanklogTime(item.createdAt)}</span>
+                <span>Date de création: {formatBanklogTime(item.createdAt)}</span>
                 {item.effectiveAt && (
                   <span className="ml-4 text-orange-600 dark:text-orange-400">
                     Effectif: {formatBanklogTime(item.effectiveAt)}

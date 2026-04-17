@@ -197,11 +197,16 @@ async function panelFetch(
 
     if (!res.ok) {
       let errorText = "";
-      
+      let jsonPayload: any = null;
+
       try {
         if (contentType.includes("application/json")) {
-          const json = await res.json();
-          errorText = json.error || json.message || JSON.stringify(json).slice(0, 200);
+          jsonPayload = await res.json();
+          const candidate = jsonPayload?.error ?? jsonPayload?.message ?? jsonPayload;
+          errorText =
+            typeof candidate === "string"
+              ? candidate
+              : JSON.stringify(candidate ?? jsonPayload ?? {}).slice(0, 200);
         } else {
           // ✅ Always read body for non-JSON errors (HTML login, etc.)
           errorText = await res.text();
@@ -219,7 +224,7 @@ async function panelFetch(
             errorText = `HTML response (${errorText.length} bytes): ${preview}...`;
           }
         }
-      } catch (e) {
+      } catch {
         errorText = `(Status: ${res.status}, ${contentType || "unknown content-type"})`;
       }
 
@@ -228,9 +233,20 @@ async function panelFetch(
         path,
         status: res.status,
         contentType,
-        message: errorText.slice(0, 200),
+        message: String(errorText).slice(0, 200),
       });
-      return null;
+
+      if (jsonPayload && typeof jsonPayload === "object") {
+        return jsonPayload as PanelLinkError;
+      }
+
+      return {
+        ok: false,
+        error: {
+          code: `HTTP_${res.status}`,
+          message: String(errorText || `HTTP ${res.status}`),
+        },
+      } as PanelLinkError;
     }
 
     // ✅ SECURITY: Verify response is JSON before parsing

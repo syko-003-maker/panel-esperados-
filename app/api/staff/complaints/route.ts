@@ -1,21 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged } from "@/lib/guards";
-import { logInfo } from "@/lib/obs";
+import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
 
-const STATUSES = ["OPEN", "TREATED", "UNTREATED", "CLOSED"] as const;
+const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 
-type TicketStatus = (typeof STATUSES)[number];
-
-type TicketListItem = {
-  id: string;
-  channelId: string;
-  status: TicketStatus;
-  createdAtDiscord: Date;
-  closedAtDiscord: Date | null;
-  lastMessageAtDiscord: Date | null;
-  messagesCount: number;
-};
+const VALID_STATUSES = ["OPEN", "IN_REVIEW", "RESOLVED", "REJECTED", "CLOSED"] as const;
+type ComplaintStatus = (typeof VALID_STATUSES)[number];
 
 function parsePageParams(searchParams: URLSearchParams) {
   const pageRaw = Number(searchParams.get("page") ?? "1");
@@ -25,140 +15,87 @@ function parsePageParams(searchParams: URLSearchParams) {
   return { page, pageSize, skip: (page - 1) * pageSize };
 }
 
-function isValidStatus(value: string | null) {
-  return value ? STATUSES.includes(value as TicketStatus) : true;
-}
-
 export async function GET(req: Request) {
   const guard = await requirePrivileged();
   if (guard instanceof Response) return guard;
 
-  const startTime = Date.now();
-  const dashboardRequestId = req.headers.get("x-dashboard-request-id");
-  const dashboardSection = req.headers.get("x-dashboard-section") ?? "complaints";
-  const logDashboardDone = () => {
-    if (dashboardRequestId) {
-      logInfo("dashboard_fetch_done", {
-        requestId: dashboardRequestId,
-        section: dashboardSection,
-        durationMs: Date.now() - startTime,
-      });
-    }
-  };
-
   try {
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get("status");
+    const statusParam = searchParams.get("status");
     const q = (searchParams.get("q") ?? "").trim();
-    const lite = searchParams.get("lite") === "1" || searchParams.get("lite") === "true";
+    const { page, pageSize, skip } = parsePageParams(searchParams);
 
-    if (!isValidStatus(status)) {
+    if (statusParam && !VALID_STATUSES.includes(statusParam as ComplaintStatus)) {
       return NextResponse.json({ ok: false, error: "INVALID_STATUS" }, { status: 400 });
     }
 
-    const { page, pageSize, skip } = parsePageParams(searchParams);
+    type WhereClause = {
+      familyId: string;
+      status?: ComplaintStatus;
+      OR?: Array<Record<string, unknown>>;
+    };
 
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
+    const where: WhereClause = { familyId: FAMILY_ID };
+    if (statusParam) where.status = statusParam as ComplaintStatus;
     if (q) {
-      where.channelId = { contains: q, mode: "insensitive" };
+      where.OR = [
+        { authorDiscordId: { contains: q } },
+        { authorTag: { contains: q, mode: "insensitive" } },
+        { targetName: { contains: q, mode: "insensitive" } },
+        { ticketKey: { contains: q, mode: "insensitive" } },
+      ];
     }
 
-    if (lite) {
-      const [tickets, total] = await Promise.all([
-        prisma.complaintTicket.findMany({
-          where,
-          orderBy: { createdAtDiscord: "desc" },
-          take: pageSize,
-          select: {
-            id: true,
-            channelId: true,
-            status: true,
-            createdAtDiscord: true,
-            closedAtDiscord: true,
-          },
-        }),
-        prisma.complaintTicket.count({ where }),
-      ]);
-
-      const data: TicketListItem[] = tickets.map((ticket) => ({
-        id: ticket.id,
-        channelId: ticket.channelId,
-        status: ticket.status as TicketStatus,
-        createdAtDiscord: ticket.createdAtDiscord,
-        closedAtDiscord: ticket.closedAtDiscord ?? null,
-        lastMessageAtDiscord: null,
-        messagesCount: 0,
-      }));
-
-      return NextResponse.json({ ok: true, data, page: 1, pageSize, total });
-    }
-
-    const tickets = await prisma.complaintTicket.findMany({
-      where,
-      select: {
-        id: true,
-        channelId: true,
-        status: true,
-        createdAtDiscord: true,
-        closedAtDiscord: true,
-      },
-    });
-
-    if (tickets.length === 0) {
-      return NextResponse.json({ ok: true, data: [], page, pageSize, total: 0 });
-    }
-
-    const ticketIds = tickets.map((ticket) => ticket.id);
-    const messageAgg = await prisma.complaintMessage.groupBy({
-      by: ["ticketId"],
-      where: { ticketId: { in: ticketIds } },
-      _count: { _all: true },
-      _max: { createdAtDiscord: true },
-    });
-
-    const byTicket = new Map(
-      messageAgg.map((item) => [
-        item.ticketId,
-        {
-          messagesCount: item._count._all ?? 0,
-          lastMessageAtDiscord: item._max.createdAtDiscord ?? null,
+    const [complaints, total] = await Promise.all([
+      prisma.complaint.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          ticketKey: true,
+          title: true,
+          status: true,
+          authorDiscordId: true,
+          authorTag: true,
+          targetName: true,
+          discordThreadId: true,
+          payload: true,
+          closedAt: true,
+          closedByDiscordId: true,
+          closeReason: true,
+          createdAt: true,
+          updatedAt: true,
         },
-      ])
-    );
+      }),
+      prisma.complaint.count({ where }),
+    ]);
 
-    const enriched: TicketListItem[] = tickets.map((ticket) => {
-      const meta = byTicket.get(ticket.id);
+    const data = complaints.map((c) => {
+      const payload = (c.payload as Record<string, unknown>) ?? {};
       return {
-        id: ticket.id,
-        channelId: ticket.channelId,
-        status: ticket.status as TicketStatus,
-        createdAtDiscord: ticket.createdAtDiscord,
-        closedAtDiscord: ticket.closedAtDiscord ?? null,
-        lastMessageAtDiscord: meta?.lastMessageAtDiscord ?? null,
-        messagesCount: meta?.messagesCount ?? 0,
+        id: c.id,
+        ticketKey: c.ticketKey ?? null,
+        title: c.title,
+        status: c.status,
+        authorDiscordId: c.authorDiscordId ?? null,
+        authorTag: c.authorTag ?? null,
+        targetName: c.targetName ?? null,
+        reason: (payload.reason as string) ?? null,
+        discordThreadId: c.discordThreadId ?? null,
+        closedAt: c.closedAt?.toISOString() ?? null,
+        closedByDiscordId: c.closedByDiscordId ?? null,
+        closeReason: c.closeReason ?? null,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
       };
     });
 
-    enriched.sort((a, b) => {
-      const aTime = (a.lastMessageAtDiscord ?? a.createdAtDiscord).getTime();
-      const bTime = (b.lastMessageAtDiscord ?? b.createdAtDiscord).getTime();
-      return bTime - aTime;
-    });
-
-    const total = enriched.length;
-    const data = enriched.slice(skip, skip + pageSize);
-
     return NextResponse.json({ ok: true, data, page, pageSize, total });
   } catch (e: any) {
-    const errMsg = e?.message ?? String(e);
-    console.error("[/api/staff/complaints GET] error:", errMsg);
-    return NextResponse.json(
-      { ok: false, error: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
-  } finally {
-    logDashboardDone();
+    console.error("[/api/staff/complaints GET] error:", e?.message ?? e);
+    return NextResponse.json({ ok: false, error: "INTERNAL_ERROR" }, { status: 500 });
   }
 }
 

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logInfo } from "@/lib/obs";
+import { requirePrivileged } from "@/lib/guards";
 
 export async function GET(req: NextRequest) {
+  const guard = await requirePrivileged();
+  if (guard instanceof Response) return guard;
+
   const { searchParams } = new URL(req.url);
   const steamId = searchParams.get("steamId");
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { postDiscordRename } from "@/server/worker/post-discord";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { ensureFamilyExists } from "@/lib/family-ensure";
+import { findBlockingSteamLink } from "@/lib/link-conflicts";
 
 const INGEST_SECRET = process.env.INGEST_SECRET || "";
 const FAMILY_ID = DEFAULT_FAMILY_ID;
@@ -102,14 +103,28 @@ export async function POST(
       willWriteToMember: !!finalSteamId,
     });
 
-    // Check if steamId already used by another member
+    // ✅ Ensure Family exists before creating Member (prevent P2003 foreign key error)
+    let familyIdToUse = FAMILY_ID;
+    try {
+      const ensured = await ensureFamilyExists();
+      familyIdToUse = ensured.familyId;
+      console.log("[link-request:accept] Family ensured", { familyId: familyIdToUse });
+    } catch (err) {
+      console.error("[link-request:accept] Failed to ensure family exists", {
+        familyId: FAMILY_ID,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+      return NextResponse.json(
+        { ok: false, error: err instanceof Error ? err.message : "Family ensure failed" },
+        { status: 500 }
+      );
+    }
+
     if (finalSteamId) {
-      const existingMember = await prisma.member.findFirst({
-        where: {
-          familyId: FAMILY_ID,
-          steamId: finalSteamId,
-          discordId: { not: linkRequest.requesterDiscordId }, // Different member
-        },
+      const existingMember = await findBlockingSteamLink(prisma, {
+        familyId: familyIdToUse,
+        steamId: finalSteamId,
+        excludeDiscordId: linkRequest.requesterDiscordId,
       });
 
       if (existingMember) {
@@ -132,27 +147,9 @@ export async function POST(
         actionByDiscordId: clickerId,
         actionByName: clickerName,
         lastActionAt: new Date(),
-        // If override provided, update LinkRequest.steamId for audit trail
         ...(hasValidOverride && { steamId: overrideCandidate }),
       },
     });
-
-    // ✅ Ensure Family exists before creating Member (prevent P2003 foreign key error)
-    let familyIdToUse = FAMILY_ID;
-    try {
-      const ensured = await ensureFamilyExists();
-      familyIdToUse = ensured.familyId;
-      console.log("[link-request:accept] Family ensured", { familyId: familyIdToUse });
-    } catch (err) {
-      console.error("[link-request:accept] Failed to ensure family exists", {
-        familyId: FAMILY_ID,
-        error: err instanceof Error ? err.message : "Unknown error",
-      });
-      return NextResponse.json(
-        { ok: false, error: err instanceof Error ? err.message : "Family ensure failed" },
-        { status: 500 }
-      );
-    }
 
     // Upsert Member
     let member = await prisma.member.findFirst({

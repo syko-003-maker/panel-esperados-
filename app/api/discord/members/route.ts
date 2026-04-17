@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import {
+  getDiscordGradeLevel,
+  getDiscordGradeRoleId,
+} from "@/lib/discord-grade";
+import {
+  getMemberScopeFlags,
+  isActiveMembersScopeMember,
+  isDisplayableStaffMember,
+} from "@/lib/staff/member-scope";
 
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET;
 
@@ -52,20 +61,27 @@ export async function GET(req: NextRequest) {
         gradeLevel: true,
         roleDiscordId: true,
         isActive: true,
+        isGhost: true,
         rpName: true,
+        rankRoleId: true,
+        rankLabel: true,
+        discordRoleIds: true,
       },
     });
 
-    // Filter out members without discordId
-    const validMembers = members.filter((m) => m.discordId);
+    const scopedMembers = members.filter(
+      activeOnly ? isActiveMembersScopeMember : isDisplayableStaffMember
+    );
+
+    const validMembers = scopedMembers.filter((m) => m.discordId);
 
     return NextResponse.json({
       ok: true,
       members: validMembers.map((m) => ({
         discordId: m.discordId!,
-        grade: m.grade,
-        gradeLevel: m.gradeLevel,
-        roleDiscordId: m.roleDiscordId,
+        grade: getMemberScopeFlags(m).gradeInfo.grade ?? m.grade,
+        gradeLevel: getDiscordGradeLevel(m.discordRoleIds) ?? m.gradeLevel,
+        roleDiscordId: getDiscordGradeRoleId(m.discordRoleIds) ?? m.roleDiscordId,
         isActive: m.isActive,
         rpName: m.rpName,
       })),

@@ -47,11 +47,8 @@ export default async function LoginPage(props: LoginPageProps) {
   if (reason === 'not_linked' || !linked) {
     debug("[loginPage] showing NonLinkedCta", { reason, linked: !!linked });
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-slate-950">
-        {/* Background */}
-        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-slate-900 via-slate-900 to-purple-900/30" />
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(1200px_circle_at_20%_10%,rgba(99,102,241,0.12),transparent_50%)]" />
-        
+      /* AppBackground (root layout) gère le fond — pas de bg custom ici */
+      <div className="min-h-screen flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-2xl">
           <NonLinkedCta />
         </div>

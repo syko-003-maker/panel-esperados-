@@ -62,3 +62,18 @@ backups/
 
 # Logs
 /var/log/panel-backup.log
+
+# Discord worker — dépendances et build
+discord-worker/node_modules/
+discord-worker/dist/
+
+# Claude Code — données internes (ne jamais committer)
+.claude/
+
+# Fichiers accidentels
+"ystemctl show panel-esperados -p MainPID --value)"
+=
+
+# Scripts de réparation (données sensibles)
+scripts/*.json
+scripts/*.mjs

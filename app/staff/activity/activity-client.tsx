@@ -185,7 +185,7 @@ export default function ActivityClient() {
       if (document.hidden) return;
       load().catch(() => null);
     };
-    const id = window.setInterval(tick, 1500);
+    const id = window.setInterval(tick, 30000);
     const onVisibility = () => {
       if (!document.hidden) load().catch(() => null);
     };

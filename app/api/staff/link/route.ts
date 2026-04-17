@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { getDiscordIdFromSessionOrAccount } from "@/lib/me";
 import { Prisma } from "@prisma/client";
+import { resolveFamilyId } from "@/lib/family";
 
 const INGEST_SECRET = process.env.INGEST_SECRET ?? "";
 
@@ -158,14 +159,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ✅ Check if target is already linked
-  const familyId = "esperados";
+  const familyId = await resolveFamilyId("esperados");
   const existingMember = await prisma.member.findUnique({
     where: { familyId_discordId: { familyId, discordId: actualTargetDiscordId } },
     select: { id: true, steamId: true, discordId: true },
   });
 
+  const existingBySteam = await prisma.member.findFirst({
+    where: { familyId, steamId },
+    select: { id: true, steamId: true, discordId: true, rpName: true },
+  });
+
   if (existingMember && existingMember.steamId) {
+    if (existingMember.steamId === steamId) {
+      return NextResponse.json({
+        ok: true,
+        member: { id: existingMember.id, discordId: existingMember.discordId, steamId: existingMember.steamId },
+      });
+    }
+
     return NextResponse.json(
       { ok: false, error: "TARGET_ALREADY_LINKED" },
       { status: 403 }
@@ -206,12 +218,55 @@ export async function POST(req: NextRequest) {
       update: {},
     });
 
-    // ✅ Upsert with targetDiscordId as key
-    const member = await prisma.member.upsert({
-      where: { familyId_discordId: { familyId, discordId: actualTargetDiscordId } },
-      create: { familyId, discordId: actualTargetDiscordId, steamId, rpName, age, isActive: false }, // ✅ Only LYG sync sets isActive=true
-      update: { steamId, rpName, age, discordId: actualTargetDiscordId }, // ⚠️ Do NOT update isActive
-    });
+    let member: Awaited<ReturnType<typeof prisma.member.update>> | Awaited<ReturnType<typeof prisma.member.upsert>> | null = null;
+
+    if (existingBySteam) {
+      if (existingMember && existingMember.id !== existingBySteam.id) {
+        await prisma.$transaction(async (tx) => {
+          await tx.member.update({
+            where: { id: existingMember.id },
+            data: {
+              debugPrevDiscordId: actualTargetDiscordId,
+              discordId: null,
+            },
+          });
+
+          member = await tx.member.update({
+            where: { id: existingBySteam.id },
+            data: {
+              discordId: actualTargetDiscordId,
+              steamId,
+              rpName,
+              age,
+            },
+          });
+        });
+      } else {
+        member = await prisma.member.update({
+          where: { id: existingBySteam.id },
+          data: {
+            discordId: actualTargetDiscordId,
+            steamId,
+            rpName,
+            age,
+          },
+        });
+      }
+    } else {
+      // ✅ Upsert with targetDiscordId as key
+      member = await prisma.member.upsert({
+        where: { familyId_discordId: { familyId, discordId: actualTargetDiscordId } },
+        create: { familyId, discordId: actualTargetDiscordId, steamId, rpName, age, isActive: false }, // ✅ Only LYG sync sets isActive=true
+        update: { steamId, rpName, age, discordId: actualTargetDiscordId }, // ⚠️ Do NOT update isActive
+      });
+    }
+
+    if (!member) {
+      return NextResponse.json(
+        { ok: false, error: "LINK_FAILED" },
+        { status: 500 }
+      );
+    }
 
     console.log("[link:POST] Member upserted", {
       memberId: member.id,

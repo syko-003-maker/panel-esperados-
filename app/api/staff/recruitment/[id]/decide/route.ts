@@ -5,6 +5,7 @@ import { getSession } from "@/auth";
 import { enqueueAssignRole, enqueueRecruitmentDecision } from "@/lib/discord/discord";
 import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
+import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 
 const DECISIONS = ["ACCEPT", "REJECT"] as const;
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
@@ -27,6 +28,8 @@ function isValidDecision(value: string) {
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const requestId = makeRequestId();
+
   const guard = await requireRecruiterOrAbove();
   if (guard instanceof Response) return guard;
 
@@ -67,6 +70,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   if (recruitment.status === "ACCEPTED" || recruitment.status === "REJECTED") {
+    logWarn("recruitment_decide_already_closed", { requestId, recruitmentId: id, status: recruitment.status });
     return NextResponse.json({ ok: false, error: "ALREADY_CLOSED" }, { status: 409 });
   }
 
@@ -80,9 +84,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
     if (linkedMember?.steamId?.trim()) {
       steamId = linkedMember.steamId.trim();
+      logInfo("recruitment_decide_steamid_fallback", { requestId, recruitmentId: id, discordId: recruitment.discordId });
     }
   }
   if (decisionRaw === "ACCEPT" && !steamId) {
+    logWarn("recruitment_decide_missing_steamid", { requestId, recruitmentId: id });
     return NextResponse.json({ ok: false, error: "INVALID_STEAM_ID" }, { status: 400 });
   }
 
@@ -94,44 +100,77 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const nextStatus = decisionRaw === "ACCEPT" ? "ACCEPTED" : "REJECTED";
 
-  const updated = await prisma.recruitment.update({
-    where: { id },
-    data: {
-      status: nextStatus,
-      // Persiste le steamId trouvé via fallback Member si absent sur la fiche
-      ...(steamId && !recruitment.steamId ? { steamId } : {}),
-    },
-    select: {
-      id: true,
-      status: true,
-      rpName: true,
-      age: true,
-      steamId: true,
-      discordId: true,
-      discordThreadId: true,
-      notes: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  // Transaction atomique : activation du Member + clôture du recrutement
+  // Garantit la cohérence même si l'une des deux opérations échoue
+  let updated: {
+    id: string;
+    status: string;
+    rpName: string | null;
+    age: number | null;
+    steamId: string | null;
+    discordId: string | null;
+    discordThreadId: string | null;
+    notes: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+      if (decisionRaw === "ACCEPT" && recruitment.discordId) {
+        await tx.member.updateMany({
+          where: { discordId: recruitment.discordId },
+          data: { isActive: true },
+        });
+      }
+      return tx.recruitment.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          // Persiste le steamId trouvé via fallback Member si absent sur la fiche
+          ...(steamId && !recruitment.steamId ? { steamId } : {}),
+        },
+        select: {
+          id: true,
+          status: true,
+          rpName: true,
+          age: true,
+          steamId: true,
+          discordId: true,
+          discordThreadId: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    });
+  } catch (txErr) {
+    logError("recruitment_decide_transaction_failed", { requestId, recruitmentId: id, decision: decisionRaw }, txErr);
+    return NextResponse.json({ ok: false, error: "INTERNAL_ERROR" }, { status: 500 });
+  }
 
   const updatedNotes = parseRecruitmentNotes(updated.notes ?? null);
   const evaluation = extractRecruitmentEvaluation(updatedNotes, null);
   const recruiterId = updatedNotes.claimedById ?? userId;
   const totals = computeRecruitmentTotals(evaluation.scoresJson);
 
-  await enqueueRecruitmentDecision({
-    familyId: FAMILY_ID,
-    ticketId: updated.id,
-    decision: decisionRaw as Decision,
-    candidateRpName: updated.rpName ?? updated.discordId ?? "Unknown",
-    candidateDiscordId: updated.discordId ?? undefined,
-    candidateSteamId: steamId || updated.steamId || undefined,
-    totalOn20: totals.totalOn20,
-    totalPoints: totals.totalPoints,
-    claimedByUserId: recruiterId,
-    discordThreadId: updated.discordThreadId ?? null,
-  });
+  // Notification Discord — non bloquante : une panne Discord ne doit pas faire échouer la décision
+  try {
+    await enqueueRecruitmentDecision({
+      familyId: FAMILY_ID,
+      ticketId: updated.id,
+      decision: decisionRaw as Decision,
+      candidateRpName: updated.rpName ?? updated.discordId ?? "Unknown",
+      candidateDiscordId: updated.discordId ?? undefined,
+      candidateSteamId: steamId || updated.steamId || undefined,
+      totalOn20: totals.totalOn20,
+      totalPoints: totals.totalPoints,
+      claimedByUserId: recruiterId,
+      discordThreadId: updated.discordThreadId ?? null,
+    });
+  } catch (discordErr) {
+    logError("recruitment_decide_enqueue_failed", { requestId, recruitmentId: id, decision: decisionRaw }, discordErr);
+    // Non-bloquant : la décision est persistée, Discord sera notifié manuellement si besoin
+  }
 
   // Attribution automatique des rôles Discord lors de l'acceptation
   if (decisionRaw === "ACCEPT") {
@@ -148,14 +187,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             entity: "recruitment_ticket",
             entityId: updated.id,
           }).catch((err) => {
-            console.error(`[recruitment/decide] Échec enqueue ASSIGN_ROLE ${roleId} pour ${candidateDiscordId}:`, err);
+            logError("recruitment_decide_assign_role_failed", { requestId, recruitmentId: id, roleId, candidateDiscordId }, err);
           })
         )
       );
     } else {
-      console.warn(`[recruitment/decide] Discord ID invalide ou manquant (${updated.discordId ?? "vide"}) — rôles non attribués pour le recrutement ${updated.id}`);
+      logWarn("recruitment_decide_invalid_discord_id", { requestId, recruitmentId: id, discordId: updated.discordId ?? "vide" });
     }
   }
+
+  logInfo("recruitment_decided", {
+    requestId,
+    recruitmentId: id,
+    decision: decisionRaw,
+    rpName: updated.rpName ?? updated.discordId ?? "Unknown",
+    actorId: userId,
+  });
 
   const statusLabel = decisionRaw === "ACCEPT" ? "CLOSED_ACCEPTED" : "CLOSED_REJECTED";
 

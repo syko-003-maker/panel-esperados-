@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/db";
 import { getDiscordIdForSession } from "./discord-id";
 import { logger } from "@/lib/logger";
+import { FAMILY_SLUG, resolveFamilyId } from "@/lib/family";
 
 type Session = {
   user?: {
@@ -61,13 +62,18 @@ export async function getCurrentMember(session: Session): Promise<CurrentMemberR
   }
 
   // ✅ Étape 2: query Member par familyId_discordId
-  const familyId = "esperados";
+  let familyId = FAMILY_SLUG;
+  try {
+    familyId = await resolveFamilyId(FAMILY_SLUG);
+  } catch {
+    familyId = FAMILY_SLUG;
+  }
 
-  const member = await prisma.member.findUnique({
+  const member = await prisma.member.findFirst({
     where: {
-      familyId_discordId: {
-        familyId,
-        discordId,
+      discordId,
+      familyId: {
+        in: Array.from(new Set([familyId, FAMILY_SLUG])),
       },
     },
     select: {

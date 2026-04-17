@@ -1,7 +1,3 @@
-// ✅ MUST BE FIRST: Load environment variables BEFORE any other imports
-// This ensures process.env is populated when all modules are imported
-import "dotenv/config";
-
 import { config } from "dotenv";
 import { resolve, join } from "path";
 import { existsSync, writeFileSync, readFileSync } from "fs";
@@ -17,10 +13,14 @@ const FIXED_CHANNELS = {
   TICKETS_LOGS_CHANNEL_ID: "1325618925303758858",
 };
 
+const DEFAULT_INGEST_BASE_URL = "http://127.0.0.1:3000";
+const DEFAULT_PANEL_BASE_URL = "https://losesperados.fr";
+
 function ensureEnvFile(envPath: string, isRoot: boolean = false): void {
   if (!existsSync(envPath)) {
     // Auto-create .env.prod with required variables
-    const prodBaseUrl = (process.env.NEXTAUTH_URL || process.env.INGEST_BASE_URL || "https://losesperados.fr").replace(/\/+$/, "");
+    const panelBaseUrl = (process.env.NEXTAUTH_URL || process.env.PANEL_BASE_URL || DEFAULT_PANEL_BASE_URL).replace(/\/+$/, "");
+    const ingestBaseUrl = (process.env.INGEST_BASE_URL || DEFAULT_INGEST_BASE_URL).replace(/\/+$/, "");
     let content = `# Auto-generated Discord Worker Environment (${new Date().toISOString().split('T')[0]})
 # PRODUCTION CONFIGURATION
 
@@ -29,9 +29,9 @@ function ensureEnvFile(envPath: string, isRoot: boolean = false): void {
     if (isRoot) {
       // Root .env.prod includes panel + worker config
       content += `# Panel Configuration
-NEXTAUTH_URL=${prodBaseUrl}
+NEXTAUTH_URL=${panelBaseUrl}
 NEXTAUTH_SECRET=losesperados_super_secret_ultra
-INGEST_BASE_URL=${prodBaseUrl}
+INGEST_BASE_URL=${ingestBaseUrl}
 INGEST_SECRET=${process.env.INGEST_SECRET || "esperados_ingest_secret_prod"}
 
 # Discord Bot (Panel)
@@ -49,7 +49,7 @@ BOTS_FAMILLE_CHANNEL_ID=${FIXED_CHANNELS.BOTS_FAMILLE_CHANNEL_ID}
 CONTACT_CHANNEL_ID=${FIXED_CHANNELS.CONTACT_CHANNEL_ID}
 TICKETS_PARENT_CHANNEL_ID=${FIXED_CHANNELS.TICKETS_PARENT_CHANNEL_ID}
 TICKETS_LOGS_CHANNEL_ID=${FIXED_CHANNELS.TICKETS_LOGS_CHANNEL_ID}
-INGEST_BASE_URL=${process.env.INGEST_BASE_URL || prodBaseUrl}
+INGEST_BASE_URL=${ingestBaseUrl}
 INGEST_SECRET=${process.env.INGEST_SECRET || "esperados_ingest_secret_prod"}
 
 NODE_ENV=production
@@ -137,15 +137,38 @@ import {
 import { handleRecruitmentDecision } from "./recruitment-decision.js";
 import { handleComplaintDecision } from "./complaint-decision.js";
 import { processOutboxQueue } from "./outbox-processor.js";
+import {
+  runBanklogsAutoSyncJob,
+  getBanklogsSyncIntervalMs,
+  getLastBanklogsAutoSyncAt,
+} from "./banklogs-auto-sync.js";
+import {
+  runInfosAutoSyncJob,
+  getInfosSyncIntervalMs,
+  getLastInfosAutoSyncAt,
+} from "./infos-auto-sync.js";
+import {
+  runMembersAutoSyncJob,
+  getMembersSyncIntervalMs,
+  getLastMembersAutoSyncAt,
+} from "./members-auto-sync.js";
+import {
+  runPlaytimeAutoSyncJob,
+  getPlaytimeSyncIntervalMs,
+  getLastPlaytimeAutoSyncAt,
+} from "./playtime-auto-sync.js";
 import { PrismaClient } from "@prisma/client";
+
+const LEGACY_TICKETS_PANEL_RECRUIT_ID = "ticket:recruitment";
+const LEGACY_TICKETS_PANEL_COMPLAINT_ID = "ticket:complaint";
 
 // Initialize Prisma for outbox processing
 const prisma = new PrismaClient();
 
 // Sync interval (5 minutes)
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
-// Outbox polling interval (30 seconds)
-const OUTBOX_POLL_INTERVAL_MS = 30 * 1000;
+// Outbox polling interval (3 seconds)
+const OUTBOX_POLL_INTERVAL_MS = 3 * 1000;
 
 // ─────────────────────────────────────────────────────────────
 // ENV validation
@@ -228,12 +251,20 @@ function logError(event: string, error: unknown, data: Record<string, unknown> =
   }));
 }
 
+function isLegacyIngestUrl(url: string | undefined): boolean {
+  return !!url && url.includes("losesperados.xyz");
+}
+
+function getPanelHealthBaseUrl(): string | undefined {
+  return process.env.PANEL_BASE_URL || process.env.INGEST_BASE_URL;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Health check
 // ─────────────────────────────────────────────────────────────
 
 async function checkPanelHealth(): Promise<boolean> {
-  const baseUrl = process.env.INGEST_BASE_URL;
+  const baseUrl = getPanelHealthBaseUrl();
   if (!baseUrl) return false;
 
   try {
@@ -319,12 +350,13 @@ client.once("ready", async () => {
   }
 
   // Check panel health
+  const panelHealthUrl = getPanelHealthBaseUrl();
   const panelOk = await checkPanelHealth();
   if (panelOk) {
-    log("panel_health_ok", { url: process.env.INGEST_BASE_URL });
+    log("panel_health_ok", { url: panelHealthUrl });
   } else {
     log("panel_health_warn", { 
-      url: process.env.INGEST_BASE_URL,
+      url: panelHealthUrl,
       message: "Panel health check failed - continuing anyway"
     });
   }
@@ -450,11 +482,85 @@ client.once("ready", async () => {
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });
   
-  // Run initial outbox processing after 10 seconds
-  setTimeout(() => processOutboxQueue(prisma, client), 10_000);
+  // Run initial outbox processing quickly at boot
+  setTimeout(() => processOutboxQueue(prisma, client), 2_000);
   
   // Schedule periodic outbox processing
   setInterval(() => processOutboxQueue(prisma, client), OUTBOX_POLL_INTERVAL_MS);
+
+  // Schedule banklogs auto-sync (server-side)
+  const ingestBaseUrlForSync = process.env.INGEST_BASE_URL;
+  if (isLegacyIngestUrl(ingestBaseUrlForSync)) {
+    console.error("[BANKLOGS_AUTO_SYNC] disabled: INGEST_BASE_URL points to legacy domain", ingestBaseUrlForSync);
+    log("banklogs_auto_sync_disabled", { reason: "legacy_domain", ingestBaseUrl: ingestBaseUrlForSync });
+  } else {
+    const banklogsIntervalMs = getBanklogsSyncIntervalMs();
+    log("banklogs_auto_sync_scheduled", { intervalMs: banklogsIntervalMs });
+    console.log("[BANKLOGS_AUTO_SYNC] scheduled (60s)");
+
+    // Run initial sync after 15 seconds
+    setTimeout(() => runBanklogsAutoSyncJob(), 15_000);
+
+    // Schedule periodic sync
+    setInterval(() => runBanklogsAutoSyncJob(), banklogsIntervalMs);
+
+    // Health check: warn if auto-sync appears stalled
+    setInterval(() => {
+      const lastRun = getLastBanklogsAutoSyncAt();
+      if (!lastRun) return;
+      if (Date.now() - lastRun > 120_000) {
+        console.warn("[BANKLOGS_AUTO_SYNC] not running or stalled");
+      }
+    }, 60_000);
+
+    // Schedule members auto-sync on existing panel pipeline (members-only mode)
+    const membersAutoSyncEnabled = process.env.MEMBERS_AUTO_SYNC_ENABLED !== "false";
+    if (membersAutoSyncEnabled) {
+      const membersIntervalMs = getMembersSyncIntervalMs();
+      log("members_auto_sync_scheduled", { intervalMs: membersIntervalMs });
+
+      // Run initial members sync shortly after boot
+      setTimeout(() => runMembersAutoSyncJob(), 45_000);
+
+      // Schedule periodic members sync
+      setInterval(() => runMembersAutoSyncJob(), membersIntervalMs);
+
+      // Health check: warn if members sync appears stalled
+      setInterval(() => {
+        const lastRun = getLastMembersAutoSyncAt();
+        if (!lastRun) return;
+        if (Date.now() - lastRun > membersIntervalMs * 2) {
+          console.warn("[MEMBERS_AUTO_SYNC] not running or stalled");
+        }
+      }, 60_000);
+    } else {
+      log("members_auto_sync_disabled", { message: "Set MEMBERS_AUTO_SYNC_ENABLED=false to keep disabled" });
+    }
+
+    const infosIntervalMs = getInfosSyncIntervalMs();
+    log("infos_auto_sync_scheduled", { intervalMs: infosIntervalMs });
+    setTimeout(() => runInfosAutoSyncJob(), 30_000);
+    setInterval(() => runInfosAutoSyncJob(), 60 * 60 * 1000);
+    setInterval(() => {
+      const lastRun = getLastInfosAutoSyncAt();
+      if (!lastRun) return;
+      if (Date.now() - lastRun > infosIntervalMs * 2) {
+        console.warn("[INFOS_AUTO_SYNC] not running or stalled");
+      }
+    }, 60_000);
+
+    const playtimeIntervalMs = getPlaytimeSyncIntervalMs();
+    log("playtime_auto_sync_scheduled", { intervalMs: playtimeIntervalMs });
+    setTimeout(() => runPlaytimeAutoSyncJob(), 60_000);
+    setInterval(() => runPlaytimeAutoSyncJob(), 60 * 60 * 1000);
+    setInterval(() => {
+      const lastRun = getLastPlaytimeAutoSyncAt();
+      if (!lastRun) return;
+      if (Date.now() - lastRun > playtimeIntervalMs * 2) {
+        console.warn("[PLAYTIME_AUTO_SYNC] not running or stalled");
+      }
+    }, 60_000);
+  }
 });
 
 client.on("interactionCreate", async (interaction: Interaction) => {
@@ -474,7 +580,10 @@ client.on("interactionCreate", async (interaction: Interaction) => {
 
       const startedAt = Date.now();
 
-      if (interaction.customId === CUSTOM_ID.PANEL_RECRUIT) {
+      if (
+        interaction.customId === CUSTOM_ID.PANEL_RECRUIT ||
+        interaction.customId === LEGACY_TICKETS_PANEL_RECRUIT_ID
+      ) {
         log("interaction", { type: "button", action: "open_recruitment_modal", userId: interaction.user.id });
         try {
           return await openRecruitmentModal(interaction);
@@ -489,7 +598,10 @@ client.on("interactionCreate", async (interaction: Interaction) => {
           });
         }
       }
-      if (interaction.customId === CUSTOM_ID.PANEL_COMPLAINT) {
+      if (
+        interaction.customId === CUSTOM_ID.PANEL_COMPLAINT ||
+        interaction.customId === LEGACY_TICKETS_PANEL_COMPLAINT_ID
+      ) {
         log("interaction", { type: "button", action: "open_complaint_modal", userId: interaction.user.id });
         try {
           return await openComplaintModal(interaction);
@@ -868,7 +980,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
 
     // Modals submit
     if (interaction.isModalSubmit()) {
-      if (interaction.customId === CUSTOM_ID.MODAL_RECRUIT) {
+      if (interaction.customId.startsWith(CUSTOM_ID.MODAL_RECRUIT)) {
         log("interaction", { type: "modal", action: "recruitment_submit", userId: interaction.user.id });
         return handleRecruitmentSubmit(interaction);
       }

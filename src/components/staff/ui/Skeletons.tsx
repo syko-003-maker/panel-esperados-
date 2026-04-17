@@ -1,19 +1,20 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { MotionSection } from "./motion";
 
 export function SkeletonRow({ className }: { className?: string }) {
   return (
-    <div className={cn("h-4 bg-slate-800/50 rounded animate-pulse", className)} />
+    <div className={cn("h-4 rounded bg-white/8 animate-pulse", className)} />
   );
 }
 
 export function SkeletonCard({ rows = 3 }: { rows?: number }) {
   return (
-    <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 space-y-3">
+    <MotionSection className="rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.65),rgba(10,3,5,0.75))] p-6 space-y-3 shadow-[0_24px_60px_-38px_rgba(2,0,1,0.72)] backdrop-blur-xl">
       {Array.from({ length: rows }).map((_, i) => (
         <SkeletonRow key={i} />
       ))}
-    </div>
+    </MotionSection>
   );
 }
 

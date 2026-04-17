@@ -9,9 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Complaint = {
   id: string;
-  channelId: string;
-  status: "OPEN" | "TREATED" | "UNTREATED" | "CLOSED";
-  createdAtDiscord: string;
+  ticketKey: string | null;
+  status: "OPEN" | "IN_REVIEW" | "RESOLVED" | "REJECTED" | "CLOSED";
+  createdAt: string;
 };
 
 type Recruitment = {
@@ -32,6 +32,15 @@ type Sanction = {
   createdAt: string;
 };
 
+type PendingAbsence = {
+  id: string;
+  memberId: string | null;
+  member: { rpName: string } | null;
+  startAt: string;
+  endAt: string;
+  type: string;
+};
+
 type MembersCountResp = {
   ok: boolean;
   familyId?: string;
@@ -48,6 +57,7 @@ export type DashboardData = {
   complaints: Complaint[];
   recruitments: Recruitment[];
   sanctions: Sanction[];
+  pendingAbsences: PendingAbsence[];
   membersCount: number;
   membersSource: "lyg" | "db_stale" | null;
   membersError: string | null;
@@ -71,6 +81,7 @@ const DEFAULT_DATA: DashboardData = {
   complaints: [],
   recruitments: [],
   sanctions: [],
+  pendingAbsences: [],
   membersCount: 0,
   membersSource: null,
   membersError: null,
@@ -151,6 +162,7 @@ export function useDashboardData() {
     complaints?: CacheEntry<Complaint[]>;
     recruitments?: CacheEntry<Recruitment[]>;
     sanctions?: CacheEntry<Sanction[]>;
+    pendingAbsences?: CacheEntry<PendingAbsence[]>;
     members?: CacheEntry<{
       count: number;
       source: "lyg" | "db_stale" | null;
@@ -283,6 +295,26 @@ export function useDashboardData() {
         }
       })();
 
+      const pendingAbsencesPromise = (async () => {
+        const cached = readCache(cacheRef.current.pendingAbsences, TTL_DEFAULT_MS, force);
+        if (cached !== null) return cached;
+
+        try {
+          const json = await fetchWithTimeout<any>(
+            "/api/staff/absences?status=PENDING&pageSize=10&familyId=esperados",
+            controller,
+            REQUEST_TIMEOUT_MS
+          );
+          const arr = toArray<PendingAbsence>(json);
+          cacheRef.current.pendingAbsences = { at: Date.now(), value: arr };
+          return arr;
+        } catch (e) {
+          if (isDev())
+            console.error("[DASHBOARD] pendingAbsences fetch failed:", String(e));
+          return [];
+        }
+      })();
+
       const membersPromise = (async () => {
         const cached = readCache(cacheRef.current.members, TTL_MEMBERS_MS, force);
         if (cached !== null) return cached;
@@ -323,6 +355,7 @@ export function useDashboardData() {
         complaintsPromise,
         recruitmentsPromise,
         sanctionsPromise,
+        pendingAbsencesPromise,
         membersPromise,
       ]);
 
@@ -332,7 +365,7 @@ export function useDashboardData() {
         return;
       }
 
-      const [complaintsResult, recruitmentsResult, sanctionsResult, membersResult] =
+      const [complaintsResult, recruitmentsResult, sanctionsResult, pendingAbsencesResult, membersResult] =
         results;
 
       // ========================================================================
@@ -352,6 +385,11 @@ export function useDashboardData() {
       const sanctions =
         sanctionsResult.status === "fulfilled"
           ? sanctionsResult.value ?? []
+          : [];
+
+      const pendingAbsences =
+        pendingAbsencesResult.status === "fulfilled"
+          ? pendingAbsencesResult.value ?? []
           : [];
 
       const membersData =
@@ -375,6 +413,7 @@ export function useDashboardData() {
         complaints: Array.isArray(complaints) ? complaints : [],
         recruitments: Array.isArray(recruitments) ? recruitments : [],
         sanctions: Array.isArray(sanctions) ? sanctions : [],
+        pendingAbsences: Array.isArray(pendingAbsences) ? pendingAbsences : [],
         membersCount: Number(membersData?.count ?? 0),
         membersSource: membersData?.source ?? null,
         membersError: membersData?.err ?? null,
@@ -410,6 +449,7 @@ export function useDashboardData() {
         complaints: nextData.complaints,
         recruitments: nextData.recruitments,
         sanctions: nextData.sanctions,
+        pendingAbsences: nextData.pendingAbsences,
         membersCount: nextData.membersCount,
         membersSource: nextData.membersSource,
         membersError: nextData.membersError,

@@ -1,833 +1,501 @@
 "use client";
-import type { BootstrapState } from "@/lib/bootstrap";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge-new";
-import { Button } from "@/components/ui/button";
-import { PageShell, SectionCard, EmptyState } from "@/components/staff/ui";
-import Link from "next/link";
-import { Search, ExternalLink, RefreshCw, Database, AlertTriangle } from "lucide-react";
-import { getGradeBadgeProps } from "@/lib/grade-colors";
-import { getMemberDisplayName, getNeutralRankBadge, resolveStableRank } from "@/lib/member-display";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import type { StaffMemberDto } from "@/types/staff";
 import { formatPlaytime } from "@/lib/formatPlaytime";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
+import { DataTile } from "@/components/staff/ui/DataTile";
+import { EmptyState } from "@/components/staff/ui/EmptyState";
+import { LoadingState } from "@/components/staff/ui/LoadingState";
+import { MotionButtonFrame } from "@/components/staff/ui/motion";
+import { SectionCard } from "@/components/staff/ui/SectionCard";
+import { StatusBadge as UiStatusBadge } from "@/components/staff/ui/StatusBadge";
+import {
+  formatPlaytimeDelta,
+  getActivityBand,
+  getMemberRowClassName,
+  getMemberStatus,
+  isActivityExempt,
+  isWatchMember,
+  matchesQuickFilter,
+} from "@/lib/staff/member-ux";
+import type { QuickFilter } from "@/lib/staff/member-ux";
 
-type Member = {
-  id: string;
-  discordId: string | null;
-  steamId: string | null;
-  rpName: string | null;
-  discordDisplayName?: string | null;
-  discordUsername?: string | null;
-  grade: string | null;
-  rankLabel: string | null;
+type MemberItem = StaffMemberDto & {
+  grade?: string | null;
+  gradeLevel?: number | null;
+  rankLabel?: string | null;
   rankRoleId?: string | null;
-  gradeLevel: number;
-  discordRoleIds?: string[];
+  previousPlaytime7d?: number | null;
+  playtimeDelta7d?: number | null;
+  discordRolesUpdatedAt?: string | null;
   discordLastError?: string | null;
-  discordAvatarHash?: string | null;
-  discordSnapshot?: {
-    rolesJson?: unknown;
-  } | null;
-  isActive: boolean;
-  effectiveActive: boolean;  // ✅ Computed: session user is ALWAYS true, otherwise = isActive
-  isSessionUser: boolean;    // ✅ Flag for client-side pinning at top
-  discordStatus?: "OK" | "HORS_DISCORD" | "NON_VERIFIE" | "STALE";
-  playtime7d?: number | null;
-  playtime7dUpdatedAt?: string | null;
-  updatedAt: string;
-  _diag_hasDiscordId?: boolean;
-  _diag_discordId?: string | null;
-  _diag_fetchStatus?: "OK" | "NOT_IN_GUILD" | "NO_DISCORD_ID" | "FETCH_FAILED" | "ALREADY_IN_DB";
-  _diag_rolesCount?: number;
-  _diag_matchedRankRoleId?: string | null;
-  _diag_matchedRankLabel?: string | null;
 };
 
-// Sync warning type for strict TypeScript
-type SyncWarning = {
-  type: string;
-  error?: string;
-  hint?: string;
-  _isInfoOnly?: boolean;
-};
-
-// Activity level thresholds (minutes of playtime in 7 days)
-const ACTIVITY_LEVELS = [
-  { max: 0,   label: "Inactif",     className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-700/40 text-slate-400 border border-slate-700/50" },
-  { max: 99,  label: "Faible",      className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/25" },
-  { max: 299, label: "Actif",       className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/15 text-green-400 border border-green-500/25" },
-  { max: Infinity, label: "Très actif", className: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" },
-] as const;
-
-function getActivityBadge(playtime7d: number | null | undefined) {
-  const minutes = playtime7d ?? 0;
-  for (const level of ACTIVITY_LEVELS) {
-    if (minutes <= level.max) return level;
-  }
-  return ACTIVITY_LEVELS[ACTIVITY_LEVELS.length - 1];
+function getAbsenceTypeLabel(type: "MEETING" | "GENERAL") {
+  return type === "MEETING" ? "Absence réunion" : "Absence générale";
 }
 
+type MembersScope = "active" | "all" | "demoted" | "non_link" | "blacklisted" | "reservists";
+type MembersSortBy = "name" | "grade" | "playtime7d" | "status";
+type MembersSortDir = "asc" | "desc";
 
-const GRADE_COLORS: Record<
-  string,
-  { variant: "default" | "secondary" | "destructive" | "outline"; bgClass: string }
-> = {
-  CHEF: { variant: "destructive", bgClass: "bg-red-500/20 text-red-400 border border-red-500/30" },
-  CAPTAIN: { variant: "default", bgClass: "bg-blue-500/20 text-blue-400 border border-blue-500/30" },
-  OFFICER: { variant: "secondary", bgClass: "bg-amber-500/20 text-amber-400 border border-amber-500/30" },
-  WL4: { variant: "secondary", bgClass: "bg-green-500/20 text-green-400 border border-green-500/30" },
-  WL3: { variant: "secondary", bgClass: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" },
-  WL2: { variant: "secondary", bgClass: "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" },
-  WL1: { variant: "secondary", bgClass: "bg-slate-500/20 text-slate-400 border border-slate-500/30" },
-};
+const SCOPE_OPTIONS: Array<{ value: MembersScope; label: string }> = [
+  { value: "active", label: "Actifs" },
+  { value: "all", label: "Tous" },
+  { value: "reservists", label: "Réservistes" },
+  { value: "blacklisted", label: "Blacklist" },
+  { value: "demoted", label: "Demote uniquement" },
+  { value: "non_link", label: "Non link" },
+];
 
-function MemberAvatar({
-  discordId,
-  avatarHash,
-  fallback,
-}: {
-  discordId: string | null;
-  avatarHash: string | null | undefined;
-  fallback: string;
-}) {
-  const avatarUrl = getDiscordAvatarUrl(discordId, avatarHash);
+const QUICK_FILTER_OPTIONS: Array<{ value: QuickFilter; label: string }> = [
+  { value: "all", label: "Tout" },
+  { value: "inactive", label: "Inactifs" },
+  { value: "low", label: "Faible activite" },
+  { value: "top", label: "Top actifs" },
+  { value: "watch", label: "A surveiller" },
+];
 
-  if (avatarUrl) {
+export default function MembersListClient() {
+  const [members, setMembers] = useState<MemberItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [analyticsAvailable, setAnalyticsAvailable] = useState(false);
+  const [scope, setScope] = useState<MembersScope>("active");
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<MembersSortBy>("grade");
+  const [sortDir, setSortDir] = useState<MembersSortDir>("desc");
+
+  const loadMembers = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true);
+    try {
+      const params = new URLSearchParams({ scope, sortBy, sortDir });
+      if (search.trim()) params.set("search", search.trim());
+      const res = await fetch(`/api/staff/members?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      setMembers(rows);
+      setAnalyticsAvailable(data?.meta?.analyticsAvailable === true);
+    } finally {
+      setLoading(false);
+      if (manual) setRefreshing(false);
+    }
+  }, [scope, search, sortBy, sortDir]);
+
+  const scopeLabel = scope === "active"
+    ? "actif"
+    : scope === "reservists"
+      ? "reserviste"
+    : scope === "blacklisted"
+      ? "blacklist"
+    : scope === "demoted"
+      ? "demote"
+      : scope === "non_link"
+        ? "non link"
+      : "visible";
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void loadMembers();
+    }, 180);
+    const interval = setInterval(() => {
+      void loadMembers();
+    }, 30000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [loadMembers]);
+
+  const summary = useMemo(() => {
+    const activeCount = members.filter((member) => getMemberStatus(member) === "active").length;
+    const reservistCount = members.filter((member) => getMemberStatus(member) === "reservist").length;
+    const blacklistedCount = members.filter((member) => getMemberStatus(member) === "blacklisted").length;
+    const demotedCount = members.filter((member) => getMemberStatus(member) === "demoted").length;
+    const nonLinkCount = members.filter((member) => getMemberStatus(member) === "non_link").length;
+    const avgPlaytime = members.length > 0
+      ? Math.round(members.reduce((total, member) => total + (member.playtime7d ?? 0), 0) / members.length)
+      : 0;
+    const hasPreviousData = members.some((member) => typeof member.previousPlaytime7d === "number");
+
+    return {
+      total: members.length,
+      activeCount,
+      reservistCount,
+      blacklistedCount,
+      demotedCount,
+      nonLinkCount,
+      avgPlaytime,
+      hasPreviousData,
+    };
+  }, [members]);
+
+  const displayedMembers = useMemo(
+    () => members.filter((member) => matchesQuickFilter(member, quickFilter, analyticsAvailable)),
+    [members, quickFilter, analyticsAvailable],
+  );
+
+  const copyValue = useCallback(async (value: string, key: string) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else if (typeof document !== "undefined") {
+        const input = document.createElement("textarea");
+        input.value = value;
+        input.setAttribute("readonly", "");
+        input.style.position = "absolute";
+        input.style.left = "-9999px";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+      }
+
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1400);
+    } catch {
+      setCopiedKey(null);
+    }
+  }, []);
+
+  if (loading) {
     return (
-      <img
-        src={avatarUrl}
-        alt="Avatar"
-        className="h-8 w-8 rounded-full object-cover border border-slate-700"
-        loading="lazy"
+      <LoadingState
+        title="Chargement des membres staff"
+        description="Préparation de la vue consolidée des membres et de leur activité."
       />
     );
   }
 
   return (
-    <div className="h-8 w-8 rounded-full border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-center">
-      {fallback.slice(0, 1).toUpperCase()}
+    <div className="space-y-5">
+      <SectionCard
+        title="Effectif staff"
+        description="Scopes métier, filtres rapides et synchronisation de la liste staff visible."
+        actions={
+          <div className="flex items-center gap-2">
+            <MotionButtonFrame>
+              <button
+                onClick={() => void loadMembers(true)}
+                disabled={refreshing}
+                aria-label="Rafraîchir la liste"
+                className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-foreground/70 transition-colors hover:bg-white/[0.10] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {refreshing ? "..." : "↻ Actualiser"}
+              </button>
+            </MotionButtonFrame>
+            <UiStatusBadge>{displayedMembers.length} / {members.length}</UiStatusBadge>
+          </div>
+        }
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Scopes metier: actifs, tous, reservistes, blacklist, demote, non link. Filtres rapides: activite uniquement.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex items-center rounded-lg border border-white/10 bg-card/70 p-1.5">
+              {SCOPE_OPTIONS.map((option) => {
+                const selected = scope === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => setScope(option.value)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${selected
+                      ? "bg-[#7a1f2b]/30 text-foreground shadow-[inset_0_0_0_1px_rgba(122,31,43,0.40)]"
+                      : "text-foreground/70 hover:bg-white/8"
+                      }`}
+                    aria-pressed={selected}
+                    aria-label={`Filtrer: ${option.label}`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="rounded-lg border border-white/10 bg-card/70 px-3 py-1 text-xs font-medium text-foreground/70">
+              {displayedMembers.length} / {members.length} membre{displayedMembers.length > 1 ? "s" : ""} {scopeLabel}{displayedMembers.length > 1 ? "s" : ""}
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
+          <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground" htmlFor="members-search">
+            Recherche
+          </label>
+          <input
+            id="members-search"
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="RP name, SteamID, Discord ID"
+            className="mt-2 w-full rounded-lg border border-white/10 bg-card/70 px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-amber-500/40"
+          />
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
+          <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground" htmlFor="members-sort-by">
+            Tri
+          </label>
+          <div className="mt-2 flex items-center gap-2">
+            <select
+              id="members-sort-by"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as MembersSortBy)}
+              className="rounded-lg border border-white/10 bg-card/70 px-3 py-2 text-sm font-medium text-foreground outline-none"
+            >
+              <option value="grade">Grade</option>
+              <option value="name">Nom</option>
+              <option value="playtime7d">Playtime 7j</option>
+              <option value="status">Statut</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setSortDir((current) => current === "asc" ? "desc" : "asc")}
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${sortDir === "asc"
+                ? "border-amber-500/45 bg-amber-500/12 text-amber-200"
+                : "border-white/15 bg-white/6 text-foreground/70"
+                }`}
+              aria-label={sortDir === "asc" ? "Passer en ordre descendant" : "Passer en ordre croissant"}
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Actif: <span className="font-semibold text-foreground/80">{sortBy}</span> ({sortDir})
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Vue courante</p>
+          <p className="mt-2 text-sm text-foreground/80">{summary.total} membres</p>
+          <p className="mt-1 text-xs text-muted-foreground">Moyenne 7j: {formatPlaytime(summary.avgPlaytime)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Historique: {analyticsAvailable && summary.hasPreviousData ? "actif" : "limite"}</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Filtres rapides</p>
+        <div className="mt-2.5 flex flex-wrap gap-2.5">
+          {QUICK_FILTER_OPTIONS.map((option) => {
+            const selected = quickFilter === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setQuickFilter(option.value)}
+                aria-pressed={selected}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selected
+                  ? "border-[#7a1f2b]/55 bg-[#7a1f2b]/18 text-rose-100"
+                  : "border-white/10 bg-white/4 text-foreground/70 hover:bg-white/8"
+                  }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-5">
+        <SummaryCard label="Actifs" value={summary.activeCount} tone="success" />
+        <SummaryCard label="Réservistes" value={summary.reservistCount} tone="default" />
+        <SummaryCard label="Blacklist" value={summary.blacklistedCount} tone="default" />
+        <SummaryCard label="Demote" value={summary.demotedCount} tone="danger" />
+        <SummaryCard label="Non link" value={summary.nonLinkCount} tone="warning" />
+      </div>
+
+      {displayedMembers.length === 0 ? (
+        <EmptyState
+          title="Aucun membre visible"
+          description={scope === "active" ? "Aucun membre actif ne correspond aux filtres courants." : "Aucun membre ne correspond aux filtres courants."}
+        />
+      ) : (
+      <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.58)] shadow-[0_25px_70px_-40px_rgba(2,0,1,0.75)] backdrop-blur-sm">
+        <table className="w-full min-w-[1480px] table-auto text-sm">
+          <thead>
+            <tr className="border-b border-white/8 bg-card/80 text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              <th className="w-[30%] px-6 py-4 align-middle font-semibold">Membre</th>
+              <th className="w-[22%] px-6 py-4 align-middle font-semibold">SteamID</th>
+              <th className="w-[12%] px-6 py-4 align-middle font-semibold">Grade</th>
+              <th className="w-[12%] px-6 py-4 align-middle font-semibold">Statut</th>
+              <th className="w-[14%] px-6 py-4 align-middle text-right font-semibold">Playtime 7j</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {displayedMembers.map((member) => {
+                const activity = getActivityBand(member.playtime7d);
+                const exemptActivity = isActivityExempt(member);
+                const isZeroPlaytime = (member.playtime7d ?? 0) === 0;
+                const steamCopyKey = `steam-${member.id}`;
+                const discordCopyKey = `discord-${member.id}`;
+                const hasPrevious = analyticsAvailable && typeof member.previousPlaytime7d === "number";
+                const playtimeToneClassName = exemptActivity
+                  ? "border-white/15 bg-white/[0.06] text-foreground/80"
+                  : isZeroPlaytime
+                  ? "border-rose-500/35 bg-rose-500/12 text-rose-100"
+                  : activity.key === "low"
+                    ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
+
+                return (
+                <tr
+                  key={member.id}
+                  className={[
+                    "border-b border-white/6 text-foreground transition-colors hover:bg-white/[0.04] hover:ring-1 hover:ring-inset hover:ring-white/10 last:border-b-0",
+                    getMemberRowClassName(member, analyticsAvailable),
+                    isZeroPlaytime && !exemptActivity ? "ring-1 ring-inset ring-white/6" : "",
+                  ].filter(Boolean).join(" ")}
+                >
+                  <td className="px-6 py-4 align-middle">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <MemberAvatar member={member} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-medium text-foreground">{member.rpName ?? "-"}</p>
+                        </div>
+                        {member.activeAbsence ? (
+                          <div className="mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/8 px-2 py-1 text-[11px] text-amber-100">
+                            <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
+                            <span className="text-amber-200/70">• jusqu'au {new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 align-middle font-mono text-xs text-foreground/70 whitespace-nowrap">
+                    <div>{member.steamId ?? "-"}</div>
+                    <div className="mt-2.5 flex flex-wrap gap-2 font-sans text-[11px]">
+                      {member.steamId ? (
+                        <button
+                          type="button"
+                          onClick={() => void copyValue(member.steamId!, steamCopyKey)}
+                          title="Copier SteamID"
+                          className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === steamCopyKey
+                            ? "border-emerald-500/50 bg-emerald-500/18 text-emerald-100"
+                            : "border-white/10 bg-card/70 text-foreground/70 hover:bg-card/90"
+                            }`}
+                        >
+                          {copiedKey === steamCopyKey ? "SteamID copie" : "Copier SteamID"}
+                        </button>
+                      ) : null}
+                      {member.discordId ? (
+                        <button
+                          type="button"
+                          onClick={() => void copyValue(member.discordId!, discordCopyKey)}
+                          title="Copier Discord ID"
+                          className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === discordCopyKey
+                            ? "border-amber-500/45 bg-amber-500/12 text-amber-100"
+                            : "border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
+                            }`}
+                        >
+                          {copiedKey === discordCopyKey ? "Discord ID copie" : "Copier Discord ID"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 align-middle truncate text-foreground/80">{member.grade ?? "-"}</td>
+                  <td className="px-6 py-4 align-middle">
+                    <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
+                  </td>
+                  <td className="px-6 py-4 align-middle whitespace-nowrap text-right">
+                    <div className="flex justify-end">
+                      <span className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${playtimeToneClassName}`}>
+                        {formatPlaytime(member.playtime7d)}
+                      </span>
+                    </div>
+                    {!exemptActivity ? (
+                      <div className="mt-1.5 flex justify-end">
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${activity.badgeClassName}`}>
+                          {activity.label}
+                        </span>
+                      </div>
+                    ) : null}
+                    {hasPrevious && !exemptActivity ? (
+                      <div className={`mt-1.5 text-xs ${(member.playtimeDelta7d ?? 0) > 0 ? "text-emerald-300" : (member.playtimeDelta7d ?? 0) < 0 ? "text-rose-300" : "text-muted-foreground"}`}>
+                        {formatPlaytimeDelta(member.playtimeDelta7d)}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              )})}
+          </tbody>
+        </table>
+      </div>
+      )}
     </div>
   );
 }
 
-export function MembersListClient({ 
-  members, 
-  bootstrap,
-  debug = false,
-  sessionDiscordId = null,
-}: { 
-  members: Member[];
-  bootstrap: BootstrapState;
-  debug?: boolean;
-  sessionDiscordId?: string | null;
-}) {
-  const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "grade" | "playtime7d" | "status">("grade");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [showInactive, setShowInactive] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncWarnings, setSyncWarnings] = useState<SyncWarning[] | null>(null);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+function MemberAvatar({ member }: { member: MemberItem }) {
+  const avatarUrl = getDiscordAvatarUrl(member.discordId, member.discordAvatarHash);
 
-  async function syncNow() {
-    setSyncing(true);
-    setSyncError(null);
-    setSyncWarnings(null);
-    setSyncMessage("🔄 Synchronisation en cours...");
-
-    const startTime = Date.now();
-    const controller = new AbortController();
-    
-    // Set 120s timeout for manual sync (long-running operation)
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 120_000);
-
-    try {
-      const res = await fetch("/api/staff/sync/all", { 
-        method: "POST",
-        signal: controller.signal,
-      });
-      const data = await res.json().catch(() => ({}));
-      const elapsedMs = Date.now() - startTime;
-      console.log("[SYNC] Manual sync completed", { elapsedMs, ok: res.ok, status: res.status });
-
-      // Check members sync result (required)
-      if (data?.members?.ok === false) {
-        setSyncError(
-          data.members.error ||
-            "Failed to sync members from LYG"
-        );
-        return;
-      }
-
-      // Build summary message
-      const summary: string[] = [];
-      if (data?.members) {
-        const { fetched, upserted, updated, skipped, activeSteamIdsCount, activatedCount, deactivatedCount } = data.members;
-        if (fetched) {
-          summary.push(`✓ Members: ${fetched} fetched`);
-          if (upserted) summary.push(`${upserted} new`);
-          if (updated) summary.push(`${updated} updated`);
-        } else if (data.members.reason === "no_data_received") {
-          summary.push("✓ Members: no new data");
-        }
-        // Add reconciliation stats
-        if (activeSteamIdsCount !== undefined) {
-          summary.push(`(${activeSteamIdsCount} actifs LYG)`);
-        }
-        if (activatedCount && activatedCount > 0) {
-          summary.push(`${activatedCount} activés`);
-        }
-        if (deactivatedCount && deactivatedCount > 0) {
-          summary.push(`${deactivatedCount} désactivés`);
-        }
-      }
-
-      if (data?.banklogs?.ok) {
-        const { inserted } = data.banklogs;
-        summary.push(`✓ Banklogs: ${inserted || 0} items`);
-      }
-
-      if (data?.elapsedMs) {
-        summary.push(`in ${data.elapsedMs}ms`);
-      }
-
-      const summaryText = summary.join(" • ");
-      setSyncMessage(summaryText || data.message);
-
-      // Filter warnings: only show blocking warnings (not "infos" type)
-      // "infos" type warnings are non-critical and don't count as "partial sync"
-      if (data?.warnings && Array.isArray(data.warnings)) {
-        const blockingWarnings = data.warnings.filter((w: SyncWarning) => w.type !== "infos");
-        
-        // Show blocking warnings if any exist
-        if (blockingWarnings.length > 0) {
-          setSyncWarnings(blockingWarnings);
-        }
-        
-        // Show infos-only warnings in a separate info banner (handled in render below)
-        const infosOnlyWarnings = data.warnings.filter((w: SyncWarning) => w.type === "infos");
-        if (infosOnlyWarnings.length > 0 && blockingWarnings.length === 0) {
-          // Store as special state for info banner
-          setSyncWarnings(infosOnlyWarnings.map((w: SyncWarning): SyncWarning => ({ ...w, _isInfoOnly: true })));
-        }
-      }
-
-      // Refresh page data
-      setTimeout(() => {
-        router.refresh();
-      }, 300);
-    } catch (err: any) {
-      const elapsedMs = Date.now() - startTime;
-      const isAborted = controller.signal.aborted;
-      
-      if (isAborted) {
-        console.error("[SYNC] Manual sync aborted/timed out after", elapsedMs, "ms");
-        setSyncError("Synchronisation interrompue (timeout après 120s). Veuillez réessayer.");
-      } else {
-        console.error("[SYNC] Manual sync error", { error: err?.message, elapsedMs });
-        setSyncError(String(err?.message ?? err));
-      }
-    } finally {
-      clearTimeout(timeoutId);
-      setSyncing(false);
-    }
-  }
-
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const base = term
-      ? members.filter((m) =>
-          [m.rpName, m.discordId, m.steamId]
-            .filter(Boolean)
-            .some((field) => field!.toLowerCase().includes(term))
-          || getMemberDisplayName(m).toLowerCase().includes(term)
-        )
-      : members;
-
-    // ✅ CRITICAL: Filter by effectiveActive (session user is always active)
-    // showInactive toggle controls visibility of inactive members
-    // effectiveActive=true = member is active (in LYG OR is session user), show status
-    // effectiveActive=false = member not in LYG and not session user, marked as "Ancien membre"
-    const byActivity = showInactive 
-      ? base 
-      : base.filter((m) => m.effectiveActive === true);
-
-    return [...byActivity].sort((a, b) => {
-      // ✅ BONUS: Pin session user at top of list (if present)
-      if (a.isSessionUser && !b.isSessionUser) return -1;
-      if (!a.isSessionUser && b.isSessionUser) return 1;
-      
-      // Sort by effectiveActive first (active > inactive), then by status, then by grade
-      if (a.effectiveActive !== b.effectiveActive) {
-        return a.effectiveActive ? -1 : 1; // Active first
-      }
-
-      // For members with same activity status, sort by Discord status
-      const statusOrder = { OK: 0, STALE: 1, HORS_DISCORD: 2, NON_VERIFIE: 3 };
-      const aStatus = statusOrder[(a.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
-      const bStatus = statusOrder[(b.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
-      if (aStatus !== bStatus) return aStatus - bStatus;
-
-      switch (sortBy) {
-        case "name":
-          return sortDir === "asc"
-            ? getMemberDisplayName(a).localeCompare(getMemberDisplayName(b))
-            : getMemberDisplayName(b).localeCompare(getMemberDisplayName(a));
-        case "playtime7d":
-          return sortDir === "asc"
-            ? (a.playtime7d ?? 0) - (b.playtime7d ?? 0)
-            : (b.playtime7d ?? 0) - (a.playtime7d ?? 0);
-        case "status": {
-          const statusOrder = { OK: 0, STALE: 1, HORS_DISCORD: 2, NON_VERIFIE: 3 };
-          const aS = statusOrder[(a.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
-          const bS = statusOrder[(b.discordStatus || "NON_VERIFIE") as keyof typeof statusOrder] ?? 3;
-          const diff = sortDir === "asc" ? aS - bS : bS - aS;
-          return diff !== 0 ? diff : getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
-        }
-        case "grade":
-        default:
-          if (a.gradeLevel !== b.gradeLevel)
-            return sortDir === "asc" ? a.gradeLevel - b.gradeLevel : b.gradeLevel - a.gradeLevel;
-          return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
-      }
-    });
-  }, [members, search, sortBy, sortDir, showInactive]);
-
-  // Show bootstrap CTA only if DB is truly empty (no members)
-  if (members.length === 0) {
+  if (avatarUrl) {
     return (
-      <PageShell
-        title="Membres"
-        description="Gestion centralisée de tous les membres de la famille"
-      >
-        <SectionCard title="Base de données vide" className="border-amber-500/20">
-          <div className="space-y-4">
-            <EmptyState
-              icon={<AlertTriangle className="w-12 h-12 text-amber-400" />}
-              title="Aucune donnée synchronisée"
-              description="La base de données est vide. Synchronisez les données depuis LYG pour commencer."
-              actionLabel={syncing ? "Synchronisation en cours..." : "Synchroniser maintenant"}
-              onAction={syncNow}
-            />
-            {syncError && (
-              <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 max-w-2xl mx-auto">
-                ❌ Erreur: {syncError}
-                <br />
-                <a href="/api/debug/lyg" target="_blank" rel="noopener noreferrer" className="underline mt-1 inline-block">
-                  Ouvrir diagnostic LYG →
-                </a>
-              </div>
-            )}
-          </div>
-        </SectionCard>
-      </PageShell>
+      <img
+        src={avatarUrl}
+        alt={member.rpName ?? "Avatar Discord"}
+        className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
     );
   }
 
-  // ✅ Count members using effectiveActive (includes session user override)
-  // effectiveActive=true: Member is active (in LYG OR is session user)
-  // effectiveActive=false: Member removed from LYG and is not session user (historical records)
-  const stats = {
-    activeLyg: members.filter((m) => m.effectiveActive === true).length,      // Effective actifs
-    formerLyg: members.filter((m) => m.effectiveActive === false).length,     // Effective anciens
-    dbTotal: members.length,                                                   // All members in DB
-    // Discord breakdown (optional, for reference)
-    discordOk: members.filter((m) => m.effectiveActive === true && m.discordStatus === "OK").length,
-    discordHors: members.filter((m) => m.effectiveActive === true && m.discordStatus === "HORS_DISCORD").length,
-    discordStale: members.filter((m) => m.effectiveActive === true && m.discordStatus === "STALE").length,
-    discordNonVerifie: members.filter((m) => m.effectiveActive === true && m.discordStatus === "NON_VERIFIE").length,
-  };
-
-  // Summary stats computed from currently filtered view
-  const visibleActive = filtered.filter((m) => m.effectiveActive);
-  const avgPlaytime = visibleActive.length > 0
-    ? Math.round(visibleActive.reduce((sum, m) => sum + (m.playtime7d ?? 0), 0) / visibleActive.length)
-    : 0;
-  const top3 = [...visibleActive]
-    .sort((a, b) => (b.playtime7d ?? 0) - (a.playtime7d ?? 0))
-    .slice(0, 3);
+  const fallback = (member.rpName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <div className="space-y-6">
-      {/* Header Section */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">Membres</h1>
-          <p className="text-muted-foreground">
-            Gestion centralisée de tous les membres de la famille
-          </p>
-        </div>
-        <Button onClick={syncNow} disabled={syncing} variant="outline" className="border-slate-800">
-          <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Synchronisation..." : "Sync now"}
-        </Button>
-      </div>
-      
-      {syncError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 space-y-2">
-          <div className="flex items-start gap-2">
-            <span className="mt-0.5">❌</span>
-            <div className="flex-1">
-              <div className="font-semibold">Erreur de synchronisation</div>
-              <div className="text-red-300 text-xs mt-1">{syncError}</div>
-            </div>
-          </div>
-          <a
-            href="/api/staff/diagnostics/lyg"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-red-300 underline hover:text-red-200 text-xs inline-block mt-2"
-          >
-            Ouvrir diagnostic LYG →
-          </a>
-        </div>
-      )}
-      {syncMessage && !syncError && (
-        <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400 space-y-2">
-          <div className="flex items-start gap-2">
-            <span className="mt-0.5">✓</span>
-            <div className="flex-1">
-              <div className="font-semibold">Synchronisation réussie</div>
-              <div className="text-green-300 text-xs mt-1">{syncMessage}</div>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Blocking warnings (amber/yellow - actual partial sync) */}
-      {syncWarnings && syncWarnings.length > 0 && 
-       syncWarnings.some((w: SyncWarning) => w.type !== "infos") && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300 space-y-3">
-          <div className="flex items-start gap-2">
-            <span className="mt-0.5">⚠️</span>
-            <div className="flex-1">
-              <div className="font-semibold">Synchronisation partielle</div>
-              <div className="text-amber-300/80 text-xs mt-1">
-                Les membres ont été importés, mais certaines données LYG n'ont pas pu être synchronisées.
-              </div>
-            </div>
-          </div>
-          <ul className="space-y-1 ml-2">
-            {syncWarnings.filter((w: SyncWarning) => w.type !== "infos").map((w, i) => (
-              <li key={i} className="text-amber-300/90 text-xs">
-                <strong>{w.type}:</strong> {w.error}
-                {w.hint && <div className="text-amber-300/70 mt-1">{w.hint}</div>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      
-      {/* Infos-only warnings (blue info banner - non-blocking) */}
-      {syncWarnings && syncWarnings.length > 0 && 
-       syncWarnings.every((w: SyncWarning) => w.type === "infos") && (
-        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300 space-y-2">
-          <div className="flex items-start gap-2">
-            <span className="mt-0.5">ℹ️</span>
-            <div className="flex-1">
-              <div className="font-semibold">Infos famille indisponibles</div>
-              <div className="text-blue-300/80 text-xs mt-1">
-                Les données famille LYG ne sont pas disponibles, mais la synchronisation des membres et journaux s'est déroulée correctement.
-              </div>
-            </div>
-          </div>
-          <ul className="space-y-1 ml-2">
-            {syncWarnings.map((w, i) => (
-              <li key={i} className="text-blue-300/90 text-xs">
-                {w.error}
-                {w.hint && <div className="text-blue-300/70 mt-1">{w.hint}</div>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      
-      {/* Old warning list removal */}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm text-muted-foreground">Actifs (LYG)</p>
-          <p className="text-2xl font-bold mt-1 text-green-400">{stats.activeLyg}</p>
-          <p className="text-xs text-green-400/70 mt-1">discord OK: {stats.discordOk}</p>
-        </div>
-        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm text-muted-foreground">Anciens membres</p>
-          <p className="text-2xl font-bold text-slate-400 mt-1">{stats.formerLyg}</p>
-        </div>
-        <div className="rounded-lg border border-red-900/30 bg-slate-900/40 p-4">
-          <p className="text-sm text-muted-foreground">Hors Discord</p>
-          <p className="text-2xl font-bold text-red-400 mt-1">{stats.discordHors}</p>
-          <p className="text-xs text-slate-500 mt-1">non liés: {members.filter(m => m.effectiveActive && !m.discordId).length}</p>
-        </div>
-        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm text-muted-foreground">Total BD</p>
-          <p className="text-2xl font-bold text-slate-300 mt-1">{stats.dbTotal}</p>
-        </div>
-      </div>
-
-      {/* Summary row: visible view stats */}
-      <div className="rounded-lg border border-slate-800 bg-slate-900/20 px-4 py-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-        <span>Vue actuelle : <strong className="text-foreground">{filtered.length}</strong> membres</span>
-        <span>Moy. playtime 7j : <strong className="text-foreground">{formatPlaytime(avgPlaytime)}</strong></span>
-        {top3.length > 0 && (
-          <span>
-            Top {top3.length} :{" "}
-            {top3.map((m, i) => (
-              <span key={m.id}>
-                {i > 0 && " · "}
-                <strong className="text-foreground">{getMemberDisplayName(m)}</strong>{" "}
-                <span className="text-xs">({formatPlaytime(m.playtime7d ?? 0)})</span>
-              </span>
-            ))}
-          </span>
-        )}
-      </div>
-
-      {/* Search & Filter Section */}
-      <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Rechercher un membre (RP, Discord, Steam)..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 bg-slate-900/40 border-slate-800 text-foreground placeholder:text-muted-foreground"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            Trier par:
-          </span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="text-sm bg-slate-900/40 border border-slate-800 rounded-md px-3 py-2 text-foreground"
-          >
-            <option value="grade">Grade</option>
-            <option value="name">Nom</option>
-            <option value="playtime7d">Playtime 7j</option>
-            <option value="status">Statut Discord</option>
-          </select>
-          <button
-            onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
-            className="text-sm bg-slate-900/40 border border-slate-800 rounded-md px-3 py-2 text-foreground hover:bg-slate-800/60 transition-colors"
-            title={sortDir === "asc" ? "Croissant — cliquer pour décroissant" : "Décroissant — cliquer pour croissant"}
-          >
-            {sortDir === "asc" ? "↑" : "↓"}
-          </button>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-            className="w-4 h-4"
-          />
-          Afficher anciens membres
-        </label>
-      </div>
-
-      {/* Table Section */}
-      <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/40">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-sm">
-            <thead className="bg-slate-900/20">
-              <tr className="border-b border-slate-800">
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Nom RP
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Grade
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Discord
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Steam
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">
-                  Playtime 7j
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                  Statut
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-12 text-center text-muted-foreground"
-                  >
-                    <p className="text-sm">Aucun membre trouvé</p>
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((m) => {
-                  const isMyRow = Boolean(sessionDiscordId && m.discordId === sessionDiscordId);
-                  const displayName = getMemberDisplayName(m);
-                  const stableRank = resolveStableRank({
-                    hasDiscordId: Boolean(m.discordId),
-                    rankRoleId: m.rankRoleId || m._diag_matchedRankRoleId,
-                    rankLabel: m.rankLabel || m._diag_matchedRankLabel,
-                    discordRoleIds: m.discordRoleIds,
-                    snapshotRolesJson: m.discordSnapshot?.rolesJson,
-                    discordLastError: m.discordLastError ?? null,
-                  });
-
-                  const roleDebug = (() => {
-                    if (!m._diag_hasDiscordId) {
-                      return { sourceTag: "fallback:NO_DISCORD_ID", branch: "no_discord_id" };
-                    }
-                    if (m._diag_fetchStatus === "NOT_IN_GUILD") {
-                      return { sourceTag: "discord live:NOT_IN_GUILD", branch: "not_in_guild" };
-                    }
-                    if (stableRank.rankRoleId) {
-                      if (Array.isArray(m.discordRoleIds) && m.discordRoleIds.length > 0) {
-                        return { sourceTag: "cache:discordRoleIds", branch: "stable_rank_roleid_from_cache" };
-                      }
-                      if (Array.isArray(m.discordSnapshot?.rolesJson) && m.discordSnapshot.rolesJson.length > 0) {
-                        return { sourceTag: "snapshot:rolesJson", branch: "stable_rank_roleid_from_snapshot" };
-                      }
-                      return { sourceTag: "DB:rankRoleId", branch: "stable_rank_roleid_from_db" };
-                    }
-                    if (stableRank.rankLabel) {
-                      return { sourceTag: "DB:rankLabel", branch: "stable_rank_label_from_db" };
-                    }
-                    if (m._diag_fetchStatus === "FETCH_FAILED" || stableRank.neutralState) {
-                      if (stableRank.neutralState === "DISCORD_UNAVAILABLE") {
-                        return { sourceTag: "fallback:DISCORD_UNAVAILABLE", branch: "discord_unavailable" };
-                      }
-                      return { sourceTag: "fallback:VERIFICATION_DIFFEREE", branch: "verification_differee" };
-                    }
-                    return { sourceTag: "fallback:SANS_GRADE", branch: "sans_grade" };
-                  })();
-
-                  // Determine rank badge based on diagnostic status and rank role ID
-                  const getRankBadge = () => {
-                    // No Discord ID - member not linked
-                    if (!m._diag_hasDiscordId) {
-                      const badgeProps = getGradeBadgeProps(null, "NO_DISCORD_ID");
-                      return (
-                        <span className={badgeProps.className} title="Member not linked to Discord">
-                          {badgeProps.label}
-                        </span>
-                      );
-                    }
-
-                    // Not in guild - Discord user not in server
-                    if (m._diag_fetchStatus === "NOT_IN_GUILD") {
-                      const badgeProps = getGradeBadgeProps(null, "NOT_IN_GUILD");
-                      return (
-                        <span className={badgeProps.className} title="User not in Discord server">
-                          {badgeProps.label}
-                        </span>
-                      );
-                    }
-
-                    // Prefer stable local rank (DB/snapshot/cache) over live fetch status
-                    if (stableRank.rankRoleId) {
-                      const badgeProps = getGradeBadgeProps(
-                        stableRank.rankRoleId,
-                        m._diag_fetchStatus === "ALREADY_IN_DB" ? "ALREADY_IN_DB" : undefined
-                      );
-                      return (
-                        <span className={badgeProps.className} title={`Grade: ${badgeProps.label}`}>
-                          {badgeProps.label}
-                        </span>
-                      );
-                    }
-
-                    if (stableRank.rankLabel) {
-                      const base = getGradeBadgeProps(null);
-                      return (
-                        <span className={base.className} title={`Grade: ${stableRank.rankLabel}`}>
-                          {stableRank.rankLabel}
-                        </span>
-                      );
-                    }
-
-                    if (m._diag_fetchStatus === "FETCH_FAILED" || stableRank.neutralState) {
-                      const badgeProps = getNeutralRankBadge(
-                        stableRank.neutralState ?? "DISCORD_UNAVAILABLE"
-                      );
-                      return (
-                        <span className={badgeProps.className} title={badgeProps.label}>
-                          {badgeProps.label}
-                        </span>
-                      );
-                    }
-
-                    // No grade found - show sans grade
-                    const badgeProps = getGradeBadgeProps(null);
-                    return (
-                      <span className={badgeProps.className} title="No grade role detected">
-                        {badgeProps.label}
-                      </span>
-                    );
-                  };
-
-                  return (
-                    <tr
-                      key={m.id}
-                      className={[
-                        "hover:bg-slate-900/30 transition-colors",
-                        !m.effectiveActive ? "opacity-50" : "",
-                        m.effectiveActive && !m.discordId ? "bg-slate-800/20" : "",
-                        m.effectiveActive && m.discordStatus === "HORS_DISCORD" ? "bg-red-950/10" : "",
-                      ].filter(Boolean).join(" ")}
-                    >
-                      <td className="px-4 py-4 font-medium text-foreground">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <MemberAvatar
-                            discordId={m.discordId}
-                            avatarHash={m.discordAvatarHash}
-                            fallback={displayName}
-                          />
-                          <span className="truncate">{displayName}</span>
-                        </div>
-                        {isMyRow ? (
-                          <div className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[10px] text-amber-200 font-mono leading-4">
-                            DEBUG(MY_ROW) source={roleDebug.sourceTag} branch={roleDebug.branch}
-                            <br />
-                            raw.rpName={String(m.rpName ?? null)}
-                            <br />
-                            raw.discordDisplayName={String(m.discordDisplayName ?? null)}
-                            <br />
-                            raw.discordUsername={String(m.discordUsername ?? null)}
-                            <br />
-                            raw.steamId={String(m.steamId ?? null)}
-                            <br />
-                            raw.rankRoleId={String(m.rankRoleId ?? m._diag_matchedRankRoleId ?? null)} raw.rankLabel={String(m.rankLabel ?? m._diag_matchedRankLabel ?? null)} raw.grade={String(m.grade ?? null)}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4">
-                        {getRankBadge()}
-                      </td>
-                      <td className="px-4 py-4 font-mono text-xs text-muted-foreground break-all">
-                        {m.discordId ? (
-                          <code className="bg-slate-900/40 border border-slate-800 px-2 py-1 rounded">
-                            {m.discordId}
-                          </code>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-4 py-4 font-mono text-xs text-muted-foreground break-all">
-                        {m.steamId ? (
-                          <code className="bg-slate-900/40 border border-slate-800 px-2 py-1 rounded">
-                            {m.steamId}
-                          </code>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-xs text-muted-foreground text-right">
-                        <div className="font-medium text-slate-200">{formatPlaytime(m.playtime7d ?? 0)}</div>
-                        <div className="mt-1">
-                          <span className={getActivityBadge(m.playtime7d).className}>
-                            {getActivityBadge(m.playtime7d).label}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-[10px] text-muted-foreground/70">
-                          {m.playtime7dUpdatedAt
-                            ? new Date(m.playtime7dUpdatedAt).toLocaleDateString("fr-FR")
-                            : "-"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        {(() => {
-                          // ✅ OVERRIDE: Session user (logged-in account) is always "active" (cannot be marked ancien)
-                          // effectiveActive is guaranteed true for session user
-                          if (sessionDiscordId && m.discordId === sessionDiscordId) {
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                                ✅ Vous (Actif)
-                              </span>
-                            );
-                          }
-                          
-                          // ✅ Determine badge based on effectiveActive (session user override already applied)
-                          if (!m.effectiveActive) {
-                            // Removed from LYG, kept in DB for history
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-600/20 text-slate-400 border border-slate-600/40">
-                                👤 Ancien membre
-                              </span>
-                            );
-                          }
-                          
-                          // ✅ FIX: Check if member is NOT linked to Discord first
-                          if (!m.discordId) {
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-500/20 text-gray-400 border border-gray-500/30">
-                                — Non lié
-                              </span>
-                            );
-                          }
-                          
-                          const status = m.discordStatus || "NON_VERIFIE";
-                          if (status === "OK") {
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/30">
-                                ✅ OK
-                              </span>
-                            );
-                          }
-                          if (status === "HORS_DISCORD") {
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
-                                ❌ Hors Discord
-                              </span>
-                            );
-                          }
-                          if (status === "STALE") {
-                            return (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                ⚠️ Snapshot stale
-                              </span>
-                            );
-                          }
-                          return (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-300 border border-slate-500/30">
-                              ⏳ Non verifie
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        {m.discordId ? (
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" asChild>
-                            <Link href={`/staff/members/by-discord/${m.discordId}`} prefetch={false}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-card/80 text-sm font-semibold text-foreground/80">
+      {fallback}
     </div>
+  );
+}
+
+function MemberStatusBadge({ member, analyticsAvailable }: { member: MemberItem; analyticsAvailable: boolean }) {
+  const status = getMemberStatus(member);
+
+  if (status === "blacklisted") {
+    return (
+      <UiStatusBadge>Blacklist</UiStatusBadge>
+    );
+  }
+
+  if (status === "demoted") {
+    return (
+      <UiStatusBadge tone="danger">Demote</UiStatusBadge>
+    );
+  }
+
+  if (status === "reservist") {
+    return (
+      <UiStatusBadge>Réserviste</UiStatusBadge>
+    );
+  }
+
+  if (status === "non_link") {
+    return (
+      <UiStatusBadge tone="warning">Non link</UiStatusBadge>
+    );
+  }
+
+  if (isWatchMember(member, analyticsAvailable)) {
+    return (
+      <UiStatusBadge tone="warning">A surveiller</UiStatusBadge>
+    );
+  }
+  return null;
+}
+
+function SummaryCard({ label, value, tone }: { label: string; value: number | string; tone: "default" | "success" | "warning" | "danger" }) {
+  return (
+    <DataTile label={label} value={value} tone={tone} />
   );
 }

@@ -4,6 +4,7 @@ import { getStaffUser } from "@/lib/rbac";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import { getDiscordRolesForUser, isRecruiter, isStaffFull } from "@/lib/discord-roles";
 import { prisma } from "@/lib/db";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 /**
  * GET /api/me/roles
@@ -54,8 +55,9 @@ export async function GET() {
     const staffUser = await getStaffUser(session);
 
     // Get Member from DB
-    const member = discordId ? await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: "esperados", discordId } },
+    const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+    const member = discordId ? await prisma.member.findFirst({
+      where: { familyId: familyDbId, discordId },
       select: {
         id: true,
         rpName: true,

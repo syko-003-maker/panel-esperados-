@@ -46,16 +46,31 @@ export async function POST(req: Request) {
     }
     
     if (!["TRAITE", "NON_RESOLU", "REFUSE"].includes(decision)) {
+      if (decision !== "NON_RESOLUE") {
+        logWarn("complaint_decide_invalid_decision", { requestId, decision });
+        return NextResponse.json(
+          { ok: false, error: "Invalid decision. Must be TRAITE, NON_RESOLUE, or REFUSE" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const family = await prisma.family.findUnique({
+      where: { slug: FAMILY_ID },
+      select: { id: true },
+    });
+
+    if (!family) {
       logWarn("complaint_decide_invalid_decision", { requestId, decision });
       return NextResponse.json(
-        { ok: false, error: "Invalid decision. Must be TRAITE, NON_RESOLU, or REFUSE" },
-        { status: 400 }
+        { ok: false, error: "Family not found" },
+        { status: 404 }
       );
     }
     
     // Verify staff permissions
     const staffMember = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: FAMILY_ID, discordId: staffDiscordId } },
+      where: { familyId_discordId: { familyId: family.id, discordId: staffDiscordId } },
       select: { id: true, isActive: true, gradeLevel: true, rpName: true, discordId: true },
     });
     
@@ -75,6 +90,8 @@ export async function POST(req: Request) {
         status: true,
         title: true,
         description: true,
+        payload: true,
+        summary: true,
         authorDiscordId: true,
         targetName: true,
         discordThreadId: true,
@@ -100,6 +117,7 @@ export async function POST(req: Request) {
     // Map decision to status
     const statusMap: Record<string, string> = {
       TRAITE: "RESOLVED",
+      NON_RESOLUE: "CLOSED",
       NON_RESOLU: "CLOSED",
       REFUSE: "REJECTED",
     };
@@ -112,17 +130,21 @@ export async function POST(req: Request) {
         status: newStatus as any,
         closedAt: new Date(),
         closedByDiscordId: staffDiscordId,
-        closeReason: `Decision: ${decision}`,
+        closeReason: decision,
       },
       select: {
         id: true,
         ticketKey: true,
         status: true,
         title: true,
+        description: true,
+        payload: true,
+        summary: true,
         authorDiscordId: true,
         targetName: true,
         discordThreadId: true,
         closedAt: true,
+        closeReason: true,
       },
     });
     
@@ -142,10 +164,15 @@ export async function POST(req: Request) {
         ticketKey: updated.ticketKey,
         status: newStatus,
         title: updated.title,
+        description: updated.description,
+        reason: ((updated.payload as Record<string, unknown> | null)?.reason as string | undefined) ?? updated.title,
+        details: ((updated.payload as Record<string, unknown> | null)?.details as string | undefined) ?? updated.description,
+        summary: updated.summary,
         authorDiscordId: updated.authorDiscordId,
         targetName: updated.targetName,
         threadId: updated.discordThreadId,
         closedAt: updated.closedAt?.toISOString(),
+        closeReason: updated.closeReason,
       },
       staff: {
         discordId: staffMember.discordId,

@@ -16,8 +16,9 @@
  */
 
 import { prisma } from "@/lib/db";
+import { FAMILY_SLUG, resolveFamilyId } from "@/lib/family";
 
-const FAMILY_ID = "esperados";
+const FALLBACK_FAMILY_ID = FAMILY_SLUG;
 
 /**
  * Get linked member for a session by Discord ID
@@ -73,16 +74,25 @@ export async function getLinkedMemberBySession(
     return null;
   }
 
-  // 2️⃣ Query Member by (familyId, discordId) compound unique index
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[memberLink] Looking up member", { familyId: FAMILY_ID, discordId });
+  let resolvedFamilyId: string = FALLBACK_FAMILY_ID;
+  let familyResolveFailed = false;
+  try {
+    resolvedFamilyId = await resolveFamilyId(FAMILY_SLUG);
+  } catch {
+    familyResolveFailed = true;
+    resolvedFamilyId = FALLBACK_FAMILY_ID;
   }
 
-  const member = await prisma.member.findUnique({
+  // 2️⃣ Query Member by (familyId, discordId) compound unique index
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[memberLink] Looking up member", { familyId: resolvedFamilyId, discordId, familyResolveFailed });
+  }
+
+  let member = await prisma.member.findFirst({
     where: {
-      familyId_discordId: {
-        familyId: FAMILY_ID,
-        discordId,
+      discordId,
+      familyId: {
+        in: Array.from(new Set([resolvedFamilyId, FALLBACK_FAMILY_ID])),
       },
     },
     select: {
@@ -94,6 +104,22 @@ export async function getLinkedMemberBySession(
     },
   });
 
+  // Fallback: if family resolution failed and member not found with slug,
+  // try querying by discordId alone (safe for single-family setups)
+  if (!member && familyResolveFailed) {
+    console.warn("[memberLink] family resolve failed, retrying by discordId only", { discordId });
+    member = await prisma.member.findFirst({
+      where: { discordId },
+      select: {
+        id: true,
+        discordId: true,
+        rpName: true,
+        steamId: true,
+        isActive: true,
+      },
+    });
+  }
+
   // 3️⃣ Log result
   if (process.env.NODE_ENV !== "production") {
     console.log("[memberLink] Query result", {
@@ -102,6 +128,14 @@ export async function getLinkedMemberBySession(
       rpName: member?.rpName || "(none)",
       steamId: member?.steamId || "(none)",
       isActive: member?.isActive,
+    });
+  }
+
+  if (!member) {
+    console.warn("[memberLink] not linked", {
+      userId: session.user.id,
+      discordId,
+      familyIdsTried: Array.from(new Set([resolvedFamilyId, FALLBACK_FAMILY_ID])),
     });
   }
 

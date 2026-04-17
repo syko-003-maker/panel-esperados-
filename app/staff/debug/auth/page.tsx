@@ -30,37 +30,14 @@ export default async function DebugAuthPage() {
   const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
   const isOwner = ownerDiscordId && discordId === ownerDiscordId;
 
-  // Check Chef famille role
+  // Check Chef famille role (DB-only, no live Discord API)
   let hasChefRole = false;
   let chefRoleCheckFailed = false;
 
   if (discordId && !isOwner) {
     const chefFamilleRoleId = process.env.CHEF_FAMILLE_ROLE_ID ?? "";
-    const guildId = process.env.DISCORD_GUILD_ID ?? "";
-    const botToken = process.env.DISCORD_BOT_TOKEN ?? "";
-
-    if (chefFamilleRoleId && guildId && botToken) {
-      try {
-        const discordRes = await fetch(
-          `https://discord.com/api/v10/guilds/${guildId}/members/${discordId}`,
-          {
-            headers: {
-              Authorization: `Bot ${botToken}`,
-            },
-          }
-        );
-
-        if (discordRes.ok) {
-          const discordMember = await discordRes.json();
-          const memberRoles = (discordMember.roles ?? []) as string[];
-          hasChefRole = memberRoles.includes(chefFamilleRoleId);
-        } else {
-          chefRoleCheckFailed = true;
-        }
-      } catch (err) {
-        console.error("[debug] Failed to fetch member roles:", err);
-        chefRoleCheckFailed = true;
-      }
+    if (!chefFamilleRoleId) {
+      chefRoleCheckFailed = true;
     }
   }
 
@@ -84,6 +61,10 @@ export default async function DebugAuthPage() {
         age: true,
         grade: true,
         isActive: true,
+        discordInGuild: true,
+        discordRoleIds: true,
+        discordRolesUpdatedAt: true,
+        discordLastError: true,
       },
     });
 
@@ -93,6 +74,33 @@ export default async function DebugAuthPage() {
       memberStatus = "partial-link"; // Member exists but no steamId
     } else {
       memberStatus = "unlinked";
+    }
+  }
+
+  if (discordId && !isOwner && member) {
+    const chefFamilleRoleId = process.env.CHEF_FAMILLE_ROLE_ID ?? "";
+    const roles = Array.isArray(member.discordRoleIds) ? member.discordRoleIds : [];
+    const hasDbRole = chefFamilleRoleId
+      ? roles.includes(chefFamilleRoleId)
+      : false;
+
+    if (member.discordLastError || member.discordInGuild === null || member.discordInGuild === undefined) {
+      chefRoleCheckFailed = true;
+    } else if (member.discordInGuild === false) {
+      hasChefRole = false;
+    } else {
+      hasChefRole = hasDbRole;
+    }
+
+    if (process.env.DEBUG_DISCORD === "1") {
+      console.log("[debug-auth] DB-only role check", {
+        discordId: discordId.substring(0, 6) + "...",
+        inGuild: member.discordInGuild ?? null,
+        rolesCount: roles.length,
+        hasChefRole,
+        lastError: member.discordLastError ?? null,
+        updatedAt: member.discordRolesUpdatedAt ?? null,
+      });
     }
   }
 
@@ -120,7 +128,7 @@ export default async function DebugAuthPage() {
     accessReason = "Member linked but neither Owner nor Chef famille role";
   } else if (!member?.steamId) {
     staffAccess = "DENIED";
-    accessReason = "Member not linked (steamId missing) → redirect to /staff/link";
+    accessReason = "Member not linked (steamId missing) → use Discord bot";
   } else {
     staffAccess = "DENIED";
     accessReason = "No authorization (Owner or Chef famille role required)";
@@ -229,10 +237,7 @@ export default async function DebugAuthPage() {
         <strong>Next Steps:</strong>
         <ul style={{ marginTop: 8 }}>
           <li>
-            <a href="/staff/link" style={{ textDecoration: "underline", color: "#0070f3" }}>
-              Link your Discord account
-            </a>
-            {" "}(if not linked)
+            Utiliser le bot Discord pour lier le compte (si non lié)
           </li>
           <li>
             <a href="/staff/dashboard" style={{ textDecoration: "underline", color: "#0070f3" }}>

@@ -2,9 +2,11 @@ import { auth } from "@/auth";
 import { getUserRole } from "@/server/auth/rbac";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { redirect } from "next/navigation";
-import { MemberSidebar } from "./components/member-sidebar";
-import { SignOutButton } from "./components/sign-out-button";
+import { MemberLayoutShell } from "./components/member-layout-shell";
 import { debug } from "@/lib/logger";
+import { prisma } from "@/lib/db";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
+import { isRecruiter } from "@/lib/discord-roles";
 
 export default async function MemberLayout({
   children,
@@ -38,21 +40,33 @@ export default async function MemberLayout({
   }
 
   if (!isLinked) {
-    debug("[memberLayout] NOT LINKED - redirecting to login", { 
+    debug("[memberLayout] NOT LINKED - redirecting to login", {
       userId: (session as any).userId,
-      discordId: (session as any).discordId ?? null 
+      discordId: (session as any).discordId ?? null
     });
     // ✅ User has session but no Member record → truly not linked
     redirect("/login?reason=not_linked");
   }
 
+  // Détection du rôle recruteur via le miroir Discord en DB
+  let memberIsRecruiter = false;
+  try {
+    const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+    const memberRecord = await prisma.member.findUnique({
+      where: { familyId_discordId: { familyId: familyDbId, discordId: linkedMember!.discordId } },
+      select: { discordRoleIds: true },
+    });
+    if (memberRecord?.discordRoleIds) {
+      memberIsRecruiter = isRecruiter(memberRecord.discordRoleIds as string[]);
+    }
+  } catch {
+    // Non-critique : si la vérification échoue, le lien recrutement n'apparaît pas
+  }
+
   // If linked: normal layout with sidebar
   return (
-    <div className="flex h-screen bg-slate-950">
-      <MemberSidebar isLinked={isLinked} />
-      <main className="flex-1 overflow-auto flex flex-col">
-        {children}
-      </main>
-    </div>
+    <MemberLayoutShell isLinked={isLinked} isRecruiter={memberIsRecruiter}>
+      {children}
+    </MemberLayoutShell>
   );
 }

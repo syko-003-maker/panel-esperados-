@@ -43,6 +43,10 @@ export async function GET(req: NextRequest) {
     } else if (activeOnly) {
       where.status = "ACTIVE";
     }
+    if (where.status === "ACTIVE") {
+      where.clearedAt = null;
+      where.NOT = { clearedStatus: "APPLIED" };
+    }
 
     // Type filter
     if (type) {

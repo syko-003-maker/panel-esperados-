@@ -2,47 +2,83 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
 import {
-  computeAttendanceCounts,
-  ensureRows,
+  buildMeetingClientRow,
+  computeMeetingCounts,
   isMeetingLocked,
-  parseMeetingNotes,
-  DEFAULT_MEETING_FAMILY_ID,
-  buildMeetingDTO,
-} from "@/lib/meetings-legacy";
+} from "@/lib/meetings";
+import { resolveAvatarHashByDiscordId } from "@/lib/discord/avatar-hash-resolver";
 
-async function buildMeetingPollResponse(meeting: {
-  id: string;
-  meetingDate: Date;
-  weekKey: string;
-  notes: string | null;
-  updatedAt: Date;
-}) {
-  const payload = parseMeetingNotes(meeting.notes ?? null);
-  const status = payload.status ? String(payload.status).trim().toUpperCase() : "OPEN";
-  const locked = isMeetingLocked(status, payload.lockedAt ?? null);
-  const members = await prisma.member.findMany({
-    where: { familyId: DEFAULT_MEETING_FAMILY_ID },
-    select: { discordId: true, rpName: true },
-    orderBy: { rpName: "asc" },
+async function buildMeetingPollResponse(id: string) {
+  const meeting = await prisma.meeting.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      meetingDate: true,
+      weekKey: true,
+      title: true,
+      status: true,
+      description: true,
+      summary: true,
+      summaryText: true,
+      summaryChannelId: true,
+      summaryPostedAt: true,
+      updatedAt: true,
+      rows: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          rpNameSnapshot: true,
+          gradeSnapshot: true,
+          steamIdSnapshot: true,
+          discordIdSnapshot: true,
+          playtimeMinutes: true,
+          attendanceStatus: true,
+          sanctionType: true,
+          decisionType: true,
+          sanctionReason: true,
+          staffNote: true,
+          isJustified: true,
+          sortOrder: true,
+          updatedAt: true,
+        },
+      },
+    },
   });
-  const ensured = ensureRows(payload, members);
-  const rows = ensured.rows.map((row) => ({
-    ...row,
-    updatedAt: meeting.updatedAt.toISOString(),
-  }));
-  const counts = computeAttendanceCounts(rows);
-  const dto = buildMeetingDTO({
-    id: meeting.id,
-    meetingDate: meeting.meetingDate,
-    weekKey: meeting.weekKey,
-    notes: meeting.notes,
-    updatedAt: meeting.updatedAt,
-  });
+
+  if (!meeting) return null;
+
+  const latestRowUpdate = meeting.rows.reduce<Date | null>((latest, row) => {
+    if (!latest || row.updatedAt > latest) return row.updatedAt;
+    return latest;
+  }, null);
+  const updatedAt = latestRowUpdate && latestRowUpdate > meeting.updatedAt ? latestRowUpdate : meeting.updatedAt;
+  const avatarHashByDiscordId = await resolveAvatarHashByDiscordId(
+    meeting.rows
+      .map((row) => row.discordIdSnapshot)
+      .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+  );
+
   return {
-    ...dto,
-    rows,
-    counts,
-    locked,
+    id: meeting.id,
+    scheduledAt: meeting.meetingDate.toISOString(),
+    title: meeting.title ?? `Réunion ${meeting.weekKey}`,
+    status: meeting.status,
+    weekKey: meeting.weekKey,
+    locked: isMeetingLocked(meeting.status),
+    counts: computeMeetingCounts(meeting.rows),
+    updatedAt: updatedAt.toISOString(),
+    meetingNote: meeting.description ?? "",
+    summary: meeting.summaryText ?? meeting.summary,
+    discord: {
+      channelId: meeting.summaryChannelId ?? null,
+      messageId: null,
+      lastPublishedAt: meeting.summaryPostedAt?.toISOString() ?? null,
+    },
+    rows: meeting.rows.map((row) =>
+      buildMeetingClientRow(row, {
+        discordAvatarHash: row.discordIdSnapshot ? avatarHashByDiscordId.get(row.discordIdSnapshot) ?? null : null,
+      })
+    ),
   };
 }
 
@@ -63,28 +99,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     after = parsed;
   }
 
-  const meeting = await prisma.meeting.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      meetingDate: true,
-      weekKey: true,
-      notes: true,
-      updatedAt: true,
-    },
-  });
+  const meeting = await buildMeetingPollResponse(id);
   if (!meeting) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   }
 
-  if (after && meeting.updatedAt <= after) {
+  if (after && new Date(meeting.updatedAt) <= after) {
     return NextResponse.json({ ok: true, changed: false });
   }
 
-  const detail = await buildMeetingPollResponse(meeting);
   return NextResponse.json({
     ok: true,
     changed: true,
-    meeting: detail,
+    meeting,
   });
 }

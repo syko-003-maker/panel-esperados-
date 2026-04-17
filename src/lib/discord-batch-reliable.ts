@@ -14,7 +14,7 @@ import { prisma } from "@/lib/db";
 import { debug, warn, error as logError } from "@/lib/logger";
 import { createDelay } from "@/lib/utils/delay";
 
-const DISCORD_TOKEN = (process.env.DISCORD_TOKEN ?? process.env.DISCORD_BOT_TOKEN ?? "").trim();
+const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
 const GUILD_ID = (process.env.GUILD_ID ?? process.env.DISCORD_GUILD_ID ?? "").trim();
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes

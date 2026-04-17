@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
+import { requirePrivileged } from "@/lib/guards";
 
 /**
  * PUBLIC DEBUG ROUTE: No filters, just raw member list
@@ -8,6 +9,9 @@ import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
  * NO AUTH - For debugging only
  */
 export async function GET() {
+  const guard = await requirePrivileged();
+  if (guard instanceof Response) return guard;
+
   try {
     console.log("\n=== DEBUG ROUTE: RAW MEMBER LIST ===");
 

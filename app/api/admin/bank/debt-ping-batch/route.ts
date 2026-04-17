@@ -1,79 +1,97 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/guards";
+import { requireChef } from "@/lib/guards";
+import { getSession } from "@/auth";
 import { prisma } from "@/lib/db";
 import { getOrCreateDiscordConfig, enqueueBankDebtPingBatch } from "@/lib/discord/discord";
 import { getDebtRows } from "@/lib/bank-debts";
+import { resolveFamilyId } from "@/lib/family";
+import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 
 export async function POST(req: Request) {
-  const guard = await requireAdmin();
+  const requestId = makeRequestId();
+  const guard = await requireChef();
   if (guard instanceof Response) return guard;
 
-  const body = await req.json().catch(() => null);
-  const thresholdRaw = body?.threshold;
-  const familyId = "esperados";
-
-  const config = await getOrCreateDiscordConfig(familyId);
-  if (!config.bankDebtPingEnabled) {
-    return NextResponse.json({ ok: false, error: "BANK_PING_DISABLED" }, { status: 400 });
-  }
-  if (!config.bankAlertsChannelId) {
-    return NextResponse.json({ ok: false, error: "MISSING_BANK_ALERTS_CHANNEL" }, { status: 400 });
-  }
-
-  const thresholdValue = Number(thresholdRaw);
-  const threshold =
-    Number.isFinite(thresholdValue) && thresholdValue > 0
-      ? Math.floor(thresholdValue)
-      : config.bankDebtPingThreshold ?? 0;
-
-  if (!threshold || threshold <= 0) {
-    return NextResponse.json({ ok: false, error: "MISSING_THRESHOLD" }, { status: 400 });
-  }
-
-  const cooldownMinutes = config.bankDebtPingCooldownMinutes ?? 60;
-  const now = new Date();
-
-  const lastBatch = await prisma.discordOutbox.findFirst({
-    where: {
-      familyId,
-      type: "BANK_DEBT_PING_BATCH",
-      status: { in: ["PENDING", "SENDING", "SENT"] },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  if (lastBatch) {
-    const diffMs = now.getTime() - lastBatch.createdAt.getTime();
-    if (diffMs < cooldownMinutes * 60 * 1000) {
-      return NextResponse.json(
-        { ok: false, error: "COOLDOWN_ACTIVE", cooldownMinutes },
-        { status: 400 }
-      );
-    }
-  }
-
-  const debtors = await getDebtRows({ familyId, threshold, limit: 1, onlyLinked: true });
-  if (debtors.length === 0) {
-    return NextResponse.json({ ok: false, error: "NO_DEBTORS" }, { status: 400 });
-  }
-
-  const session: any = (guard as any).session;
+  const session = await getSession();
   const createdByUserId = String(session?.user?.id ?? "");
   if (!createdByUserId) {
-    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+    logWarn("debt_ping_batch_unauthenticated", { requestId });
+    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED", requestId }, { status: 401 });
   }
 
-  const created = await enqueueBankDebtPingBatch({
-    familyId,
-    threshold,
-    createdByUserId,
-    now,
-  });
+  try {
+    const body = await req.json().catch(() => null);
+    const thresholdRaw = body?.threshold;
+    const familySlug = "esperados";
+    const familyId = await resolveFamilyId(familySlug); // UUID pour BankLog
 
-  return NextResponse.json({
-    ok: true,
-    threshold,
-    enqueued: Boolean(created),
-    alreadyQueued: !created,
-  });
+    const config = await getOrCreateDiscordConfig(familySlug); // slug pour DiscordConfig
+    if (!config.bankDebtPingEnabled) {
+      logWarn("debt_ping_batch_disabled", { requestId });
+      return NextResponse.json({ ok: false, error: "BANK_PING_DISABLED", requestId }, { status: 400 });
+    }
+    if (!config.bankAlertsChannelId) {
+      logWarn("debt_ping_batch_missing_channel", { requestId });
+      return NextResponse.json({ ok: false, error: "MISSING_BANK_ALERTS_CHANNEL", requestId }, { status: 400 });
+    }
+
+    const thresholdValue = Number(thresholdRaw);
+    const threshold =
+      Number.isFinite(thresholdValue) && thresholdValue > 0
+        ? Math.floor(thresholdValue)
+        : config.bankDebtPingThreshold ?? 0;
+
+    if (!threshold || threshold <= 0) {
+      logWarn("debt_ping_batch_missing_threshold", { requestId });
+      return NextResponse.json({ ok: false, error: "MISSING_THRESHOLD", requestId }, { status: 400 });
+    }
+
+    const cooldownMinutes = config.bankDebtPingCooldownMinutes ?? 60;
+    const now = new Date();
+
+    const lastBatch = await prisma.discordOutbox.findFirst({
+      where: {
+        familyId: familySlug, // outbox stocke le slug
+        type: "BANK_DEBT_PING_BATCH",
+        status: { in: ["PENDING", "SENDING", "SENT"] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (lastBatch) {
+      const diffMs = now.getTime() - lastBatch.createdAt.getTime();
+      if (diffMs < cooldownMinutes * 60 * 1000) {
+        logWarn("debt_ping_batch_cooldown_active", { requestId, cooldownMinutes });
+        return NextResponse.json(
+          { ok: false, error: "COOLDOWN_ACTIVE", cooldownMinutes, requestId },
+          { status: 400 }
+        );
+      }
+    }
+
+    const debtors = await getDebtRows({ familyId, threshold, limit: 1 }); // familyId = UUID
+    if (debtors.length === 0) {
+      logWarn("debt_ping_batch_no_debtors", { requestId, threshold });
+      return NextResponse.json({ ok: false, error: "NO_DEBTORS", requestId }, { status: 400 });
+    }
+
+    const created = await enqueueBankDebtPingBatch({
+      familyId: familySlug, // slug dans l'outbox (worker en a besoin pour DiscordConfig)
+      threshold,
+      createdByUserId,
+      now,
+    });
+
+    logInfo("debt_ping_batch_enqueued", { requestId, threshold, enqueued: Boolean(created), createdByUserId });
+    return NextResponse.json({
+      ok: true,
+      threshold,
+      enqueued: Boolean(created),
+      alreadyQueued: !created,
+      requestId,
+    });
+  } catch (err) {
+    logError("debt_ping_batch_error", { requestId }, err);
+    return NextResponse.json({ ok: false, error: "INTERNAL_ERROR", requestId }, { status: 500 });
+  }
 }

@@ -28,9 +28,9 @@ export default function StaffHeader() {
       </Link>
 
       {/* Staff Badge */}
-      <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30">
-        <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>
-        <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Staff Panel</span>
+      <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#7a1f2b]/20 border border-[#7a1f2b]/35">
+        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+        <span className="text-xs font-semibold text-amber-200 uppercase tracking-wider">Staff Panel</span>
       </div>
     </div>
   );

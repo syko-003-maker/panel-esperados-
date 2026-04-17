@@ -1,5 +1,6 @@
 import { getSession } from "@/auth";
 import { prisma } from "@/lib/db";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import { createAuditLog } from "@/lib/audit";
 import { debug } from "@/lib/logger";
@@ -8,14 +9,13 @@ import {
   CHEF_FAMILLE_ROLE_ID,
   ETAT_MAJOR_ROLE_ID,
   RECRUTEUR_ROLE_ID,
-  getDiscordRolesForUser,
-  getDiscordRolesForUserWithStatus,
   hasAnyRole,
   logDiscordRoleConfig,
   getRecruiterRoleIds,
   getStaffFullRoleIds,
   isRecruiter,
   isStaffFull,
+  getDiscordRolesForUser,
   type DiscordRoleResult,
 } from "@/lib/discord-roles";
 import { getStaffRoleIds } from "@/lib/discord-rbac";
@@ -97,6 +97,9 @@ async function getRequestPath(): Promise<string> {
 async function getRolesForSession(session: any): Promise<DiscordRoleResult> {
   const discordId = await getUserDiscordIdFromSession(session);
   if (!discordId) return { roles: [] };
+
+  const debugDiscord = process.env.DEBUG_DISCORD === "1";
+  const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
   
   // Check request-scoped cache first
   const now = Date.now();
@@ -105,12 +108,51 @@ async function getRolesForSession(session: any): Promise<DiscordRoleResult> {
     debug("[guards] request_cache_hit", { discordId });
     return { roles: cached.roles };
   }
-  
-  // Fetch from Discord (which has its own persistent cache)
-  const result = await getDiscordRolesForUserWithStatus(discordId);
-  
+
+  // DB-only: read Discord roles mirror (no live Discord API calls)
+  const member = await prisma.member.findUnique({
+    where: { familyId_discordId: { familyId: familyDbId, discordId } },
+    select: {
+      discordInGuild: true,
+      discordRoleIds: true,
+      discordRolesUpdatedAt: true,
+      discordLastError: true,
+    },
+  });
+
+  if (debugDiscord) {
+    console.log("[guards] DB-only roles", {
+      discordId: discordId.substring(0, 6) + "...",
+      hasMember: Boolean(member),
+      inGuild: member?.discordInGuild ?? null,
+      rolesCount: member?.discordRoleIds?.length ?? 0,
+      lastError: member?.discordLastError ?? null,
+      updatedAt: member?.discordRolesUpdatedAt ?? null,
+    });
+  }
+
+  if (!member) {
+    return { roles: [], error: "UNAVAILABLE" };
+  }
+
+  const roles = Array.isArray(member.discordRoleIds) ? member.discordRoleIds : [];
+
+  // ✅ Si discordLastError est présent mais que des rôles sont en cache, on utilise le cache.
+  // Cela rend le guard cohérent avec canAccessStaffPanel (phase 2 rbac.ts) qui ignore discordLastError.
+  // On retourne UNAVAILABLE uniquement si les rôles sont vides ET qu'une erreur est présente.
+  if (member.discordLastError && roles.length === 0) {
+    return { roles: [], error: "UNAVAILABLE" };
+  }
+
+  if (member.discordInGuild === null || member.discordInGuild === undefined) {
+    return { roles: [], error: "UNAVAILABLE" };
+  }
+  const result: DiscordRoleResult = {
+    roles,
+  };
+
   // Store in request cache
-  requestRoleCache.set(discordId, { roles: result.roles, timestamp: now });
+  requestRoleCache.set(discordId, { roles, timestamp: now });
   
   // Clean up old entries (simple cleanup every 10th call)
   if (Math.random() < 0.1) {
@@ -157,7 +199,7 @@ export async function requirePrivileged(): Promise<GuardResult> {
   const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
   const isOwner = ownerDiscordId && discordId === ownerDiscordId;
 
-  const rolesResult = await getDiscordRolesForUserWithStatus(discordId);
+  const rolesResult = await getRolesForSession(session);
   if (rolesResult.error === "UNAVAILABLE") {
     return discordUnavailableResponse();
   }
@@ -298,6 +340,9 @@ export const requireChefOrEtatMajor = requireStaffFull;
  */
 export async function requireStaffFull(): Promise<GuardResult> {
   logDiscordRoleConfig("requireStaffFull");
+  if (process.env.THEME_DEBUG_BYPASS === "1" && process.env.NODE_ENV !== "production") {
+    return { session: null };
+  }
   const session = await getSession();
   if (!session) {
     return new Response(null, {
@@ -417,13 +462,25 @@ export async function requireRecruiterOrAbove(): Promise<GuardResult> {
     return { session };
   }
 
-  // Check recruiter or staff full roles
+  // Check recruiter or staff full roles (DB mirror first, live Discord API as fallback)
   const rolesResult = await getRolesForSession(session);
-  if (rolesResult.error === "UNAVAILABLE") {
-    return discordUnavailableResponse();
-  }
+  let userRoles: string[] = rolesResult.roles ?? [];
 
-  const userRoles = rolesResult.roles ?? [];
+  if (rolesResult.error === "UNAVAILABLE") {
+    // DB mirror unavailable (member non lié ou sync en attente)
+    // → fallback API Discord live, cohérent avec canAccessStaffPanel Phase 3
+    try {
+      const liveRoles = await getDiscordRolesForUser(discordId);
+      if (liveRoles.length > 0) {
+        debug("[guards] requireRecruiterOrAbove: DB mirror UNAVAILABLE, using live Discord roles", { discordId });
+        userRoles = liveRoles;
+      } else {
+        return discordUnavailableResponse();
+      }
+    } catch {
+      return discordUnavailableResponse();
+    }
+  }
   const hasRecruiterRole = isRecruiter(userRoles);
   const hasStaffFullRole = isStaffFull(userRoles);
   const hasAccess = hasRecruiterRole || hasStaffFullRole;
@@ -477,8 +534,18 @@ export async function requireActiveMember(
 
   if (!discordId) return jsonError(403, "Missing discordId");
 
-  const member = await prisma.member.findUnique({
-    where: { familyId_discordId: { familyId: "esperados", discordId } },
+  let familyId = DEFAULT_FAMILY_ID;
+  try {
+    familyId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+  } catch {
+    // keep slug fallback
+  }
+
+  const member = await prisma.member.findFirst({
+    where: {
+      discordId,
+      familyId: { in: Array.from(new Set([familyId, DEFAULT_FAMILY_ID])) },
+    },
     select: { id: true, isActive: true, gradeLevel: true, grade: true },
   });
 
@@ -532,11 +599,22 @@ export async function requireLinkedMember(): Promise<GuardResult> {
     });
   }
 
-  // Query member by Discord ID (compound unique constraint)
-  const member = await prisma.member.findUnique({
-    where: { familyId_discordId: { familyId: "esperados", discordId } },
-    select: { id: true, discordId: true, rpName: true, steamId: true },
-  });
+    let familyId = DEFAULT_FAMILY_ID;
+    try {
+      familyId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+    } catch {
+      familyId = DEFAULT_FAMILY_ID;
+    }
+
+    const member = await prisma.member.findFirst({
+      where: {
+        discordId,
+        familyId: {
+          in: Array.from(new Set([familyId, DEFAULT_FAMILY_ID])),
+        },
+      },
+      select: { id: true, discordId: true, rpName: true, steamId: true },
+    });
 
   if (!member) {
     debug("[memberGuard] member not found", {
@@ -585,8 +663,10 @@ export async function requireLinkAccess(): Promise<GuardResult> {
   }
 
   // Check if user is already linked
-  const member = await prisma.member.findUnique({
-    where: { familyId_discordId: { familyId: "esperados", discordId } },
+  let linkFamilyId = DEFAULT_FAMILY_ID;
+  try { linkFamilyId = await resolveFamilyId(DEFAULT_FAMILY_ID); } catch {}
+  const member = await prisma.member.findFirst({
+    where: { familyId: linkFamilyId, discordId },
     select: { id: true, steamId: true, discordId: true },
   });
 
@@ -595,7 +675,11 @@ export async function requireLinkAccess(): Promise<GuardResult> {
     return jsonError(403, "ALREADY_LINKED");
   }
 
-  const roles = await getDiscordRolesForUser(discordId);
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+  const roles = rolesResult.roles ?? [];
   const hasChefRole = hasAnyRole(roles, [CHEF_FAMILLE_ROLE_ID]);
   const hasEtatMajorRole = hasAnyRole(roles, [ETAT_MAJOR_ROLE_ID]);
   const hasAccess = hasChefRole || hasEtatMajorRole;

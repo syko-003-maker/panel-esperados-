@@ -32,9 +32,10 @@ export interface ProbeInfosResponse {
  * 
  * CRITICAL: Always uses slug "esperados", ignores familySlug parameter
  * Tries in order (slug only):
- * 1. /familles/esperados
- * 2. /familles/esperados/infos
- * 3. /familles/esperados/info
+ * 1. /darkrp/familles/esperados/infos
+ * 2. /familles/esperados
+ * 3. /familles/esperados/infos
+ * 4. /familles/esperados/info
  */
 export async function lygProbeInfos(
   familySlug?: string,
@@ -48,12 +49,14 @@ export async function lygProbeInfos(
     });
   }
 
+  console.log(`[DIAG][lyg-probe-infos] called ${new Date().toISOString()} slug=${familySlug} trigger=probe`);
   const config = getLygConfig();
   const timeoutMs = opts?.timeoutMs || 15_000;
   const FAMILY_SLUG = "esperados"; // CRITICAL: Force slug-only
 
   // Endpoints to probe (in order)
   const endpoints = [
+    `/darkrp/familles/${FAMILY_SLUG}/infos`,
     `/familles/${FAMILY_SLUG}`,
     `/familles/${FAMILY_SLUG}/infos`,
     `/familles/${FAMILY_SLUG}/info`,

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
-import { PageShell } from "@/components/staff/ui";
+import { PageShell } from "@/components/staff/ui/PageShell";
 import { Separator } from "@/components/ui/separator";
 
 type DiscordConfig = {
