@@ -67,6 +67,10 @@ backups/
 discord-worker/node_modules/
 discord-worker/dist/
 
+# Binaires lourds
+bin/cloudflared*
+bin/*.exe
+
 # Claude Code — données internes (ne jamais committer)
 .claude/
 
