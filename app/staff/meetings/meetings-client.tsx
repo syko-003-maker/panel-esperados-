@@ -152,8 +152,17 @@ export default function MeetingsClient() {
   }
 
   function fmtCounts(counts: MeetingItem["counts"]) {
-    if (!counts) return "—";
-    return `P:${counts.present} L:${counts.late} E:${counts.excused} AJ:${counts.absentJustified} AU:${counts.absentUnjustified} U:${counts.unknown} / ${counts.total}`;
+    if (!counts || counts.total === 0) return "—";
+    const attended = counts.present + counts.late;
+    const absent = counts.absentJustified + counts.absentUnjustified;
+    if (attended === 0 && absent === 0) {
+      return `${counts.total} membre${counts.total > 1 ? "s" : ""}`;
+    }
+    const parts: string[] = [];
+    if (attended > 0) parts.push(`${attended} présent${attended > 1 ? "s" : ""}`);
+    if (counts.excused > 0) parts.push(`${counts.excused} excusé${counts.excused > 1 ? "s" : ""}`);
+    if (absent > 0) parts.push(`${absent} absent${absent > 1 ? "s" : ""}`);
+    return `${parts.join(" · ")} / ${counts.total}`;
   }
 
   function getCreateDateLabel() {

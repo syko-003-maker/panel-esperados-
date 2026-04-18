@@ -103,6 +103,7 @@ function normalizeGradeLabel(value: string | null | undefined): string {
 
 export function isActivityExempt(member: MemberItem): boolean {
   if (getMemberStatus(member) === "blacklisted") return true;
+  if (member.activeAbsence) return true;
 
   const gradeCandidates = [member.grade, member.rankLabel]
     .map(normalizeGradeLabel)

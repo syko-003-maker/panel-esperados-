@@ -231,9 +231,6 @@ export default function RecruitmentClient() {
                         >
                           {ticket.candidateRpName}
                         </Link>
-                        {ticket.ticketKey && (
-                          <div className="text-xs text-muted-foreground font-mono mt-0.5">{ticket.ticketKey}</div>
-                        )}
                       </td>
                       <td className="py-3 px-4">
                         <code className="text-xs bg-slate-800 px-2 py-1 rounded font-mono">
