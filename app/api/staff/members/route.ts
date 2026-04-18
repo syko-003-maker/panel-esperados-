@@ -384,7 +384,7 @@ export async function GET(req: Request) {
           : scope === "reservists"
             ? isReservist
           : scope === "all"
-             ? isDisplayableMember
+             ? (isDisplayableMember || isDemoted || isBlacklisted || isReservist)
             : isActiveMember;
 
         if (!includeByScope) {

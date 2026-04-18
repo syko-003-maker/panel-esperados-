@@ -239,7 +239,6 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge tone={effectiveBadge.tone}>{effectiveBadge.label}</StatusBadge>
-                        <span className="font-mono text-sm font-semibold text-cyan-300">{r.ticketKey}</span>
                       </div>
 
                       <div className="text-sm text-slate-100">
