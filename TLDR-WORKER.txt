@@ -1,9 +1,0 @@
-🟢 **WORKER DISCORD PROD FIX — COMPLETE**
-
-```bash
-npm run start:prod
-```
-
-Done. Ready. Deploy.
-
-📚 Docs: [QUICK-START-WORKER.md](QUICK-START-WORKER.md)
