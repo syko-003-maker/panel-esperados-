@@ -33,10 +33,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className="dark">
+    <html lang="fr" className="dark" suppressHydrationWarning>
       <body
         className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} antialiased min-h-screen`}
         id="app-v4-canvas-theme"
+        suppressHydrationWarning
       >
         <AppBackground />
         {children}

@@ -293,7 +293,7 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                         </div>
                       ) : !isConfirming ? (
                         <>
-                          {r.threadId ? (
+                          {r.threadId && effectiveStatus === "PENDING" ? (
                             <MotionButtonFrame>
                               <a
                                 href={getDiscordThreadUrl(r.threadId)}

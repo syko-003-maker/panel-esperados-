@@ -14,7 +14,6 @@ import {
   Hash,
   Wallet,
 } from "lucide-react";
-import { MotionCard } from "@/components/staff/ui/motion";
 
 type DashboardResponse =
   | {
@@ -132,9 +131,15 @@ export default function DashboardClient() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
     const load = async () => {
       try {
-        const res = await fetch("/api/member/dashboard", { cache: "no-store" });
+        const res = await fetch("/api/member/dashboard", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!mounted) return;
         setHttpStatus(res.status);
 
@@ -155,28 +160,37 @@ export default function DashboardClient() {
         setData(json);
       } catch (err) {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : "Erreur réseau");
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setError("Le chargement a pris trop de temps. Réessayez.");
+        } else {
+          setError(err instanceof Error ? err.message : "Erreur réseau");
+        }
       } finally {
+        clearTimeout(timeout);
         if (mounted) setLoading(false);
       }
     };
     load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
   }, []);
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-6 text-center">
-          <p className="text-sm text-slate-400 animate-pulse">Chargement du tableau de bord…</p>
+        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-6 text-center">
+          <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-amber-400 border-t-transparent mb-2" />
+          <p className="text-sm font-medium text-amber-300/90">Chargement du tableau de bord…</p>
         </div>
-        <div className="h-28 rounded-2xl border border-white/10 bg-white/[0.06] animate-pulse" />
+        <div className="h-28 rounded-2xl border border-white/15 bg-white/[0.08] animate-pulse" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-36 rounded-2xl border border-white/10 bg-white/[0.06] animate-pulse" />
+            <div key={i} className="h-36 rounded-2xl border border-white/15 bg-white/[0.08] animate-pulse" />
           ))}
         </div>
-        <div className="h-48 rounded-2xl border border-white/10 bg-white/[0.06] animate-pulse" />
+        <div className="h-48 rounded-2xl border border-white/15 bg-white/[0.08] animate-pulse" />
       </div>
     );
   }
@@ -229,7 +243,7 @@ export default function DashboardClient() {
       {/* Stats grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Sanctions */}
-        <MotionCard className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-red-500/20 transition-colors">
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-red-500/20 transition-colors">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -251,10 +265,10 @@ export default function DashboardClient() {
             <span>Justifier</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
-        </MotionCard>
+        </div>
 
         {/* Absences */}
-        <MotionCard className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-blue-500/20 transition-colors" delay={0.04}>
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-blue-500/20 transition-colors">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -276,10 +290,10 @@ export default function DashboardClient() {
             <span>Justifier</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
-        </MotionCard>
+        </div>
 
         {/* Banque */}
-        <MotionCard className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-emerald-500/20 transition-colors" delay={0.08}>
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-emerald-500/20 transition-colors">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -301,7 +315,7 @@ export default function DashboardClient() {
             <span>Voir tout</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
-        </MotionCard>
+        </div>
       </div>
 
       {/* Situation bancaire — toujours affichée si les données sont disponibles */}
@@ -311,9 +325,9 @@ export default function DashboardClient() {
 
         if (isDeficit) {
           return (
-            <MotionCard
+            <div
               className="rounded-2xl border border-red-500/30 bg-red-500/[0.08] backdrop-blur-sm p-5 flex items-center gap-4"
-              delay={0.1}
+             
             >
               <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/15">
                 <TrendingDown className="h-5 w-5 text-red-400" />
@@ -329,15 +343,15 @@ export default function DashboardClient() {
                   À régulariser auprès de l'État-Major
                 </p>
               </div>
-            </MotionCard>
+            </div>
           );
         }
 
         if (isNeutral) {
           return (
-            <MotionCard
+            <div
               className="rounded-2xl border border-slate-500/20 bg-slate-500/[0.06] backdrop-blur-sm p-5 flex items-center gap-4"
-              delay={0.1}
+             
             >
               <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-500/20 bg-slate-500/10">
                 <Wallet className="h-5 w-5 text-slate-400" />
@@ -351,15 +365,15 @@ export default function DashboardClient() {
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">Aucun déficit en cours</p>
               </div>
-            </MotionCard>
+            </div>
           );
         }
 
         // Positif
         return (
-          <MotionCard
+          <div
             className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.07] backdrop-blur-sm p-5 flex items-center gap-4"
-            delay={0.1}
+           
           >
             <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/12">
               <TrendingUp className="h-5 w-5 text-emerald-400" />
@@ -373,7 +387,7 @@ export default function DashboardClient() {
               </p>
               <p className="text-xs text-emerald-500/70 mt-0.5">Solde positif</p>
             </div>
-          </MotionCard>
+          </div>
         );
       })()}
 

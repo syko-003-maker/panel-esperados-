@@ -11,7 +11,6 @@ import {
   Briefcase,
   LogOut,
 } from "lucide-react";
-import { MotionListItem, MotionButtonFrame } from "@/components/staff/ui/motion";
 
 type NavItem = { href: string; label: string; Icon: React.ElementType };
 
@@ -25,7 +24,7 @@ function getNavItems(isLinked: boolean, isRecruiter: boolean): NavItem[] {
     { href: "/justificatifs/absence", label: "Justifier une absence", Icon: CalendarOff },
     { href: "/justificatifs/sanction", label: "Justifier une sanction", Icon: Scale },
     ...(isRecruiter
-      ? [{ href: "/staff/recruitment", label: "Recrutement", Icon: Briefcase }]
+      ? [{ href: "/recrutement", label: "Recrutement", Icon: Briefcase }]
       : []),
   ];
 }
@@ -51,7 +50,7 @@ export function MemberSidebar({
         {navItems.map((item) => {
           const active = isActive(item.href);
           return (
-            <MotionListItem key={item.href}>
+            <div key={item.href}>
               <Link
                 href={item.href}
                 prefetch={false}
@@ -71,7 +70,7 @@ export function MemberSidebar({
                 />
                 <span className="truncate text-sm font-medium">{item.label}</span>
               </Link>
-            </MotionListItem>
+            </div>
           );
         })}
       </div>
@@ -85,7 +84,7 @@ export function MemberSidebar({
       )}
 
       <div className="px-3 py-4 border-t border-white/10">
-        <MotionButtonFrame className="w-full">
+        <div className="w-full">
           <button
             onClick={() => signOut({ redirect: true, callbackUrl: "/login" })}
             className="w-full flex items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-destructive/70 transition-all duration-200 hover:border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
@@ -93,7 +92,7 @@ export function MemberSidebar({
             <LogOut className="h-4 w-4 flex-shrink-0" />
             <span className="text-sm font-medium">Déconnexion</span>
           </button>
-        </MotionButtonFrame>
+        </div>
       </div>
     </nav>
   );

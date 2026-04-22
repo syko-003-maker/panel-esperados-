@@ -84,9 +84,7 @@ export async function getLinkedMemberBySession(
   }
 
   // 2️⃣ Query Member by (familyId, discordId) compound unique index
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[memberLink] Looking up member", { familyId: resolvedFamilyId, discordId, familyResolveFailed });
-  }
+  console.log("[memberLink] lookup", { familyId: resolvedFamilyId, discordId, familyResolveFailed });
 
   let member = await prisma.member.findFirst({
     where: {
@@ -121,14 +119,10 @@ export async function getLinkedMemberBySession(
   }
 
   // 3️⃣ Log result
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[memberLink] Query result", {
-      discordId,
-      found: !!member,
-      rpName: member?.rpName || "(none)",
-      steamId: member?.steamId || "(none)",
-      isActive: member?.isActive,
-    });
+  if (member) {
+    console.log("[memberLink] found", { discordId, rpName: member.rpName });
+  } else {
+    console.warn("[memberLink] NOT found", { discordId, familyResolveFailed });
   }
 
   if (!member) {

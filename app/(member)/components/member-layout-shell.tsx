@@ -4,11 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { AppBackground } from "@/components/app-background";
-import {
-  StaffMotionProvider,
-  MotionSection,
-  MotionButtonFrame,
-} from "@/components/staff/ui";
 import { BrandLogo } from "@/components/BrandLogo";
 import { MemberSidebar } from "./member-sidebar";
 
@@ -27,7 +22,6 @@ export function MemberLayoutShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <StaffMotionProvider>
       <div className="relative flex h-screen text-foreground overflow-hidden">
         <AppBackground />
 
@@ -74,14 +68,14 @@ export function MemberLayoutShell({
                 Espace Membre
               </p>
             </Link>
-            <MotionButtonFrame>
+            <div className="inline-flex">
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="rounded-md p-1 transition-colors hover:bg-white/[0.06]"
               >
                 <X className="h-5 w-5 text-slate-400" />
               </button>
-            </MotionButtonFrame>
+            </div>
           </div>
           <MemberSidebar
             isLinked={isLinked}
@@ -94,7 +88,7 @@ export function MemberLayoutShell({
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
           {/* Mobile header */}
           <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-white/10 bg-[linear-gradient(180deg,rgba(11,3,5,0.62),rgba(11,3,5,0.46))] px-4 backdrop-blur-xl lg:hidden">
-            <MotionButtonFrame>
+            <div className="inline-flex">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="rounded-xl border border-white/10 bg-white/[0.04] p-2 transition-colors hover:bg-white/[0.08]"
@@ -102,19 +96,18 @@ export function MemberLayoutShell({
               >
                 <Menu className="h-5 w-5" />
               </button>
-            </MotionButtonFrame>
+            </div>
             <span className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-100/80">
               Espace Membre
             </span>
           </header>
 
           <main className="flex-1 overflow-y-auto">
-            <MotionSection className="w-full p-4 md:p-6 lg:p-8">
+            <div className="w-full p-4 md:p-6 lg:p-8">
               {children}
-            </MotionSection>
+            </div>
           </main>
         </div>
       </div>
-    </StaffMotionProvider>
   );
 }
