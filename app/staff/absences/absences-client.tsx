@@ -664,8 +664,12 @@ export default function AbsencesClient() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Statut</label>
                 <select
-                  value={pendingFilters.status}
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, status: e.target.value })}
+                  value={filters.status}
+                  onChange={(e) => {
+                    setFilters({ ...filters, status: e.target.value });
+                    setPendingFilters({ ...pendingFilters, status: e.target.value });
+                    setPage(1);
+                  }}
                   className="px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-800 text-foreground text-sm focus:outline-none"
                 >
                   <option value="">Tous les statuts</option>
@@ -741,7 +745,7 @@ export default function AbsencesClient() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/40">
-                      {["Membre", "Type", "Période / Réunion", "Motif", "Statut", "Décidé le", "Validé par", "Actions"].map(
+                      {["Membre", "Type", "Période / Réunion", "Motif", "Statut", "Décidé le", "Validé par"].map(
                         (h) => (
                           <th
                             key={h}
@@ -834,8 +838,6 @@ export default function AbsencesClient() {
                           )}
                         </td>
 
-                        {/* Actions */}
-                        <td className="px-4 py-3">{renderActions(item)}</td>
                       </tr>
                     ))}
                   </tbody>
