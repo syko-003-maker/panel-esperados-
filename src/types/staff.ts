@@ -5,6 +5,7 @@ export type StaffAbsenceDto = {
   reason: string | null;
   startAt: string;
   endAt: string;
+  upcoming?: boolean;
 };
 
 export type StaffMemberDto = {

@@ -556,12 +556,14 @@ export async function GET(req: Request) {
       .map((row) => row.discordId)
       .filter((value): value is string => typeof value === "string" && value.trim() !== "");
 
+    // Inclure les absences qui démarrent dans les 48h à venir (pas seulement déjà démarrées)
+    const upcoming48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
     const approvedActiveAbsences = (memberIdsForAbsence.length > 0 || discordIdsForAbsence.length > 0)
       ? await prisma.absence.findMany({
           where: {
             familyId: family.id,
             status: "APPROVED",
-            startAt: { lte: now },
+            startAt: { lte: upcoming48h },
             endAt: { gte: now },
             OR: [
               ...(memberIdsForAbsence.length > 0 ? [{ memberId: { in: memberIdsForAbsence } }] : []),
@@ -592,6 +594,7 @@ export async function GET(req: Request) {
         reason: absence.reason,
         startAt: absence.startAt.toISOString(),
         endAt: absence.endAt.toISOString(),
+        upcoming: absence.startAt > now, // true si l'absence n'a pas encore démarré
       };
 
       if (absence.memberId && !activeAbsenceByMemberId.has(absence.memberId)) {

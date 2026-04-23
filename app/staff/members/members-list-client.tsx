@@ -363,9 +363,20 @@ export default function MembersListClient() {
                           <p className="truncate font-medium text-foreground">{member.rpName ?? "-"}</p>
                         </div>
                         {member.activeAbsence ? (
-                          <div className="mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/8 px-2 py-1 text-[11px] text-amber-100">
+                          <div className={`mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+                            member.activeAbsence.upcoming
+                              ? "border-blue-500/30 bg-blue-500/8 text-blue-100"
+                              : "border-amber-500/30 bg-amber-500/8 text-amber-100"
+                          }`}>
+                            {member.activeAbsence.upcoming && (
+                              <span className="font-semibold text-blue-300">À venir •</span>
+                            )}
                             <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
-                            <span className="text-amber-200/70">• jusqu'au {new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}</span>
+                            <span className={member.activeAbsence.upcoming ? "text-blue-200/70" : "text-amber-200/70"}>
+                              • {member.activeAbsence.upcoming
+                                ? `dès le ${new Date(member.activeAbsence.startAt).toLocaleDateString("fr-FR")}`
+                                : `jusqu'au ${new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}`}
+                            </span>
                           </div>
                         ) : null}
                       </div>
@@ -436,9 +447,11 @@ export default function MembersListClient() {
 }
 
 function MemberAvatar({ member }: { member: MemberItem }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const avatarUrl = getDiscordAvatarUrl(member.discordId, member.discordAvatarHash);
+  const fallback = (member.rpName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
-  if (avatarUrl) {
+  if (avatarUrl && !imgFailed) {
     return (
       <img
         src={avatarUrl}
@@ -446,11 +459,10 @@ function MemberAvatar({ member }: { member: MemberItem }) {
         className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover"
         loading="lazy"
         referrerPolicy="no-referrer"
+        onError={() => setImgFailed(true)}
       />
     );
   }
-
-  const fallback = (member.rpName ?? "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-card/80 text-sm font-semibold text-foreground/80">

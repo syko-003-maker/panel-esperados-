@@ -1,6 +1,6 @@
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { redirect } from "next/navigation";
-import RecruitmentClient from "@/app/staff/recruitment/recruitment-client";
+import RecruitmentClient from "../../staff/recruitment/recruitment-client";
 
 export default async function MemberRecruitmentPage() {
   const guard = await requireRecruiterOrAbove();
