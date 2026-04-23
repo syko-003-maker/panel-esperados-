@@ -484,36 +484,36 @@ export async function GET(req: Request) {
     const avatarHashByDiscordId = new Map<string, string | null>();
 
     if (discordIds.length > 0) {
-      // Source primaire: Discord API (cache 1h) — fiable et toujours à jour
-      // Couvre tous les membres (avec ou sans Account), évite les hashes périmés en DB
-      const apiAvatars = await fetchDiscordAvatarHashBatch(discordIds);
-      for (const [discordId, hash] of apiAvatars) {
+      // Source primaire: DB Account.user.image (membres ayant déjà connecté le panel)
+      const accounts = await prisma.account.findMany({
+        where: {
+          provider: "discord",
+          providerAccountId: { in: discordIds },
+        },
+        select: {
+          providerAccountId: true,
+          user: { select: { image: true } },
+        },
+      });
+
+      for (const account of accounts) {
+        const hash = extractDiscordAvatarHash(account.user?.image);
         if (hash) {
-          avatarHashByDiscordId.set(discordId, hash);
+          avatarHashByDiscordId.set(account.providerAccountId, hash);
         }
       }
 
-      // Fallback: DB Account.user.image pour les membres dont Discord API n'a pas retourné de hash
+      // Fallback: Discord API uniquement pour les membres sans entrée en DB
+      // (n'ont jamais connecté le panel) — batch limité pour éviter le rate limit
       const discordIdsWithoutAvatar = discordIds.filter(
         (id) => !avatarHashByDiscordId.get(id)
       );
 
       if (discordIdsWithoutAvatar.length > 0) {
-        const accounts = await prisma.account.findMany({
-          where: {
-            provider: "discord",
-            providerAccountId: { in: discordIdsWithoutAvatar },
-          },
-          select: {
-            providerAccountId: true,
-            user: { select: { image: true } },
-          },
-        });
-
-        for (const account of accounts) {
-          const hash = extractDiscordAvatarHash(account.user?.image);
+        const apiAvatars = await fetchDiscordAvatarHashBatch(discordIdsWithoutAvatar);
+        for (const [discordId, hash] of apiAvatars) {
           if (hash) {
-            avatarHashByDiscordId.set(account.providerAccountId, hash);
+            avatarHashByDiscordId.set(discordId, hash);
           }
         }
       }

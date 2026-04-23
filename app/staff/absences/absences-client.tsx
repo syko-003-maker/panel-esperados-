@@ -194,6 +194,7 @@ type AbsenceItem = {
   uiStatus: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
   rejectionReason: string | null;
   decidedAt: string | null;
+  decidedBy: { id: string; name: string | null; rpName: string | null } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -740,7 +741,7 @@ export default function AbsencesClient() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/40">
-                      {["Membre", "Type", "Période / Réunion", "Motif", "Statut", "Décidé le", "Actions"].map(
+                      {["Membre", "Type", "Période / Réunion", "Motif", "Statut", "Décidé le", "Validé par", "Actions"].map(
                         (h) => (
                           <th
                             key={h}
@@ -820,6 +821,17 @@ export default function AbsencesClient() {
                         {/* Décidé le */}
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {item.decidedAt ? fmtDate(item.decidedAt) : "—"}
+                        </td>
+
+                        {/* Validé par */}
+                        <td className="px-4 py-3 text-xs whitespace-nowrap">
+                          {item.decidedBy ? (
+                            <span className="text-slate-300 font-medium">
+                              {item.decidedBy.rpName || item.decidedBy.name || "—"}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
 
                         {/* Actions */}

@@ -128,6 +128,14 @@ function toResponseAbsence(row: any) {
     startAt: row.startAt.toISOString(),
     endAt: row.endAt.toISOString(),
     decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
+    decidedBy: row.decidedBy
+      ? {
+          id: row.decidedBy.id,
+          name: row.decidedBy.name,
+          discordId: row.decidedBy.accounts?.[0]?.providerAccountId ?? null,
+          rpName: row.decidedBy._rpName ?? null, // enrichi après query
+        }
+      : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -199,12 +207,46 @@ export async function GET(req: Request) {
           member: {
             select: { id: true, rpName: true, discordId: true, steamId: true },
           },
+          decidedBy: {
+            select: {
+              id: true,
+              name: true,
+              accounts: {
+                where: { provider: "discord" },
+                select: { providerAccountId: true },
+                take: 1,
+              },
+            },
+          },
         },
       }),
       prisma.absence.count({ where }),
     ]);
 
-    const data = rows.map((row) => toResponseAbsence(row));
+    // Enrichir decidedBy avec le rpName du membre validateur
+    const decidedByDiscordIds = rows
+      .map((r: any) => r.decidedBy?.accounts?.[0]?.providerAccountId)
+      .filter((id: any): id is string => typeof id === "string" && id.length > 0);
+
+    const decidedByMemberMap = new Map<string, string>();
+    if (decidedByDiscordIds.length > 0) {
+      const decidedMembers = await prisma.member.findMany({
+        where: { discordId: { in: decidedByDiscordIds } },
+        select: { discordId: true, rpName: true },
+      });
+      for (const m of decidedMembers) {
+        if (m.discordId) decidedByMemberMap.set(m.discordId, m.rpName ?? "");
+      }
+    }
+
+    // Injecter _rpName avant de sérialiser
+    for (const row of rows as any[]) {
+      if (row.decidedBy?.accounts?.[0]?.providerAccountId) {
+        row.decidedBy._rpName = decidedByMemberMap.get(row.decidedBy.accounts[0].providerAccountId) ?? null;
+      }
+    }
+
+    const data = rows.map((row: any) => toResponseAbsence(row));
 
     logInfo("absences_listed", { requestId, total, page, pageSize });
     return NextResponse.json({ ok: true, requestId, data, page, pageSize, total });
