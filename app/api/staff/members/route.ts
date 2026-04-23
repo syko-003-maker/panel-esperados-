@@ -484,39 +484,36 @@ export async function GET(req: Request) {
     const avatarHashByDiscordId = new Map<string, string | null>();
 
     if (discordIds.length > 0) {
-      // Primary source: Account.user.image (members who have logged into the panel)
-      const accounts = await prisma.account.findMany({
-        where: {
-          provider: "discord",
-          providerAccountId: { in: discordIds },
-        },
-        select: {
-          providerAccountId: true,
-          user: {
-            select: {
-              image: true,
-            },
-          },
-        },
-      });
-
-      for (const account of accounts) {
-        const hash = extractDiscordAvatarHash(account.user?.image);
+      // Source primaire: Discord API (cache 1h) — fiable et toujours à jour
+      // Couvre tous les membres (avec ou sans Account), évite les hashes périmés en DB
+      const apiAvatars = await fetchDiscordAvatarHashBatch(discordIds);
+      for (const [discordId, hash] of apiAvatars) {
         if (hash) {
-          avatarHashByDiscordId.set(account.providerAccountId, hash);
+          avatarHashByDiscordId.set(discordId, hash);
         }
       }
 
-      // Fallback: Discord API for members without an Account entry (never logged in)
+      // Fallback: DB Account.user.image pour les membres dont Discord API n'a pas retourné de hash
       const discordIdsWithoutAvatar = discordIds.filter(
         (id) => !avatarHashByDiscordId.get(id)
       );
 
       if (discordIdsWithoutAvatar.length > 0) {
-        const apiAvatars = await fetchDiscordAvatarHashBatch(discordIdsWithoutAvatar);
-        for (const [discordId, hash] of apiAvatars) {
+        const accounts = await prisma.account.findMany({
+          where: {
+            provider: "discord",
+            providerAccountId: { in: discordIdsWithoutAvatar },
+          },
+          select: {
+            providerAccountId: true,
+            user: { select: { image: true } },
+          },
+        });
+
+        for (const account of accounts) {
+          const hash = extractDiscordAvatarHash(account.user?.image);
           if (hash) {
-            avatarHashByDiscordId.set(discordId, hash);
+            avatarHashByDiscordId.set(account.providerAccountId, hash);
           }
         }
       }
