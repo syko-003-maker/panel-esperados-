@@ -213,11 +213,18 @@ export async function POST(
 ) {
   // Check feature flag
   const featureCheck = await requireMeetingsEnabled("finalize");
-  if (!featureCheck.allowed) return featureCheck.response;
+  if (!featureCheck.allowed) {
+    console.log("[finalize] feature flag blocked:", featureCheck.response.status);
+    return featureCheck.response;
+  }
 
   // Only chef can finalize
   const guard = await requireChef();
-  if (guard instanceof Response) return guard;
+  if (guard instanceof Response) {
+    console.log("[finalize] requireChef blocked:", guard.status);
+    return guard;
+  }
+  console.log("[finalize] guard passed");
 
   const session = await getSession();
   const userId = session?.user?.id ?? (session as any)?.userId ?? null;
@@ -294,6 +301,7 @@ export async function POST(
     })
     .filter((item) => !item.targetGrade);
 
+  console.log("[finalize] missingPromotionTargets:", missingPromotionTargets.length, JSON.stringify(missingPromotionTargets));
   if (missingPromotionTargets.length > 0) {
     return NextResponse.json(
       {
