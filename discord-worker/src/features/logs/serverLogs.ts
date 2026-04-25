@@ -173,8 +173,8 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
                     ?? (cached?.content && cached.content !== "" ? cached.content : null)
                     ?? null;
 
-  // Si on n'a aucune info utile → message inconnu (bot ou avant démarrage), on ignore
-  if (!authorId && !content) return;
+  // Si on n'a pas l'auteur → message inconnu (bot non caché ou avant démarrage), on ignore
+  if (!authorId) return;
 
   // Chercher qui a supprimé via les Audit Logs
   let deletedBy: string | null = null;
