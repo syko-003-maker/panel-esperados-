@@ -139,7 +139,25 @@ export function BankPageClient() {
       {!loading && !error && logs.length > 0 && (
         <>
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Mobile cards */}
+            <div className="md:hidden divide-y divide-white/[0.04]">
+              {logs.map((log, idx) => (
+                <div key={`${page}-${idx}`} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <TxIcon type={log.type} />
+                    <div>
+                      <div className="text-sm text-slate-300">{formatType(log.type)}</div>
+                      <div className="text-xs text-slate-500">{formatDate(log.at)}</div>
+                    </div>
+                  </div>
+                  <span className={`font-semibold tabular-nums text-sm ${txColor(log.type)}`}>
+                    {log.type === 1 ? "+" : "−"}{formatAmount(Math.abs(log.money))}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/8">

@@ -201,7 +201,66 @@ export default function RecruitmentClient() {
       {/* Table */}
       {!loading && items.length > 0 && (
         <Card className="overflow-hidden bg-slate-900/40 border-slate-800">
-          <div className="overflow-x-auto">
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y divide-slate-800/50">
+            {items.map((ticket) => {
+              const badge = statusBadge(ticket);
+              const isConfirming = confirmDeleteId === ticket.id;
+              const isDeleting = deletingId === ticket.id;
+              return (
+                <div key={ticket.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/staff/recruitment/${ticket.id}`} className="font-medium text-primary hover:underline text-sm">
+                      {ticket.candidateRpName}
+                    </Link>
+                    <Badge className={`${badge.color} border text-xs shrink-0`}>{badge.label}</Badge>
+                  </div>
+                  {ticket.candidateSteamId && (
+                    <code className="text-xs bg-slate-800 px-2 py-1 rounded font-mono block w-fit">
+                      {ticket.candidateSteamId}
+                    </code>
+                  )}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    {ticket.claimedBy && <span>Par : {ticket.claimedBy.name ?? ticket.claimedBy.id}</span>}
+                    <span>{fmtDate(ticket.createdAt)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    {!isConfirming ? (
+                      <>
+                        {ticket.discordThreadId && (
+                          <a
+                            href={`https://discord.com/channels/${GUILD_ID}/${ticket.discordThreadId}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="text-xs px-2 py-1 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                          >
+                            Discord
+                          </a>
+                        )}
+                        <Link href={`/staff/recruitment/${ticket.id}`} className="text-xs px-2 py-1 rounded border border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08] transition-colors">
+                          Ouvrir
+                        </Link>
+                        <button onClick={() => setConfirmDeleteId(ticket.id)} className="text-xs px-2 py-1 rounded border border-red-500/20 bg-red-500/[0.06] text-red-400 hover:bg-red-500/15 transition-colors">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xs text-muted-foreground">Supprimer ?</span>
+                        <button onClick={() => handleDelete(ticket.id)} disabled={isDeleting} className="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50">
+                          {isDeleting ? "…" : "Confirmer"}
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)} disabled={isDeleting} className="text-xs px-2 py-1 rounded border border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08] transition-colors">
+                          Annuler
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-900/60 border-b border-slate-800">
                 <tr>
