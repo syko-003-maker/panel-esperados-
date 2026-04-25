@@ -158,21 +158,25 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
 export async function onMessageDelete(message: Message | PartialMessage): Promise<void> {
   if (!message.guild) return;
 
-  // Priorité : données Discord > mini-cache
+  // Récupérer depuis le mini-cache
   const cached = msgCache.get(message.id);
   msgCache.delete(message.id);
 
-  const isBot     = message.author?.bot ?? cached?.isBot ?? false;
-  if (isBot) return; // Ignorer les messages de bots
+  // Ignorer les messages de bots
+  const isBot = message.author?.bot ?? cached?.isBot ?? false;
+  if (isBot) return;
 
   const authorId     = message.author?.id    ?? cached?.authorId    ?? null;
   const authorTag    = message.author?.tag   ?? cached?.authorTag   ?? null;
   const authorAvatar = message.author?.displayAvatarURL({ size: 64 }) ?? cached?.authorAvatar ?? undefined;
-  const content      = (message.content != null && message.content !== "" ? message.content : null)
-                    ?? (cached?.content !== "" ? cached?.content : null)
+  const content      = (message.content && message.content !== "" ? message.content : null)
+                    ?? (cached?.content && cached.content !== "" ? cached.content : null)
                     ?? null;
 
-  // Chercher qui a supprimé (si c'est un modérateur)
+  // Si on n'a aucune info utile → message inconnu (bot ou avant démarrage), on ignore
+  if (!authorId && !content) return;
+
+  // Chercher qui a supprimé via les Audit Logs
   let deletedBy: string | null = null;
   try {
     await new Promise((r) => setTimeout(r, 800));
@@ -193,12 +197,14 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
     })
     .setColor(0xf97316)
     .addFields(
-      { name: "👤 Auteur",  value: authorId ? `<@${authorId}>` : "*Non identifié*", inline: true },
-      { name: "📌 Salon",   value: `<#${message.channelId}>`,                       inline: true },
+      { name: "👤 Auteur", value: authorId ? `<@${authorId}>` : "*Inconnu*", inline: true },
+      { name: "📌 Salon",  value: `<#${message.channelId}>`,                 inline: true },
       ...(deletedBy ? [{ name: "🗑️ Supprimé par", value: deletedBy, inline: true }] : []),
       {
         name:  "💬 Contenu",
-        value: content ? (content.length > 1000 ? content.slice(0, 1000) + "…" : content) : "*[image, fichier ou contenu non disponible]*",
+        value: content
+          ? (content.length > 1000 ? content.slice(0, 1000) + "…" : content)
+          : "*[image ou fichier uniquement]*",
         inline: false,
       },
     )
