@@ -51,7 +51,7 @@ export function cacheMessage(message: Message): void {
 
 let logsClient: Client | null = null; // On garde le client pour fetch direct
 
-async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
+export async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   try {
     const channel = await logsClient!.channels.fetch(LOGS_CHANNEL_ID) as TextChannel | null;
     if (!channel || !channel.isTextBased()) return;
