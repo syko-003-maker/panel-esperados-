@@ -12,6 +12,7 @@ import {
   type TextChannel,
   type Guild,
   type User,
+  type Role,
 } from "discord.js";
 
 const LOGS_CHANNEL_ID  = "1312846003627622522";
@@ -234,6 +235,7 @@ export function onMessageUpdate(old: Message | PartialMessage, msg: Message | Pa
 // ─── Rôles modifiés ───────────────────────────────────────────────────────────
 
 export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): void {
+  if (!member) return;
   if (!("cache" in old.roles) || !("cache" in member.roles)) return;
 
   const added   = member.roles.cache.filter((r) => !old.roles.cache.has(r.id));
@@ -335,6 +337,38 @@ export function onBanRemove(ban: { guild: Guild; user: User }): void {
   sendLog(ban.guild, embed);
 }
 
+// ─── Modification d'un rôle ──────────────────────────────────────────────────
+
+export function onRoleUpdate(oldRole: Role, newRole: Role): void {
+  const changes: { name: string; value: string; inline: boolean }[] = [];
+
+  if (oldRole.name !== newRole.name)
+    changes.push({ name: "📝 Nom", value: `\`${oldRole.name}\` → \`${newRole.name}\``, inline: false });
+
+  if (oldRole.color !== newRole.color)
+    changes.push({ name: "🎨 Couleur", value: `\`${oldRole.hexColor.toUpperCase()}\` → \`${newRole.hexColor.toUpperCase()}\``, inline: true });
+
+  if (oldRole.hoist !== newRole.hoist)
+    changes.push({ name: "📌 Affiché séparément", value: newRole.hoist ? "Non → ✅ Oui" : "✅ Oui → Non", inline: true });
+
+  if (oldRole.mentionable !== newRole.mentionable)
+    changes.push({ name: "🔔 Mentionnable", value: newRole.mentionable ? "Non → ✅ Oui" : "✅ Oui → Non", inline: true });
+
+  if (oldRole.permissions.bitfield !== newRole.permissions.bitfield)
+    changes.push({ name: "🔑 Permissions", value: "Modifiées", inline: true });
+
+  if (changes.length === 0) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("🔧 Modification d'un rôle")
+    .setColor(newRole.color || 0x6b7280)
+    .setDescription(`<@&${newRole.id}> \`${newRole.id}\``)
+    .addFields(...changes)
+    .setTimestamp();
+
+  sendLog(newRole.guild, embed);
+}
+
 // ─── Pré-chargement des messages existants ───────────────────────────────────
 // Au démarrage, on pagine jusqu'à 1000 messages par salon (10 appels de 100).
 
@@ -403,6 +437,7 @@ export function setupServerLogs(client: Client): void {
   client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
   client.on("guildBanRemove",    (ban)   => onBanRemove(ban as any));
   client.on("voiceStateUpdate",  (o, n)  => onVoiceStateUpdate(o, n));
+  client.on("roleUpdate",        (o, n)  => onRoleUpdate(o, n));
 
   console.log("[Logs] Système de logs activé → salon", LOGS_CHANNEL_ID);
   console.log("[AutoRole] Auto-rôle screening activé → rôle", CITOYEN_ROLE_ID);
