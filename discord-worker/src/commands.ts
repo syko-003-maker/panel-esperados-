@@ -19,6 +19,11 @@ import { runManualSync } from "./syncRoles.js";
 import { postLinkPanel } from "./contactPanel.js";
 import { handleReglementPost } from "./features/reglement/reglementRole.js";
 import {
+  buildModerationCommands,
+  handleBan, handleKick, handleMute,
+  handleWarn, handleWarns, handleUnwarn, handleClear,
+} from "./features/moderation/moderation.js";
+import {
   createLinkCommand,
   handleLinkCommand,
   handleLinkButtonInteraction,
@@ -177,6 +182,9 @@ const commands = [
     .setDescription("Envoie l'annonce de recrutement dans le salon configuré")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setDMPermission(false),
+
+  // Commandes de modération
+  ...buildModerationCommands(),
 
   // /reglement-post - Staff only - (Re)poster le message règlement avec bouton acceptation
   new SlashCommandBuilder()
@@ -389,6 +397,20 @@ export async function handleCommand(
       return handleBankCommand(interaction);
     case "reglement-post":
       return handleReglementPost(interaction);
+    case "ban":
+      return handleBan(interaction);
+    case "kick":
+      return handleKick(interaction);
+    case "mute":
+      return handleMute(interaction);
+    case "warn":
+      return handleWarn(interaction);
+    case "warns":
+      return handleWarns(interaction);
+    case "unwarn":
+      return handleUnwarn(interaction);
+    case "clear":
+      return handleClear(interaction);
     default:
       await interaction.reply({
         content: "❌ Commande inconnue.",
