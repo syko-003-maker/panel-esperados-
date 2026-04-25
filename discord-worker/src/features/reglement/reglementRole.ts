@@ -28,13 +28,16 @@ export const REGLEMENT_ACCEPT_BUTTON = "reglement:accept";
  */
 export function buildReglementMessage() {
   const embed = new EmbedBuilder()
-    .setTitle("📜 Règlement de la communauté")
+    .setTitle("📜 Règlement — Los Esperados")
     .setDescription(
-      "En cliquant sur le bouton ci-dessous, vous confirmez avoir **lu et accepté** le règlement de la communauté **Los Esperados**.\n\n" +
-      "Le rôle **Citoyen(e) LYG** vous sera attribué automatiquement."
+      "Bienvenue sur le serveur **Los Esperados** !\n\n" +
+      "Avant d'accéder au serveur, vous devez lire et accepter notre règlement.\n\n" +
+      "━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+      "En cliquant sur le bouton ci-dessous, vous confirmez avoir **lu, compris et accepté** l'intégralité du règlement de la communauté.\n\n" +
+      "Le rôle <@&1337795596739940372> vous sera attribué **automatiquement**."
     )
-    .setColor(0x3b82f6)
-    .setFooter({ text: "Los Esperados — Panel Bot" })
+    .setColor(0x7f1d1d)
+    .setFooter({ text: "Los Esperados • En acceptant le règlement vous vous engagez à le respecter" })
     .setTimestamp();
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(

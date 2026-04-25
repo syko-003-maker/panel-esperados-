@@ -1,18 +1,10 @@
 /**
  * Système de logs serveur — enregistre les événements importants dans un salon dédié.
- *
- * Événements couverts :
- * - Membre rejoint / quitte le serveur
- * - Message supprimé
- * - Message modifié
- * - Rôle ajouté / retiré à un membre
- * - Membre banni / débanni
  */
 
 import {
   Client,
   EmbedBuilder,
-  AuditLogEvent,
   type GuildMember,
   type PartialGuildMember,
   type Message,
@@ -22,10 +14,9 @@ import {
   type User,
 } from "discord.js";
 
-// ID du salon logs
 const LOGS_CHANNEL_ID = "1312846003627622522";
 
-// ─── Utilitaire : envoyer dans le salon logs ──────────────────────────────────
+// ─── Utilitaire ──────────────────────────────────────────────────────────────
 
 async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   try {
@@ -37,62 +28,92 @@ async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   }
 }
 
-function now(): string {
-  return `<t:${Math.floor(Date.now() / 1000)}:F>`;
-}
-
-// ─── Événements membres ───────────────────────────────────────────────────────
+// ─── Membre rejoint ───────────────────────────────────────────────────────────
 
 export function onMemberJoin(member: GuildMember): void {
+  const createdTs = Math.floor(member.user.createdTimestamp / 1000);
+  const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24));
+
   const embed = new EmbedBuilder()
-    .setTitle("📥 Membre rejoint")
+    .setAuthor({
+      name: `${member.user.tag} a rejoint le serveur`,
+      iconURL: member.user.displayAvatarURL({ size: 64 }),
+    })
     .setColor(0x22c55e)
-    .setThumbnail(member.user.displayAvatarURL())
+    .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+    .setDescription(`<@${member.id}>`)
     .addFields(
-      { name: "Utilisateur", value: `<@${member.id}> \`${member.user.tag}\``, inline: true },
-      { name: "ID", value: member.id, inline: true },
-      { name: "Compte créé le", value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
+      { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
+      { name: "📅 Compte créé", value: `<t:${createdTs}:D>\n<t:${createdTs}:R>`, inline: true },
+      { name: "⚠️ Âge du compte", value: accountAge < 7 ? `⚠️ **${accountAge} jour(s)** — Compte récent !` : `${accountAge} jour(s)`, inline: true },
     )
-    .setFooter({ text: `Membres : ${member.guild.memberCount}` })
+    .setFooter({ text: `👥 ${member.guild.memberCount} membres sur le serveur` })
     .setTimestamp();
 
   sendLog(member.guild, embed);
 }
+
+// ─── Membre parti ─────────────────────────────────────────────────────────────
 
 export function onMemberLeave(member: GuildMember | PartialGuildMember): void {
+  const roles = !( member.roles instanceof Array)
+    ? member.roles.cache
+        .filter((r) => r.name !== "@everyone")
+        .map((r) => `<@&${r.id}>`)
+        .join(" ") || "Aucun"
+    : "—";
+
+  const joinedTs = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
+
   const embed = new EmbedBuilder()
-    .setTitle("📤 Membre parti")
+    .setAuthor({
+      name: `${member.user?.tag ?? member.id} a quitté le serveur`,
+      iconURL: member.user?.displayAvatarURL({ size: 64 }) ?? undefined,
+    })
     .setColor(0xef4444)
-    .setThumbnail(member.user?.displayAvatarURL() ?? null)
+    .setThumbnail(member.user?.displayAvatarURL({ size: 256 }) ?? null)
+    .setDescription(`<@${member.id}>`)
     .addFields(
-      { name: "Utilisateur", value: `<@${member.id}> \`${member.user?.tag ?? member.id}\``, inline: true },
-      { name: "ID", value: member.id, inline: true },
-      { name: "Rôles", value: member.roles instanceof Array ? "-" : (member.roles.cache.map((r: any) => r.name).filter((n: string) => n !== "@everyone").join(", ") || "Aucun"), inline: false },
+      { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
+      ...(joinedTs ? [{ name: "📅 Avait rejoint", value: `<t:${joinedTs}:R>`, inline: true }] : []),
+      { name: "🏷️ Rôles", value: roles, inline: false },
     )
-    .setFooter({ text: `Membres : ${member.guild.memberCount}` })
+    .setFooter({ text: `👥 ${member.guild.memberCount} membres sur le serveur` })
     .setTimestamp();
 
   sendLog(member.guild, embed);
 }
 
-// ─── Événements messages ──────────────────────────────────────────────────────
+// ─── Message supprimé ─────────────────────────────────────────────────────────
 
 export function onMessageDelete(message: Message | PartialMessage): void {
   if (!message.guild) return;
   if (message.author?.bot) return;
 
   const embed = new EmbedBuilder()
-    .setTitle("🗑️ Message supprimé")
+    .setAuthor({
+      name: message.author ? `${message.author.tag} — message supprimé` : "Message supprimé",
+      iconURL: message.author?.displayAvatarURL({ size: 64 }) ?? undefined,
+    })
     .setColor(0xf97316)
     .addFields(
-      { name: "Auteur", value: message.author ? `<@${message.author.id}> \`${message.author.tag}\`` : "Inconnu", inline: true },
-      { name: "Salon", value: `<#${message.channelId}>`, inline: true },
-      { name: "Contenu", value: message.content ? (message.content.length > 1000 ? message.content.slice(0, 1000) + "…" : message.content) : "*[vide ou non mis en cache]*", inline: false },
+      { name: "👤 Auteur", value: message.author ? `<@${message.author.id}>` : "Inconnu", inline: true },
+      { name: "📌 Salon", value: `<#${message.channelId}>`, inline: true },
+      {
+        name: "💬 Contenu",
+        value: message.content
+          ? (message.content.length > 1000 ? message.content.slice(0, 1000) + "…" : message.content)
+          : "*[vide ou non mis en cache]*",
+        inline: false,
+      },
     )
+    .setFooter({ text: `ID message : ${message.id}` })
     .setTimestamp();
 
   sendLog(message.guild, embed);
 }
+
+// ─── Message modifié ──────────────────────────────────────────────────────────
 
 export function onMessageUpdate(
   oldMessage: Message | PartialMessage,
@@ -100,24 +121,40 @@ export function onMessageUpdate(
 ): void {
   if (!newMessage.guild) return;
   if (newMessage.author?.bot) return;
-  if (oldMessage.content === newMessage.content) return; // Ignore embeds auto-ajoutés
+  if (oldMessage.content === newMessage.content) return;
 
   const embed = new EmbedBuilder()
-    .setTitle("✏️ Message modifié")
+    .setAuthor({
+      name: `${newMessage.author?.tag ?? "Inconnu"} — message modifié`,
+      iconURL: newMessage.author?.displayAvatarURL({ size: 64 }) ?? undefined,
+      url: newMessage.url,
+    })
     .setColor(0x3b82f6)
-    .setURL(newMessage.url)
     .addFields(
-      { name: "Auteur", value: newMessage.author ? `<@${newMessage.author.id}> \`${newMessage.author.tag}\`` : "Inconnu", inline: true },
-      { name: "Salon", value: `<#${newMessage.channelId}>`, inline: true },
-      { name: "Avant", value: oldMessage.content ? (oldMessage.content.length > 500 ? oldMessage.content.slice(0, 500) + "…" : oldMessage.content) : "*[non mis en cache]*", inline: false },
-      { name: "Après", value: newMessage.content ? (newMessage.content.length > 500 ? newMessage.content.slice(0, 500) + "…" : newMessage.content) : "*[vide]*", inline: false },
+      { name: "👤 Auteur", value: newMessage.author ? `<@${newMessage.author.id}>` : "Inconnu", inline: true },
+      { name: "📌 Salon", value: `<#${newMessage.channelId}>`, inline: true },
+      {
+        name: "📝 Avant",
+        value: oldMessage.content
+          ? (oldMessage.content.length > 500 ? oldMessage.content.slice(0, 500) + "…" : oldMessage.content)
+          : "*[non mis en cache]*",
+        inline: false,
+      },
+      {
+        name: "✏️ Après",
+        value: newMessage.content
+          ? (newMessage.content.length > 500 ? newMessage.content.slice(0, 500) + "…" : newMessage.content)
+          : "*[vide]*",
+        inline: false,
+      },
     )
+    .setFooter({ text: "Cliquez sur l'auteur pour voir le message" })
     .setTimestamp();
 
   sendLog(newMessage.guild, embed);
 }
 
-// ─── Changements de rôles ─────────────────────────────────────────────────────
+// ─── Rôles modifiés ───────────────────────────────────────────────────────────
 
 export function onMemberUpdate(
   oldMember: GuildMember | PartialGuildMember,
@@ -125,43 +162,44 @@ export function onMemberUpdate(
 ): void {
   if (!("cache" in oldMember.roles) || !("cache" in newMember.roles)) return;
 
-  const oldRoles = oldMember.roles.cache;
-  const newRoles = newMember.roles.cache;
-
-  const added   = newRoles.filter((r) => !oldRoles.has(r.id));
-  const removed = oldRoles.filter((r) => !newRoles.has(r.id));
+  const added   = newMember.roles.cache.filter((r) => !oldMember.roles.cache.has(r.id));
+  const removed = oldMember.roles.cache.filter((r) => !newMember.roles.cache.has(r.id));
 
   if (added.size === 0 && removed.size === 0) return;
 
   const embed = new EmbedBuilder()
-    .setTitle("🔄 Rôles modifiés")
+    .setAuthor({
+      name: `${newMember.user.tag} — rôles modifiés`,
+      iconURL: newMember.user.displayAvatarURL({ size: 64 }),
+    })
     .setColor(0xa855f7)
-    .addFields(
-      { name: "Membre", value: `<@${newMember.id}> \`${newMember.user.tag}\``, inline: true },
-    );
+    .setDescription(`<@${newMember.id}>`)
+    .setTimestamp();
 
   if (added.size > 0) {
-    embed.addFields({ name: "✅ Rôle(s) ajouté(s)", value: added.map((r) => `<@&${r.id}>`).join(", "), inline: false });
+    embed.addFields({ name: `✅ Rôle(s) ajouté(s) [${added.size}]`, value: added.map((r) => `<@&${r.id}>`).join(" "), inline: false });
   }
   if (removed.size > 0) {
-    embed.addFields({ name: "❌ Rôle(s) retiré(s)", value: removed.map((r) => `<@&${r.id}>`).join(", "), inline: false });
+    embed.addFields({ name: `❌ Rôle(s) retiré(s) [${removed.size}]`, value: removed.map((r) => `<@&${r.id}>`).join(" "), inline: false });
   }
 
-  embed.setTimestamp();
   sendLog(newMember.guild, embed);
 }
 
-// ─── Bans ─────────────────────────────────────────────────────────────────────
+// ─── Ban / Unban ──────────────────────────────────────────────────────────────
 
 export function onBanAdd(ban: { guild: Guild; user: User; reason: string | null }): void {
   const embed = new EmbedBuilder()
-    .setTitle("🔨 Membre banni")
+    .setAuthor({
+      name: `${ban.user.tag} — banni du serveur`,
+      iconURL: ban.user.displayAvatarURL({ size: 64 }),
+    })
     .setColor(0xdc2626)
-    .setThumbnail(ban.user.displayAvatarURL())
+    .setThumbnail(ban.user.displayAvatarURL({ size: 256 }))
+    .setDescription(`<@${ban.user.id}>`)
     .addFields(
-      { name: "Utilisateur", value: `<@${ban.user.id}> \`${ban.user.tag}\``, inline: true },
-      { name: "ID", value: ban.user.id, inline: true },
-      { name: "Raison", value: ban.reason ?? "Aucune raison fournie", inline: false },
+      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true },
+      { name: "📋 Raison", value: ban.reason ?? "Aucune raison fournie", inline: false },
     )
     .setTimestamp();
 
@@ -170,18 +208,21 @@ export function onBanAdd(ban: { guild: Guild; user: User; reason: string | null 
 
 export function onBanRemove(ban: { guild: Guild; user: User }): void {
   const embed = new EmbedBuilder()
-    .setTitle("✅ Membre débanni")
+    .setAuthor({
+      name: `${ban.user.tag} — débanni`,
+      iconURL: ban.user.displayAvatarURL({ size: 64 }),
+    })
     .setColor(0x16a34a)
+    .setDescription(`<@${ban.user.id}>`)
     .addFields(
-      { name: "Utilisateur", value: `<@${ban.user.id}> \`${ban.user.tag}\``, inline: true },
-      { name: "ID", value: ban.user.id, inline: true },
+      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true },
     )
     .setTimestamp();
 
   sendLog(ban.guild, embed);
 }
 
-// ─── Setup : branche tous les listeners ──────────────────────────────────────
+// ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setupServerLogs(client: Client): void {
   client.on("guildMemberAdd",    (member) => onMemberJoin(member as GuildMember));
