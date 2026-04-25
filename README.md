@@ -49,6 +49,16 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 - Quand un membre valide le règlement Discord Community → rôle **Citoyen(e) LYG** attribué automatiquement
 - Commande `/reglement-post` pour (re)poster le message règlement avec bouton d'acceptation
 
+#### 🛡️ Anti-spam (automatique)
+| Protection | Déclencheur | Action |
+|------------|-------------|--------|
+| **Flood** | 5 messages en 3 secondes | Mute 5 min + suppression + log |
+| **Mention spam** | 3+ mentions dans un message | Mute 10 min + suppression + log |
+| **Lien non autorisé** | Lien hors whitelist | Mute 5 min + suppression + log |
+
+Whitelist liens : discord.gg, discord.com, youtube.com, youtu.be, twitch.tv, tenor.com, giphy.com  
+Les modérateurs (permission `Gérer les messages`) sont immunisés.
+
 #### ⚙️ Autres commandes
 | Commande | Description |
 |----------|-------------|

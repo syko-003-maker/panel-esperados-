@@ -1,5 +1,5 @@
 import { Message, EmbedBuilder, GuildMember, PermissionFlagsBits } from "discord.js";
-import { sendLog } from "../logs/serverLogs";
+import { sendLog } from "../logs/serverLogs.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const FLOOD_LIMIT    = 5;     // messages max dans la fenêtre
