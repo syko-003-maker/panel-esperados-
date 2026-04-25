@@ -110,7 +110,7 @@ function loadEnv() {
 loadEnv();
 
 import { Client, GatewayIntentBits, Partials, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags, type Interaction } from "discord.js";
-import { setupServerLogs, cacheMessage } from "./features/logs/serverLogs.js";
+import { setupServerLogs, cacheMessage, preCacheGuildMessages } from "./features/logs/serverLogs.js";
 import { handleReglementAccept, handleReglementPost, REGLEMENT_ACCEPT_BUTTON } from "./features/reglement/reglementRole.js";
 import { ensureContactPanel } from "./contactPanel.js";
 import { CUSTOM_ID, IDS } from "./ids.js";
@@ -489,6 +489,17 @@ client.once("ready", async () => {
 
   // ─── Mini-cache messages (pour logs suppression) ──────────────────────────
   client.on("messageCreate", (msg) => { if (!msg.author.bot) cacheMessage(msg); });
+
+  // ─── Pré-chargement des messages existants ────────────────────────────────
+  // Lance en arrière-plan après un court délai pour ne pas bloquer le démarrage
+  setTimeout(async () => {
+    try {
+      const guildForCache = await client.guilds.fetch(guildId);
+      await preCacheGuildMessages(guildForCache);
+    } catch (err) {
+      console.error("[Logs] Pré-cache guild introuvable :", err);
+    }
+  }, 3000);
 
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });

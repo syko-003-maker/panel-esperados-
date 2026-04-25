@@ -286,6 +286,39 @@ export function onBanRemove(ban: { guild: Guild; user: User }): void {
   sendLog(ban.guild, embed);
 }
 
+// ─── Pré-chargement des messages existants ───────────────────────────────────
+// Au démarrage, on fetch les 100 derniers messages de chaque salon texte
+// pour pouvoir les retrouver s'ils sont supprimés avant d'avoir été "vus" par le bot.
+
+export async function preCacheGuildMessages(guild: Guild): Promise<void> {
+  try {
+    const channels = await guild.channels.fetch();
+    const textChannels = channels.filter(
+      (c) => c !== null && c.isTextBased() && !c.isDMBased()
+    );
+
+    let totalCached = 0;
+    for (const [, channel] of textChannels) {
+      if (!channel || !channel.isTextBased() || channel.isDMBased()) continue;
+      try {
+        const messages = await (channel as any).messages.fetch({ limit: 100 });
+        for (const [, msg] of messages) {
+          if (!msg.author || msg.author.bot) continue;
+          cacheMessage(msg);
+          totalCached++;
+        }
+        // Petite pause pour éviter le rate limit Discord
+        await new Promise((r) => setTimeout(r, 200));
+      } catch {
+        // Salon sans permission de lecture — ignorer
+      }
+    }
+    console.log(`[Logs] Pré-cache : ${totalCached} messages chargés depuis ${textChannels.size} salons`);
+  } catch (err) {
+    console.error("[Logs] Erreur pré-cache :", err);
+  }
+}
+
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setupServerLogs(client: Client): void {
@@ -295,9 +328,7 @@ export function setupServerLogs(client: Client): void {
   client.on("messageDelete",     (msg)   => { onMessageDelete(msg).catch((e) => console.error("[Logs] messageDelete error:", e)); });
   client.on("messageUpdate",     (o, n)  => onMessageUpdate(o, n));
   client.on("guildMemberUpdate", (o, n)  => {
-    // Auto-rôle screening
     onScreeningComplete(o, n as GuildMember).catch(() => {});
-    // Logs rôles
     onMemberUpdate(o, n as GuildMember);
   });
   client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
