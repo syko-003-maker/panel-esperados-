@@ -109,7 +109,9 @@ function loadEnv() {
 // Load env before other imports
 loadEnv();
 
-import { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags, type Interaction } from "discord.js";
+import { Client, GatewayIntentBits, Partials, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags, type Interaction } from "discord.js";
+import { setupServerLogs } from "./features/logs/serverLogs.js";
+import { handleReglementAccept, handleReglementPost, REGLEMENT_ACCEPT_BUTTON } from "./features/reglement/reglementRole.js";
 import { ensureContactPanel } from "./contactPanel.js";
 import { CUSTOM_ID, IDS } from "./ids.js";
 import {
@@ -290,8 +292,11 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers, // Required for role sync
+    GatewayIntentBits.GuildMembers,      // Required for role sync + logs membres
+    GatewayIntentBits.MessageContent,    // Required pour lire contenu messages supprimés/modifiés
+    GatewayIntentBits.GuildModeration,   // Required pour logs ban/unban
   ],
+  partials: [Partials.Message, Partials.Channel], // Pour les messages non mis en cache
 });
 
 client.once("ready", async () => {
@@ -479,6 +484,9 @@ client.once("ready", async () => {
     log("sync_disabled", { message: "Set ROLE_SYNC_ENABLED=true to enable" });
   }
 
+  // ─── Logs serveur ────────────────────────────────────────────────────────
+  setupServerLogs(client);
+
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });
   
@@ -579,6 +587,11 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       console.log("[BUTTON]", interaction.customId, "user=" + interaction.user?.id, "channel=" + interaction.channelId);
 
       const startedAt = Date.now();
+
+      // ─── Bouton règlement ─────────────────────────────────────────────────
+      if (interaction.customId === REGLEMENT_ACCEPT_BUTTON) {
+        return handleReglementAccept(interaction);
+      }
 
       if (
         interaction.customId === CUSTOM_ID.PANEL_RECRUIT ||

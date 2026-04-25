@@ -17,6 +17,7 @@ import { PrismaClient } from "@prisma/client";
 import { IDS } from "./ids.js";
 import { runManualSync } from "./syncRoles.js";
 import { postLinkPanel } from "./contactPanel.js";
+import { handleReglementPost } from "./features/reglement/reglementRole.js";
 import {
   createLinkCommand,
   handleLinkCommand,
@@ -175,6 +176,16 @@ const commands = [
     .setName("annonce-recrutement")
     .setDescription("Envoie l'annonce de recrutement dans le salon configuré")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false),
+
+  // /reglement-post - Staff only - (Re)poster le message règlement avec bouton acceptation
+  new SlashCommandBuilder()
+    .setName("reglement-post")
+    .setDescription("(Re)poster le message règlement avec bouton d'acceptation")
+    .addChannelOption((opt) =>
+      opt.setName("salon").setDescription("Salon où poster le message (défaut : salon actuel)").setRequired(false)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .setDMPermission(false),
 
   // /syncname - Staff only - Re-sync member nickname from rpName
@@ -376,6 +387,8 @@ export async function handleCommand(
       return handleSyncNameCommand(interaction, client);
     case "bank":
       return handleBankCommand(interaction);
+    case "reglement-post":
+      return handleReglementPost(interaction);
     default:
       await interaction.reply({
         content: "❌ Commande inconnue.",
