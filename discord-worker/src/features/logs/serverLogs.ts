@@ -29,7 +29,7 @@ interface CachedMsg {
 }
 
 const msgCache = new Map<string, CachedMsg>();
-const MSG_CACHE_MAX = 2000;
+const MSG_CACHE_MAX = 50000;
 
 export function cacheMessage(message: Message): void {
   if (!message.guildId) return;
@@ -336,8 +336,7 @@ export function onBanRemove(ban: { guild: Guild; user: User }): void {
 }
 
 // ─── Pré-chargement des messages existants ───────────────────────────────────
-// Au démarrage, on fetch les 100 derniers messages de chaque salon texte
-// pour pouvoir les retrouver s'ils sont supprimés avant d'avoir été "vus" par le bot.
+// Au démarrage, on pagine jusqu'à 1000 messages par salon (10 appels de 100).
 
 export async function preCacheGuildMessages(guild: Guild): Promise<void> {
   try {
@@ -347,19 +346,33 @@ export async function preCacheGuildMessages(guild: Guild): Promise<void> {
     ) as any[];
 
     let totalCached = 0;
-    const CONCURRENCY = 5; // 5 salons en parallèle
+    const CONCURRENCY = 3;
+    const TARGET_PER_CHANNEL = 1000;
 
     for (let i = 0; i < textChannels.length; i += CONCURRENCY) {
       const batch = textChannels.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (channel) => {
-          const messages = await channel.messages.fetch({ limit: 100 });
           let count = 0;
-          for (const [, msg] of messages) {
-            if (!msg.author || msg.author.bot) continue;
-            cacheMessage(msg);
-            count++;
+          let lastId: string | undefined;
+
+          for (let page = 0; page < TARGET_PER_CHANNEL / 100; page++) {
+            const options: { limit: number; before?: string } = { limit: 100 };
+            if (lastId) options.before = lastId;
+
+            const messages = await channel.messages.fetch(options);
+            if (messages.size === 0) break;
+
+            for (const [, msg] of messages) {
+              if (!msg.author || msg.author.bot) continue;
+              cacheMessage(msg);
+              count++;
+            }
+
+            lastId = messages.last()?.id;
+            if (messages.size < 100) break;
           }
+
           return count;
         })
       );
