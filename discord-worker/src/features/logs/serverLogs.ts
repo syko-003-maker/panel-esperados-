@@ -270,11 +270,16 @@ export function onVoiceStateUpdate(oldState: any, newState: any): void {
   const member = newState.member ?? oldState.member;
   if (!member || member.user.bot) return;
 
-  const guild     = newState.guild ?? oldState.guild;
-  const oldChannel = oldState.channel;
-  const newChannel = newState.channel;
+  const guild = newState.guild ?? oldState.guild;
 
-  if (oldChannel?.id === newChannel?.id) return; // Mute/unmute, pas un mouvement
+  // Récupérer les channels depuis le cache ou l'état
+  const oldChannelId = oldState.channelId ?? oldState.channel?.id ?? null;
+  const newChannelId = newState.channelId ?? newState.channel?.id ?? null;
+
+  if (oldChannelId === newChannelId) return; // Mute/unmute/caméra — pas un mouvement
+
+  const oldChannel = oldChannelId ? (guild.channels.cache.get(oldChannelId) ?? { id: oldChannelId }) : null;
+  const newChannel = newChannelId ? (guild.channels.cache.get(newChannelId) ?? { id: newChannelId }) : null;
 
   let title: string;
   let color: number;
