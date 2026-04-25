@@ -7,18 +7,58 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 
 ## ✨ Fonctionnalités
 
+### 🖥️ Panel Web
 | Module | Description |
 |--------|-------------|
-| **Membres** | Liste, recherche, détails, sync LYG API, liaison SteamID↔Discord |
-| **Absences** | Workflow PENDING→APPROVED/REJECTED, justifications, notifications Discord |
+| **Membres** | Liste, recherche, filtres (actifs, inactifs...), détails, sync LYG API, liaison SteamID↔Discord |
+| **Absences** | Workflow PENDING→APPROVED/REJECTED, justifications, notifications Discord embed, suppression auto du message Discord à expiration |
 | **Sanctions** | 7 types (oral, léger, lourd, démote, réserviste, blacklist), sync rôles Discord |
 | **Réunions** | Gestion hebdo, présences, décisions (UP/DEMOTE/WARN), finalisation automatique |
-| **Plaintes** | Workflow complet, historique messages Discord, noms RP, liens sanctions |
+| **Plaintes** | Workflow complet, historique messages, noms RP affichés, liens sanctions |
 | **Banque** | Logs LYG API, alertes dettes, cache automatique |
 | **Recrutement** | Pipeline candidats, scoring, sync tickets Discord |
 | **Activité** | Score playtime + réunions + absences, snapshots hebdo, alertes |
 | **Audit** | Trace complète de toutes les actions (qui, quoi, quand) |
-| **Discord Bot** | Notifications, rôles, slash commands, webhooks entrants |
+
+### 🤖 Bot Discord (remplace DraftBot + JohnBot)
+
+#### 📋 Logs automatiques (salon dédié)
+| Événement | Description |
+|-----------|-------------|
+| 📥 Membre rejoint | Nom, ID, âge du compte (⚠️ si < 7 jours) |
+| 📤 Membre parti | Nom, ID, rôles, durée sur le serveur |
+| 👢 Kick | Détecté via audit log, modérateur affiché |
+| 🔨 Ban / ✅ Unban | Membre + raison |
+| 🗑️ Message supprimé | Auteur, salon, contenu (pré-chargé au démarrage) |
+| ✏️ Message modifié | Avant / après |
+| 🔄 Rôles modifiés | Rôles ajoutés / retirés |
+| 🔊 Vocal | Connexion / déconnexion / changement de salon |
+
+#### 🛡️ Modération
+| Commande | Description |
+|----------|-------------|
+| `/ban @user raison [jours]` | Bannir + DM au membre |
+| `/kick @user raison` | Expulser + DM au membre |
+| `/mute @user durée raison` | Timeout Discord + DM au membre |
+| `/warn @user raison` | Avertissement en base de données + DM |
+| `/warns @user` | Voir les 10 derniers avertissements |
+| `/unwarn id` | Supprimer un avertissement par ID |
+| `/clear N [@user]` | Supprimer N messages (filtre par membre optionnel) |
+
+#### 🎭 Auto-rôle
+- Quand un membre valide le règlement Discord Community → rôle **Citoyen(e) LYG** attribué automatiquement
+- Commande `/reglement-post` pour (re)poster le message règlement avec bouton d'acceptation
+
+#### ⚙️ Autres commandes
+| Commande | Description |
+|----------|-------------|
+| `/member @user` | Fiche membre (grade, activité, sanctions) |
+| `/sanction @user` | Créer une sanction depuis Discord |
+| `/bank [@user]` | Solde bancaire |
+| `/activity` | Statut d'activité personnel |
+| `/syncroles` | Synchroniser les rôles Discord |
+| `/syncname discordId` | Resynchroniser le pseudo d'un membre |
+| `/annonce-recrutement` | Poster l'annonce de recrutement |
 
 ---
 
@@ -29,7 +69,6 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 - **Authentification** : NextAuth.js (OAuth Discord)
 - **UI** : Tailwind CSS 4 + Radix UI + Lucide Icons
 - **Discord** : Discord.js 14 (worker séparé)
-- **Monitoring** : Sentry
 - **Infra** : VPS Ubuntu + Cloudflare Tunnel
 
 ---
@@ -39,15 +78,21 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 ```
 panel/
 ├── app/
-│   ├── staff/          # Pages staff (membres, absences, réunions...)
-│   ├── (member)/       # Pages membres (absences perso, sanctions...)
-│   └── api/            # Routes API (REST)
+│   ├── staff/              # Pages staff (membres, absences, réunions...)
+│   ├── (member)/           # Pages membres (absences perso, banque...)
+│   └── api/                # Routes API (REST)
 ├── src/
-│   ├── components/     # Composants React réutilisables
-│   ├── lib/            # Services, utilitaires, logique métier
-│   └── server/         # Auth, guards, rate limiting
-├── discord-worker/     # Service Node.js Discord séparé
-└── prisma/             # Schéma BDD + migrations (60+ modèles)
+│   ├── components/         # Composants React réutilisables
+│   ├── lib/                # Services, utilitaires, logique métier
+│   └── server/             # Auth, guards, rate limiting
+├── discord-worker/
+│   └── src/
+│       ├── features/
+│       │   ├── logs/       # Logs serveur + auto-rôle
+│       │   ├── moderation/ # Commandes ban/kick/mute/warn/clear
+│       │   └── reglement/  # Bouton acceptation règlement
+│       └── index.ts        # Point d'entrée bot
+└── prisma/                 # Schéma BDD + migrations (60+ modèles)
 ```
 
 Deux services en production :
@@ -100,13 +145,14 @@ npm run discord:dev
 
 ---
 
-## 🔧 Configuration Discord
+## 🔧 Configuration Discord (Developer Portal)
 
-Dans le Discord Developer Portal :
 1. Créer une application + bot
-2. Activer les intents : Server Members, Message Content
-3. Ajouter la redirect URI OAuth : http://localhost:3000/api/auth/callback/discord
-4. Inviter le bot sur le serveur avec les permissions nécessaires
+2. Activer les intents **Privileged Gateway** :
+   - ✅ Server Members Intent
+   - ✅ Message Content Intent
+3. Ajouter la redirect URI OAuth : `http://localhost:3000/api/auth/callback/discord`
+4. Inviter le bot avec les permissions : `Administrator` (ou au minimum : Ban Members, Kick Members, Moderate Members, Manage Messages, Manage Roles, View Audit Log)
 
 ---
 
@@ -148,15 +194,6 @@ Panel → crée un job en DB → Discord Worker → exécute → Discord API
 
 Chaque message/rôle passe par cette queue avec retry automatique en cas d'échec.
 
-Channels configurés :
-- Absences : 1335303582043607222
-- Sanctions : 1409028569203740792
-
-### Tester les notifications Discord
-```bash
-curl "http://localhost:3000/api/member/_test-discord?channel=absence"
-```
-
 ---
 
 ## 🐛 Problèmes fréquents
@@ -166,16 +203,17 @@ curl "http://localhost:3000/api/member/_test-discord?channel=absence"
 | ECONNREFUSED 3001 | Le Discord Worker n'est pas lancé |
 | INGEST_SECRET missing | Vérifier le .env du panel et du worker |
 | Session expirée après migration DB | Se déconnecter et se reconnecter |
-| Rôles Discord non synchronisés | Appeler /api/discord/resync |
+| Rôles Discord non synchronisés | Appeler `/syncroles` dans Discord |
+| Logs Discord vides | Vérifier que Message Content Intent est activé dans le Developer Portal |
 
 ---
 
 ## 📝 Notes de développement
 
-- Les dates côté client → toujours envoyer en ISO 8601 (toISOString())
+- Les dates côté client → toujours envoyer en ISO 8601 (`toISOString()`)
 - Les composants Prisma passés au client → sérialiser en JSON (Date → string)
-- Pour OAuth en local → toujours utiliser http://localhost:3000 (pas l'IP LAN)
-- Le resync Discord tourne en cron toutes les 5 minutes
+- Pour OAuth en local → toujours utiliser `http://localhost:3000` (pas l'IP LAN)
+- Le bot pré-charge les 100 derniers messages de chaque salon au démarrage (pour les logs de suppression)
 
 ---
 
