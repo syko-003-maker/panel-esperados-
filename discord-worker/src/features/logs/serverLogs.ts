@@ -54,13 +54,23 @@ export function cacheMessage(message: Message): void {
 
 // ─── Utilitaire ──────────────────────────────────────────────────────────────
 
+let logsChannelCache: TextChannel | null = null;
+
 async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   try {
-    const channel = guild.channels.cache.get(LOGS_CHANNEL_ID) as TextChannel | undefined;
-    if (!channel) return;
-    await channel.send({ embeds: [embed] });
-  } catch {
-    // Non bloquant
+    // Utiliser le cache local d'abord, sinon fetch
+    if (!logsChannelCache || logsChannelCache.guild.id !== guild.id) {
+      const fetched = await guild.channels.fetch(LOGS_CHANNEL_ID);
+      if (!fetched || !fetched.isTextBased()) {
+        console.error("[Logs] Salon introuvable ou pas un salon texte :", LOGS_CHANNEL_ID);
+        return;
+      }
+      logsChannelCache = fetched as TextChannel;
+    }
+    await logsChannelCache.send({ embeds: [embed] });
+  } catch (err) {
+    logsChannelCache = null; // Reset en cas d'erreur
+    console.error("[Logs] Erreur envoi log :", err);
   }
 }
 
@@ -91,7 +101,7 @@ export function onMemberJoin(member: GuildMember): void {
 
 // ─── Membre parti ─────────────────────────────────────────────────────────────
 
-export function onMemberLeave(member: GuildMember | PartialGuildMember): void {
+export async function onMemberLeave(member: GuildMember | PartialGuildMember): Promise<void> {
   const roles = !( member.roles instanceof Array)
     ? member.roles.cache
         .filter((r) => r.name !== "@everyone")
@@ -101,17 +111,35 @@ export function onMemberLeave(member: GuildMember | PartialGuildMember): void {
 
   const joinedTs = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
 
+  // Vérifier si c'est un kick via les audit logs
+  let kickedBy: string | null = null;
+  try {
+    await new Promise((r) => setTimeout(r, 800));
+    const auditLogs = await member.guild.fetchAuditLogs({ type: 20 /* MEMBER_KICK */, limit: 5 });
+    const entry = auditLogs.entries.find(
+      (e) => e.target?.id === member.id && Date.now() - e.createdTimestamp < 5000
+    );
+    if (entry) kickedBy = `<@${entry.executor?.id}>`;
+  } catch {
+    // Non bloquant
+  }
+
+  const isKick = !!kickedBy;
+
   const embed = new EmbedBuilder()
     .setAuthor({
-      name: `${member.user?.tag ?? member.id} a quitté le serveur`,
+      name: isKick
+        ? `${member.user?.tag ?? member.id} a été expulsé (kick)`
+        : `${member.user?.tag ?? member.id} a quitté le serveur`,
       iconURL: member.user?.displayAvatarURL({ size: 64 }) ?? undefined,
     })
-    .setColor(0xef4444)
+    .setColor(isKick ? 0xf97316 : 0xef4444)
     .setThumbnail(member.user?.displayAvatarURL({ size: 256 }) ?? null)
     .setDescription(`<@${member.id}>`)
     .addFields(
       { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
       ...(joinedTs ? [{ name: "📅 Avait rejoint", value: `<t:${joinedTs}:R>`, inline: true }] : []),
+      ...(kickedBy ? [{ name: "👢 Expulsé par", value: kickedBy, inline: true }] : []),
       { name: "🏷️ Rôles", value: roles, inline: false },
     )
     .setFooter({ text: `👥 ${member.guild.memberCount} membres sur le serveur` })
@@ -298,7 +326,7 @@ export function onBanRemove(ban: { guild: Guild; user: User }): void {
 
 export function setupServerLogs(client: Client): void {
   client.on("guildMemberAdd",    (member) => onMemberJoin(member as GuildMember));
-  client.on("guildMemberRemove", (member) => onMemberLeave(member as GuildMember));
+  client.on("guildMemberRemove", (member) => { onMemberLeave(member as GuildMember).catch(() => {}); });
   client.on("messageDelete",     (msg)    => { onMessageDelete(msg).catch(() => {}); });
   client.on("messageUpdate",     (o, n)   => onMessageUpdate(o, n));
   client.on("guildMemberUpdate", (o, n)   => onMemberUpdate(o, n as GuildMember));
