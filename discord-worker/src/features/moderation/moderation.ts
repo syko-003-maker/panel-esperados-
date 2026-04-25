@@ -89,9 +89,7 @@ export async function handleBan(interaction: ChatInputCommandInteraction): Promi
   if (target.id === interaction.user.id) { await interaction.editReply("❌ Tu ne peux pas te bannir toi-même."); return; }
 
   try {
-    await interaction.guild.members.ban(target.id, { reason: `${interaction.user.tag} : ${reason}`, deleteMessageDays: days as 0|1|2|3|4|5|6|7 });
-
-    // DM avant ban
+    // DM avant le ban (impossible après)
     try {
       await target.send({ embeds: [
         new EmbedBuilder()
@@ -104,6 +102,8 @@ export async function handleBan(interaction: ChatInputCommandInteraction): Promi
           .setTimestamp(),
       ]});
     } catch { /* DM fermés */ }
+
+    await interaction.guild.members.ban(target.id, { reason: `${interaction.user.tag} : ${reason}`, deleteMessageDays: days as 0|1|2|3|4|5|6|7 });
 
     await interaction.editReply({ embeds: [
       new EmbedBuilder()
@@ -132,8 +132,8 @@ export async function handleKick(interaction: ChatInputCommandInteraction): Prom
 
   try {
     const member = await interaction.guild.members.fetch(target.id);
-    await member.kick(`${interaction.user.tag} : ${reason}`);
 
+    // DM avant le kick (impossible après)
     try {
       await target.send({ embeds: [
         new EmbedBuilder()
@@ -146,6 +146,8 @@ export async function handleKick(interaction: ChatInputCommandInteraction): Prom
           .setTimestamp(),
       ]});
     } catch { /* DM fermés */ }
+
+    await member.kick(`${interaction.user.tag} : ${reason}`);
 
     await interaction.editReply({ embeds: [
       new EmbedBuilder()
