@@ -967,7 +967,7 @@ export function MeetingDecisionsClient({
 
       <SectionCard
         title={`Décisions membres (${filteredRows.length})`}
-        description="Présence, playtime, progression, sanctions et continuité par membre." 
+        description="Présence, playtime, progression, sanctions et continuité par membre."
         icon={Gavel}
       >
         {filteredRows.length === 0 ? (
@@ -977,8 +977,138 @@ export function MeetingDecisionsClient({
             description="Aucune ligne ne correspond aux filtres actuels."
           />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-white/8 bg-white/[0.03]">
-            <table className="min-w-full text-sm">
+          <>
+            {/* ── Mobile cards ── */}
+            <div className="md:hidden flex flex-col gap-4">
+              {filteredRows.map((row) => {
+                const { progressionValue, sanctionValue } = splitDecision(row.decisionType);
+                const progMeta  = getDecisionMeta(progressionValue);
+                const sanctMeta = sanctionValue !== "NONE" ? getDecisionMeta(sanctionValue) : null;
+                const targetOptions = getPromotionTargetOptions(row.gradeLabel);
+                const showTargetGrade = isPromotionDecision(progressionValue);
+                const selectedTargetGrade = normalizeTargetGrade(row.targetGrade) ?? "";
+                return (
+                  <div key={row.id ?? row.discordId} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 flex flex-col gap-3">
+                    {/* Header */}
+                    <div className="flex items-center gap-3">
+                      <MemberAvatar name={row.name ?? "Membre inconnu"} discordId={row.discordId} discordAvatarHash={row.discordAvatarHash ?? null} />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-slate-100 truncate">{row.name ?? "—"}</div>
+                        <div className="text-xs text-slate-400">{row.gradeLabel ?? "Grade inconnu"}</div>
+                      </div>
+                      <StatusBadge tone={getAttendanceTone(row.status)}>{getAttendanceLabel(row.status)}</StatusBadge>
+                    </div>
+
+                    {/* Continuity */}
+                    {row.continuity?.continuityIndicator && (
+                      <div className="text-[11px] text-slate-500">{row.continuity.continuityIndicator}</div>
+                    )}
+                    {row.continuity && row.continuity.recentMeetingHistory.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 text-[11px]">
+                        {row.continuity.recentMeetingHistory.map((item) => {
+                          const label = fmtShortDate(item.scheduledAt) ?? item.weekKey;
+                          const tg = item.targetGrade ? ` -> ${item.targetGrade}` : "";
+                          return (
+                            <span key={`${item.meetingId}:${item.weekKey}`} className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-slate-300" title={`${item.meetingTitle} • ${item.decisionLabel}${tg}`}>
+                              {label} · {item.decisionLabel}{tg}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Fields */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Présence */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Présence</label>
+                        {isLocked ? (
+                          <StatusBadge tone={getAttendanceTone(row.status)}>{getAttendanceLabel(row.status)}</StatusBadge>
+                        ) : (
+                          <select value={row.status} onChange={(e) => updateRowLocal(row.discordId, { status: e.target.value as AttendanceStatus })} className={`w-full rounded-xl border px-3 py-2 text-sm font-medium focus:outline-none ${getSelectClass(getAttendanceTone(row.status))}`}>
+                            {STATUS_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Playtime */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Playtime (min)</label>
+                        {isLocked ? (
+                          <StatusBadge>{row.playtimeMinutes} min</StatusBadge>
+                        ) : (
+                          <input type="number" min={0} step={1} value={Number.isFinite(row.playtimeMinutes) ? row.playtimeMinutes : 0} onChange={(e) => updateRowLocal(row.discordId, { playtimeMinutes: Math.max(0, Math.round(Number(e.target.value || 0))) })} className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Note */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Note</label>
+                      {isLocked ? (
+                        <span className="text-sm text-slate-400">{row.note || "—"}</span>
+                      ) : (
+                        <input type="text" value={row.note ?? ""} onChange={(e) => updateRowLocal(row.discordId, { note: e.target.value })} placeholder="Note..." className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/40 focus:outline-none" />
+                      )}
+                    </div>
+
+                    {/* Progression */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Progression</label>
+                      {isReadOnly || !canEditDecisions ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge tone={getDecisionTone(progressionValue)}>{progMeta.label}</StatusBadge>
+                          {showTargetGrade && <span className="text-xs text-slate-400">→ {selectedTargetGrade || "—"}</span>}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <select value={progressionValue} onChange={(e) => { if (!row.id) return; handleDecisionChange(row.id, "decisionType", e.target.value); }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(progressionValue))}`}>
+                            {PROGRESSION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
+                          </select>
+                          {showTargetGrade && (
+                            targetOptions.length > 0 ? (
+                              <select value={selectedTargetGrade} onChange={(e) => row.id && handleDecisionChange(row.id, "targetGrade", e.target.value)} className="w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 focus:outline-none">
+                                <option value="" className="bg-slate-950 text-slate-100">Rang cible</option>
+                                {targetOptions.map((option) => <option key={option.value} value={option.value} className="bg-slate-950 text-slate-100">{option.label}</option>)}
+                              </select>
+                            ) : (
+                              <div className="rounded-lg border border-amber-700/40 bg-amber-950/30 px-2.5 py-2 text-xs text-amber-300">Aucun rang supérieur disponible.</div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sanction */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Sanction</label>
+                      {isReadOnly || !canEditDecisions ? (
+                        sanctMeta ? <StatusBadge tone={getDecisionTone(sanctionValue)}>{sanctMeta.label}</StatusBadge> : <StatusBadge>Aucune sanction</StatusBadge>
+                      ) : (
+                        <select value={sanctionValue} onChange={(e) => { if (!row.id) return; const val = e.target.value as MeetingDecisionType | "NONE"; if (val === "NONE") { handleDecisionChange(row.id, "decisionType", progressionValue); } else { handleDecisionChange(row.id, "decisionType", val); } }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(sanctionValue))}`}>
+                          <option value="NONE" className="bg-slate-950 text-slate-100">Aucune sanction</option>
+                          {SANCTION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Motif */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Motif</label>
+                      {isReadOnly || !canEditDecisions ? (
+                        <span className="text-sm text-slate-400">{row.sanctionReason || "—"}</span>
+                      ) : (
+                        <input type="text" value={row.sanctionReason ?? ""} onChange={(e) => row.id && handleDecisionChange(row.id, "sanctionReason", e.target.value)} placeholder="Motif de la sanction..." className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/40 focus:outline-none" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Desktop table ── */}
+            <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/8 bg-white/[0.03]">
+            <table className="min-w-[700px] text-sm">
               <thead className="border-b border-white/8 bg-white/[0.03] text-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Membre</th>
@@ -1226,6 +1356,7 @@ export function MeetingDecisionsClient({
             </tbody>
           </table>
           </div>
+          </>
         )}
       </SectionCard>
 

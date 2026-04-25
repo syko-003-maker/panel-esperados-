@@ -133,6 +133,47 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = req.headers.get("x-request-id") || makeRequestId();
+  const { id } = await params;
+  const guard = await requirePrivileged();
+  if (guard instanceof Response) return guard;
+
+  const session = await getSession();
+  const actorId = session?.user?.id;
+  if (!actorId) {
+    logWarn("absence_delete_unauthenticated", { requestId, id });
+    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED", requestId }, { status: 401 });
+  }
+
+  try {
+    const existing = await prisma.absence.findUnique({ where: { id } });
+    if (!existing) {
+      logWarn("absence_delete_not_found", { requestId, id });
+      return NextResponse.json({ ok: false, error: "NOT_FOUND", requestId }, { status: 404 });
+    }
+
+    await prisma.absence.delete({ where: { id } });
+
+    await prisma.auditLog.create({
+      data: {
+        familyId: existing.familyId,
+        actorId,
+        action: "delete",
+        entity: "Absence",
+        entityId: id,
+        meta: { memberId: existing.memberId, discordId: existing.discordId, status: existing.status },
+      },
+    });
+
+    logInfo("absence_deleted", { requestId, id, actorId });
+    return NextResponse.json({ ok: true, requestId });
+  } catch (error) {
+    logError("absence_delete_error", { requestId, id }, error);
+    return NextResponse.json({ ok: false, error: "INTERNAL_ERROR", requestId }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const requestId = req.headers.get("x-request-id") || makeRequestId();
   const { id } = await params;

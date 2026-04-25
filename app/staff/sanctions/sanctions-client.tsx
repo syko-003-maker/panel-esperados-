@@ -568,8 +568,8 @@ export default function SanctionsClient() {
                   key={item.id}
                   className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-colors hover:border-white/15 hover:bg-white/[0.05]"
                 >
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <div>
+                  <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
                       <Link
                         href={`/staff/sanctions/${item.id}`}
                         className="font-medium text-foreground transition-colors hover:text-amber-300"
@@ -580,7 +580,7 @@ export default function SanctionsClient() {
                         {getSanctionLabel(item.type)}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <StatusBadge tone={STATUS_BADGE_TONES[effectiveStatus]} className={STATUS_TONE[effectiveStatus]}>
                         {getSanctionStatusLabel(effectiveStatus)}
                       </StatusBadge>
@@ -604,9 +604,9 @@ export default function SanctionsClient() {
                     <p className="text-sm text-muted-foreground mb-2">{item.reason}</p>
                   )}
 
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>{fmtDate(item.startAt)}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {canDeleteItem ? (
                         <Button
                           size="sm"

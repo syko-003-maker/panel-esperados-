@@ -55,7 +55,7 @@ export function MemberLayoutShell({
 
         {/* Mobile sidebar drawer */}
         <aside
-          className={`fixed left-0 top-0 z-50 h-screen w-64 flex flex-col ${SIDEBAR_STYLE} transition-transform duration-300 lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-screen w-[min(256px,85vw)] flex flex-col ${SIDEBAR_STYLE} transition-transform duration-300 lg:hidden ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -103,7 +103,7 @@ export function MemberLayoutShell({
           </header>
 
           <main className="flex-1 overflow-y-auto">
-            <div className="w-full p-4 md:p-6 lg:p-8">
+            <div className="w-full p-3 sm:p-4 md:p-6 lg:p-8">
               {children}
             </div>
           </main>

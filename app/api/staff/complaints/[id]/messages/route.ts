@@ -39,7 +39,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     ];
   }
 
-  const data = await prisma.complaintMessage.findMany({
+  const messages = await prisma.complaintMessage.findMany({
     where,
     orderBy: { createdAtDiscord: "asc" },
     select: {
@@ -53,6 +53,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       deletedAtDiscord: true,
     },
   });
+
+  // Resolve RP names for authors that are in the Member table
+  const discordIds = [...new Set(messages.map((m) => m.authorDiscordId).filter(Boolean))] as string[];
+  const members = discordIds.length > 0
+    ? await prisma.member.findMany({
+        where: { discordId: { in: discordIds } },
+        select: { discordId: true, rpName: true },
+      })
+    : [];
+  const rpNameByDiscordId = new Map(members.map((m) => [m.discordId, m.rpName]));
+
+  const data = messages.map((m) => ({
+    ...m,
+    authorRpName: m.authorDiscordId ? (rpNameByDiscordId.get(m.authorDiscordId) ?? null) : null,
+  }));
 
   return NextResponse.json({ ok: true, data });
 }

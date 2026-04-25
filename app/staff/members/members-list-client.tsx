@@ -51,6 +51,7 @@ const SCOPE_OPTIONS: Array<{ value: MembersScope; label: string }> = [
 
 const QUICK_FILTER_OPTIONS: Array<{ value: QuickFilter; label: string }> = [
   { value: "all", label: "Tout" },
+  { value: "active", label: "Actifs" },
   { value: "inactive", label: "Inactifs" },
   { value: "low", label: "Faible activite" },
   { value: "top", label: "Top actifs" },
@@ -225,7 +226,7 @@ export default function MembersListClient() {
         </div>
       </SectionCard>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
         <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
           <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground" htmlFor="members-search">
             Recherche
@@ -318,20 +319,75 @@ export default function MembersListClient() {
           description={scope === "active" ? "Aucun membre actif ne correspond aux filtres courants." : "Aucun membre ne correspond aux filtres courants."}
         />
       ) : (
-      <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.58)] shadow-[0_25px_70px_-40px_rgba(2,0,1,0.75)] backdrop-blur-sm">
-        <table className="w-full min-w-[1480px] table-auto text-sm">
-          <thead>
-            <tr className="border-b border-white/8 bg-card/80 text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
-              <th className="w-[30%] px-6 py-4 align-middle font-semibold">Membre</th>
-              <th className="w-[22%] px-6 py-4 align-middle font-semibold">SteamID</th>
-              <th className="w-[12%] px-6 py-4 align-middle font-semibold">Grade</th>
-              <th className="w-[12%] px-6 py-4 align-middle font-semibold">Statut</th>
-              <th className="w-[14%] px-6 py-4 align-middle text-right font-semibold">Playtime 7j</th>
-            </tr>
-          </thead>
+      <>
+        {/* ── Vue cartes (mobile) ── */}
+        <div className="flex flex-col gap-2 md:hidden">
+          {displayedMembers.map((member) => {
+            const activity = getActivityBand(member.playtime7d);
+            const exemptActivity = isActivityExempt(member);
+            const isZeroPlaytime = (member.playtime7d ?? 0) === 0;
+            const playtimeToneClassName = exemptActivity
+              ? "border-white/15 bg-white/[0.06] text-foreground/80"
+              : isZeroPlaytime
+              ? "border-rose-500/35 bg-rose-500/12 text-rose-100"
+              : activity.key === "low"
+                ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
+            return (
+              <div
+                key={member.id}
+                className={[
+                  "rounded-xl border border-white/8 bg-[rgba(14,5,7,0.58)] px-4 py-3 flex items-center gap-3",
+                  getMemberRowClassName(member, analyticsAvailable),
+                ].filter(Boolean).join(" ")}
+              >
+                <MemberAvatar member={member} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate font-semibold text-foreground text-sm">{member.rpName ?? "-"}</p>
+                    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${playtimeToneClassName}`}>
+                      {formatPlaytime(member.playtime7d)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{member.grade ?? "-"}</span>
+                    <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
+                  </div>
+                  {member.activeAbsence ? (
+                    <div className={`mt-1.5 inline-flex flex-wrap items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${
+                      member.activeAbsence.upcoming
+                        ? "border-blue-500/30 bg-blue-500/8 text-blue-100"
+                        : "border-amber-500/30 bg-amber-500/8 text-amber-100"
+                    }`}>
+                      {member.activeAbsence.upcoming && <span className="font-semibold text-blue-300">À venir •</span>}
+                      <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
+                      <span className={member.activeAbsence.upcoming ? "text-blue-200/70" : "text-amber-200/70"}>
+                        • {member.activeAbsence.upcoming
+                          ? `dès le ${new Date(member.activeAbsence.startAt).toLocaleDateString("fr-FR")}`
+                          : `jusqu'au ${new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}`}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-          <tbody>
-            {displayedMembers.map((member) => {
+        {/* ── Vue tableau (desktop) ── */}
+        <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.58)] shadow-[0_25px_70px_-40px_rgba(2,0,1,0.75)] backdrop-blur-sm">
+          <table className="w-full table-auto text-sm">
+            <thead>
+              <tr className="border-b border-white/8 bg-card/80 text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                <th className="px-6 py-4 align-middle font-semibold">Membre</th>
+                <th className="px-6 py-4 align-middle font-semibold">SteamID</th>
+                <th className="px-6 py-4 align-middle font-semibold">Grade</th>
+                <th className="px-6 py-4 align-middle font-semibold">Statut</th>
+                <th className="px-6 py-4 align-middle text-right font-semibold">Playtime 7j</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedMembers.map((member) => {
                 const activity = getActivityBand(member.playtime7d);
                 const exemptActivity = isActivityExempt(member);
                 const isZeroPlaytime = (member.playtime7d ?? 0) === 0;
@@ -345,102 +401,85 @@ export default function MembersListClient() {
                   : activity.key === "low"
                     ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
                     : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
-
                 return (
-                <tr
-                  key={member.id}
-                  className={[
-                    "border-b border-white/6 text-foreground transition-colors hover:bg-white/[0.04] hover:ring-1 hover:ring-inset hover:ring-white/10 last:border-b-0",
-                    getMemberRowClassName(member, analyticsAvailable),
-                    isZeroPlaytime && !exemptActivity ? "ring-1 ring-inset ring-white/6" : "",
-                  ].filter(Boolean).join(" ")}
-                >
-                  <td className="px-6 py-4 align-middle">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <MemberAvatar member={member} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                  <tr
+                    key={member.id}
+                    className={[
+                      "border-b border-white/6 text-foreground transition-colors hover:bg-white/[0.04] hover:ring-1 hover:ring-inset hover:ring-white/10 last:border-b-0",
+                      getMemberRowClassName(member, analyticsAvailable),
+                      isZeroPlaytime && !exemptActivity ? "ring-1 ring-inset ring-white/6" : "",
+                    ].filter(Boolean).join(" ")}
+                  >
+                    <td className="px-6 py-4 align-middle">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <MemberAvatar member={member} />
+                        <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">{member.rpName ?? "-"}</p>
+                          {member.activeAbsence ? (
+                            <div className={`mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+                              member.activeAbsence.upcoming
+                                ? "border-blue-500/30 bg-blue-500/8 text-blue-100"
+                                : "border-amber-500/30 bg-amber-500/8 text-amber-100"
+                            }`}>
+                              {member.activeAbsence.upcoming && <span className="font-semibold text-blue-300">À venir •</span>}
+                              <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
+                              <span className={member.activeAbsence.upcoming ? "text-blue-200/70" : "text-amber-200/70"}>
+                                • {member.activeAbsence.upcoming
+                                  ? `dès le ${new Date(member.activeAbsence.startAt).toLocaleDateString("fr-FR")}`
+                                  : `jusqu'au ${new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}`}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
-                        {member.activeAbsence ? (
-                          <div className={`mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
-                            member.activeAbsence.upcoming
-                              ? "border-blue-500/30 bg-blue-500/8 text-blue-100"
-                              : "border-amber-500/30 bg-amber-500/8 text-amber-100"
-                          }`}>
-                            {member.activeAbsence.upcoming && (
-                              <span className="font-semibold text-blue-300">À venir •</span>
-                            )}
-                            <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
-                            <span className={member.activeAbsence.upcoming ? "text-blue-200/70" : "text-amber-200/70"}>
-                              • {member.activeAbsence.upcoming
-                                ? `dès le ${new Date(member.activeAbsence.startAt).toLocaleDateString("fr-FR")}`
-                                : `jusqu'au ${new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}`}
-                            </span>
-                          </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 align-middle font-mono text-xs text-foreground/70 whitespace-nowrap">
+                      <div>{member.steamId ?? "-"}</div>
+                      <div className="mt-2.5 flex flex-wrap gap-2 font-sans text-[11px]">
+                        {member.steamId ? (
+                          <button type="button" onClick={() => void copyValue(member.steamId!, steamCopyKey)} title="Copier SteamID"
+                            className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === steamCopyKey ? "border-emerald-500/50 bg-emerald-500/18 text-emerald-100" : "border-white/10 bg-card/70 text-foreground/70 hover:bg-card/90"}`}>
+                            {copiedKey === steamCopyKey ? "SteamID copie" : "Copier SteamID"}
+                          </button>
+                        ) : null}
+                        {member.discordId ? (
+                          <button type="button" onClick={() => void copyValue(member.discordId!, discordCopyKey)} title="Copier Discord ID"
+                            className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === discordCopyKey ? "border-amber-500/45 bg-amber-500/12 text-amber-100" : "border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"}`}>
+                            {copiedKey === discordCopyKey ? "Discord ID copie" : "Copier Discord ID"}
+                          </button>
                         ) : null}
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 align-middle font-mono text-xs text-foreground/70 whitespace-nowrap">
-                    <div>{member.steamId ?? "-"}</div>
-                    <div className="mt-2.5 flex flex-wrap gap-2 font-sans text-[11px]">
-                      {member.steamId ? (
-                        <button
-                          type="button"
-                          onClick={() => void copyValue(member.steamId!, steamCopyKey)}
-                          title="Copier SteamID"
-                          className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === steamCopyKey
-                            ? "border-emerald-500/50 bg-emerald-500/18 text-emerald-100"
-                            : "border-white/10 bg-card/70 text-foreground/70 hover:bg-card/90"
-                            }`}
-                        >
-                          {copiedKey === steamCopyKey ? "SteamID copie" : "Copier SteamID"}
-                        </button>
-                      ) : null}
-                      {member.discordId ? (
-                        <button
-                          type="button"
-                          onClick={() => void copyValue(member.discordId!, discordCopyKey)}
-                          title="Copier Discord ID"
-                          className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === discordCopyKey
-                            ? "border-amber-500/45 bg-amber-500/12 text-amber-100"
-                            : "border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
-                            }`}
-                        >
-                          {copiedKey === discordCopyKey ? "Discord ID copie" : "Copier Discord ID"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 align-middle truncate text-foreground/80">{member.grade ?? "-"}</td>
-                  <td className="px-6 py-4 align-middle">
-                    <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
-                  </td>
-                  <td className="px-6 py-4 align-middle whitespace-nowrap text-right">
-                    <div className="flex justify-end">
-                      <span className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${playtimeToneClassName}`}>
-                        {formatPlaytime(member.playtime7d)}
-                      </span>
-                    </div>
-                    {!exemptActivity ? (
-                      <div className="mt-1.5 flex justify-end">
-                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${activity.badgeClassName}`}>
-                          {activity.label}
+                    </td>
+                    <td className="px-6 py-4 align-middle truncate text-foreground/80">{member.grade ?? "-"}</td>
+                    <td className="px-6 py-4 align-middle">
+                      <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
+                    </td>
+                    <td className="px-6 py-4 align-middle whitespace-nowrap text-right">
+                      <div className="flex justify-end">
+                        <span className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${playtimeToneClassName}`}>
+                          {formatPlaytime(member.playtime7d)}
                         </span>
                       </div>
-                    ) : null}
-                    {hasPrevious && !exemptActivity ? (
-                      <div className={`mt-1.5 text-xs ${(member.playtimeDelta7d ?? 0) > 0 ? "text-emerald-300" : (member.playtimeDelta7d ?? 0) < 0 ? "text-rose-300" : "text-muted-foreground"}`}>
-                        {formatPlaytimeDelta(member.playtimeDelta7d)}
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              )})}
-          </tbody>
-        </table>
-      </div>
+                      {!exemptActivity ? (
+                        <div className="mt-1.5 flex justify-end">
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${activity.badgeClassName}`}>
+                            {activity.label}
+                          </span>
+                        </div>
+                      ) : null}
+                      {hasPrevious && !exemptActivity ? (
+                        <div className={`mt-1.5 text-xs ${(member.playtimeDelta7d ?? 0) > 0 ? "text-emerald-300" : (member.playtimeDelta7d ?? 0) < 0 ? "text-rose-300" : "text-muted-foreground"}`}>
+                          {formatPlaytimeDelta(member.playtimeDelta7d)}
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </>
       )}
     </div>
   );

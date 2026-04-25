@@ -37,6 +37,8 @@ function isValidStatus(value: string | null) {
 function parseDate(value: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
+  // Guard against partial year inputs (e.g. "0002-04-27") from mobile browsers
+  if (d.getFullYear() < 2000 || d.getFullYear() > 2100) return null;
   return d;
 }
 

@@ -76,7 +76,7 @@ export function StaffLayout({
         )}
 
         <aside
-          className={`fixed left-0 top-0 z-50 h-screen w-72 border-r border-white/10 bg-[linear-gradient(180deg,rgba(18,5,8,0.93),rgba(11,3,5,0.98))] backdrop-blur-2xl transition-transform duration-300 lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-screen w-[min(288px,85vw)] border-r border-white/10 bg-[linear-gradient(180deg,rgba(18,5,8,0.93),rgba(11,3,5,0.98))] backdrop-blur-2xl transition-transform duration-300 lg:hidden ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -126,7 +126,7 @@ export function StaffLayout({
           </header>
 
           <main className="flex-1 overflow-y-auto">
-            <MotionSection className="w-full p-4 md:p-6 lg:p-8">
+            <MotionSection className="w-full p-3 sm:p-4 md:p-6 lg:p-8">
               {children}
             </MotionSection>
           </main>

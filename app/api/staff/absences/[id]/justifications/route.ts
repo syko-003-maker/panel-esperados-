@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
+import { enqueueMessageFromTemplate, getOrCreateDiscordConfig } from "@/lib/discord/discord";
+import { logWarn } from "@/lib/obs";
 
 const STATUSES = ["SUBMITTED", "REVIEWED"] as const;
 
@@ -61,5 +63,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const item = await prisma.absenceJustification.findUnique({ where: { id: justificationId } });
+
+  // Envoyer une notification Discord si une réponse staff est fournie
+  if (item && item.staffReply) {
+    try {
+      const absence = await prisma.absence.findUnique({
+        where: { id },
+        select: { familyId: true, discordId: true },
+      });
+      if (absence) {
+        const config = await getOrCreateDiscordConfig(absence.familyId);
+        await enqueueMessageFromTemplate({
+          familyId: absence.familyId,
+          channelId: config.absencesChannelId,
+          key: "absence_justification_reviewed",
+          vars: {
+            discordId: absence.discordId ?? item.authorDiscordId,
+            staffReply: item.staffReply,
+          },
+          entity: "AbsenceJustification",
+          entityId: item.id,
+        });
+      }
+    } catch (err) {
+      logWarn("absence_justification_discord_enqueue_failed", { id, justificationId, error: String(err) });
+    }
+  }
+
   return NextResponse.json({ ok: true, data: item });
 }

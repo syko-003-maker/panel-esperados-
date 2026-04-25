@@ -331,6 +331,8 @@ export default function AbsencesClient() {
         if (!formData.endAt) throw new Error("Date de fin requise");
         const start = new Date(formData.startAt);
         const end = new Date(formData.endAt);
+        if (start.getFullYear() < 2000 || start.getFullYear() > 2100) throw new Error("Année de début invalide, vérifiez la date");
+        if (end.getFullYear() < 2000 || end.getFullYear() > 2100) throw new Error("Année de fin invalide, vérifiez la date");
         if (end <= start) throw new Error("La date de fin doit être après la date de début");
         const limit = new Date(start);
         limit.setMonth(limit.getMonth() + 2);
@@ -390,6 +392,24 @@ export default function AbsencesClient() {
     }
   }
 
+  async function deleteAbsence(id: string) {
+    if (!window.confirm("Supprimer cette absence définitivement ?")) return;
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/staff/absences/${id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error ?? "Suppression échouée");
+      }
+      await load();
+    } catch (err: any) {
+      setError(String(err?.message ?? err));
+      setTimeout(() => setError(null), 6000);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function updateStatus(id: string, status: AbsenceItem["status"], rejectionReason?: string) {
     setBusyId(id);
     try {
@@ -425,12 +445,9 @@ export default function AbsencesClient() {
   }
 
   function renderActions(item: AbsenceItem) {
-    if (item.status !== "PENDING") {
-      return <span className="text-xs text-muted-foreground">—</span>;
-    }
+    const isBusy = busyId === item.id;
 
     if (rejectingId === item.id) {
-      const isBusy = busyId === item.id;
       return (
         <div className="flex flex-col gap-2 min-w-[180px]">
           <Input
@@ -466,25 +483,38 @@ export default function AbsencesClient() {
       );
     }
 
-    const isBusy = busyId === item.id;
     return (
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
+        {item.status === "PENDING" && (
+          <>
+            <Button
+              onClick={() => updateStatus(item.id, "APPROVED")}
+              disabled={isBusy}
+              size="sm"
+              className="h-7 rounded-xl border border-emerald-500/30 bg-emerald-500/14 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/22 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isBusy ? "…" : "Approuver"}
+            </Button>
+            <Button
+              onClick={() => { setRejectingId(item.id); setRejectReason(""); }}
+              disabled={isBusy}
+              size="sm"
+              variant="destructive"
+              className="h-7 px-2 text-xs"
+            >
+              Refuser
+            </Button>
+          </>
+        )}
         <Button
-          onClick={() => updateStatus(item.id, "APPROVED")}
+          onClick={() => deleteAbsence(item.id)}
           disabled={isBusy}
           size="sm"
-          className="h-8 rounded-xl border border-emerald-500/30 bg-emerald-500/14 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/22 disabled:opacity-50 disabled:cursor-not-allowed"
+          variant="ghost"
+          className="h-7 px-2 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+          title="Supprimer cette absence"
         >
-          {isBusy ? "…" : "Approuver"}
-        </Button>
-        <Button
-          onClick={() => { setRejectingId(item.id); setRejectReason(""); }}
-          disabled={isBusy}
-          size="sm"
-          variant="destructive"
-          className="h-7 px-2 text-xs"
-        >
-          Refuser
+          {isBusy ? "…" : "🗑"}
         </Button>
       </div>
     );
@@ -741,20 +771,59 @@ export default function AbsencesClient() {
                 icon="📅"
               />
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <>
+              {/* ── Vue cartes mobile ── */}
+              <div className="flex flex-col gap-2 md:hidden">
+                {items.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-900/30 px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-foreground truncate">{item.member?.rpName ?? "—"}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {item.type === "MEETING" && item.meetingDate
+                            ? `Réunion · ${fmtDate(item.meetingDate)}`
+                            : `${fmtDateShort(item.startAt)} → ${fmtDateShort(item.endAt)}`}
+                        </p>
+                        {item.reason && <p className="text-xs text-foreground/70 mt-1 truncate">{item.reason}</p>}
+                      </div>
+                      <div className="shrink-0 flex flex-col items-end gap-1.5">
+                        <StatusBadge tone={STATUS_TONES[item.uiStatus]} className={STATUS_COLORS[item.uiStatus]}>
+                          {STATUS_LABELS[item.uiStatus]}
+                        </StatusBadge>
+                        <StatusBadge tone={TYPE_TONES[item.type]} className={TYPE_COLORS[item.type]}>
+                          {TYPE_LABELS[item.type]}
+                        </StatusBadge>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      {renderActions(item)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Vue tableau desktop ── */}
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-800">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-900/40">
-                      {["Membre", "Type", "Période / Réunion", "Motif", "Statut", "Décidé le", "Validé par"].map(
-                        (h) => (
+                      {[
+                        { label: "Membre", hide: "" },
+                        { label: "Type", hide: "hidden sm:table-cell" },
+                        { label: "Période / Réunion", hide: "" },
+                        { label: "Motif", hide: "hidden md:table-cell" },
+                        { label: "Statut", hide: "" },
+                        { label: "Décidé le", hide: "hidden lg:table-cell" },
+                        { label: "Validé par", hide: "hidden lg:table-cell" },
+                        { label: "Actions", hide: "" },
+                      ].map(({ label, hide }) => (
                           <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
+                            key={label}
+                            className={`px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap ${hide}`}
                           >
-                            {h}
+                            {label}
                           </th>
-                        )
-                      )}
+                        ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -766,24 +835,24 @@ export default function AbsencesClient() {
                         }`}
                       >
                         {/* Membre */}
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-foreground">
+                        <td className="px-3 md:px-4 py-3">
+                          <div className="font-medium text-foreground text-sm">
                             {item.member?.rpName ?? "—"}
                           </div>
-                          <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                          <div className="hidden sm:block text-[11px] text-muted-foreground font-mono mt-0.5">
                             {item.member?.discordId ?? item.discordId ?? "—"}
                           </div>
                         </td>
 
                         {/* Type */}
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-3 md:px-4 py-3">
                           <StatusBadge tone={TYPE_TONES[item.type]} className={TYPE_COLORS[item.type]}>
                             {TYPE_LABELS[item.type]}
                           </StatusBadge>
                         </td>
 
                         {/* Période / réunion */}
-                        <td className="px-4 py-3 text-xs text-foreground whitespace-nowrap">
+                        <td className="px-3 md:px-4 py-3 text-xs text-foreground whitespace-nowrap">
                           {item.type === "MEETING" && item.meetingDate ? (
                             <div className="text-amber-300">{fmtDate(item.meetingDate)}</div>
                           ) : (
@@ -795,40 +864,34 @@ export default function AbsencesClient() {
                         </td>
 
                         {/* Motif */}
-                        <td className="px-4 py-3 max-w-[180px]">
+                        <td className="hidden md:table-cell px-3 md:px-4 py-3 max-w-[180px]">
                           <div className="text-xs text-foreground truncate">{item.reason ?? "—"}</div>
                           {item.rejectionReason && (
-                            <div
-                              className="text-[11px] text-rose-300 mt-0.5 truncate"
-                              title={item.rejectionReason}
-                            >
+                            <div className="text-[11px] text-rose-300 mt-0.5 truncate" title={item.rejectionReason}>
                               Refus : {item.rejectionReason}
                             </div>
                           )}
                           {item.notes && (
-                            <div
-                              className="text-[11px] text-muted-foreground mt-0.5 truncate"
-                              title={item.notes}
-                            >
+                            <div className="text-[11px] text-muted-foreground mt-0.5 truncate" title={item.notes}>
                               {item.notes}
                             </div>
                           )}
                         </td>
 
                         {/* Statut */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 md:px-4 py-3">
                           <StatusBadge tone={STATUS_TONES[item.uiStatus]} className={STATUS_COLORS[item.uiStatus]}>
                             {STATUS_LABELS[item.uiStatus]}
                           </StatusBadge>
                         </td>
 
                         {/* Décidé le */}
-                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-3 md:px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {item.decidedAt ? fmtDate(item.decidedAt) : "—"}
                         </td>
 
                         {/* Validé par */}
-                        <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <td className="hidden lg:table-cell px-3 md:px-4 py-3 text-xs whitespace-nowrap">
                           {item.decidedBy ? (
                             <span className="text-slate-300 font-medium">
                               {item.decidedBy.rpName || item.decidedBy.name || "—"}
@@ -838,11 +901,17 @@ export default function AbsencesClient() {
                           )}
                         </td>
 
+                        {/* Actions */}
+                        <td className="px-3 md:px-4 py-3">
+                          {renderActions(item)}
+                        </td>
+
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             {total > 0 && (

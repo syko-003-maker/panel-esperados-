@@ -452,66 +452,67 @@ export default function BanklogsClient() {
 
       {/* Table */}
       <SectionCard title="Journal banque" description="Historique consolidé des dépôts et retraits, trié par date décroissante.">
-        <div className="overflow-x-auto rounded-2xl border border-white/8 bg-white/[0.03]">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead>
-              <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                <th className="px-4 py-3 font-semibold">Date</th>
-                <th className="px-4 py-3 font-semibold">Type</th>
-                <th className="px-4 py-3 text-right font-semibold">Montant</th>
-                <th className="px-4 py-3 font-semibold">Membre</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && !data ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8">
-                    <SkeletonTable rows={5} cols={4} />
-                  </td>
+        {loading && !data ? (
+          <SkeletonTable rows={5} cols={4} />
+        ) : visibleItems.length === 0 ? (
+          <EmptyState title="Aucun résultat" description="Aucune transaction trouvée avec ces filtres" icon={<Database className="w-16 h-16" />} />
+        ) : (
+          <>
+          {/* ── Vue cartes mobile ── */}
+          <div className="flex flex-col gap-2 md:hidden">
+            {visibleItems.map((it, idx) => {
+              const m = signedMoney(it.type, it.money);
+              const isWithdraw = m < 0;
+              return (
+                <div key={`${it.at}-${it.steamId}-${idx}`} className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-foreground">{it.rpName || "Non lié"}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{formatBrussels(it.at)}</p>
+                    <TypeBadge type={it.type} />
+                  </div>
+                  <span className={`shrink-0 font-bold text-base ${isWithdraw ? "text-red-400" : "text-green-400"}`}>
+                    {isWithdraw ? "-" : "+"}{fmtMoney(Math.abs(m))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Vue tableau desktop ── */}
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/8 bg-white/[0.03]">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                  <th className="px-4 py-3 font-semibold">Date</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 text-right font-semibold">Montant</th>
+                  <th className="px-4 py-3 font-semibold">Membre</th>
                 </tr>
-              ) : visibleItems.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8">
-                    <EmptyState
-                      title="Aucun résultat"
-                      description="Aucune transaction trouvée avec ces filtres"
-                      icon={<Database className="w-16 h-16" />}
-                    />
-                  </td>
-                </tr>
-              ) : (
-                visibleItems.map((it, idx) => {
+              </thead>
+              <tbody>
+                {visibleItems.map((it, idx) => {
                   const m = signedMoney(it.type, it.money);
                   const isWithdraw = m < 0;
-                  const prefix = isWithdraw ? "-" : "+";
-
                   return (
                     <tr key={`${it.at}-${it.steamId}-${it.type}-${it.money}-${idx}`} className="border-b border-white/6 hover:bg-white/[0.04]">
                       <td className="px-4 py-3 text-sm">{formatBrussels(it.at)}</td>
-                      <td className="px-4 py-3">
-                        <TypeBadge type={it.type} />
-                      </td>
+                      <td className="px-4 py-3"><TypeBadge type={it.type} /></td>
                       <td className={`px-4 py-3 text-right font-bold text-sm ${isWithdraw ? "text-red-400" : "text-green-400"}`}>
-                        {prefix}
-                        {fmtMoney(Math.abs(m))}
+                        {isWithdraw ? "-" : "+"}{fmtMoney(Math.abs(m))}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="font-semibold text-sm text-foreground">
-                            {it.rpName || "Non lié"}
-                          </div>
-                          <div className="text-xs text-muted-foreground font-mono">
-                            {it.steamId}
-                          </div>
-                        </div>
+                        <div className="font-semibold text-sm">{it.rpName || "Non lié"}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{it.steamId}</div>
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+          </>
+        )}
+
 
         {/* Pagination */}
         <div className="flex justify-between items-center px-4 py-3 border-t border-white/8">

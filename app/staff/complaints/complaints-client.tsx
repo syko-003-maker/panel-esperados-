@@ -19,6 +19,7 @@ type Complaint = {
   status: "OPEN" | "IN_REVIEW" | "RESOLVED" | "REJECTED" | "CLOSED";
   authorDiscordId: string | null;
   authorTag: string | null;
+  authorRpName: string | null;
   targetName: string | null;
   reason: string | null;
   discordThreadId: string | null;
@@ -191,66 +192,99 @@ export default function ComplaintsClient() {
                 icon="⚠️"
               />
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-white/8">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/8 bg-card/40">
-                      {["Ticket", "Auteur", "Cible", "Raison", "Statut", "Créée le", ""].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((c, idx) => (
-                      <tr
-                        key={c.id}
-                        className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors ${idx % 2 === 0 ? "bg-white/[0.015]" : ""}`}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-xs text-amber-400">
-                            {c.ticketKey ?? c.id.slice(0, 8)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-foreground text-sm">{c.authorTag ?? "—"}</div>
-                          {c.authorDiscordId && (
-                            <div className="text-[11px] text-muted-foreground font-mono">{c.authorDiscordId}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {c.targetName ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 max-w-[220px]">
-                          <div className="text-xs text-foreground truncate" title={c.reason ?? undefined}>
-                            {c.reason ?? c.title ?? "—"}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge tone={STATUS_TONES[c.status]}>
-                            {STATUS_LABELS[c.status]}
-                          </StatusBadge>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                          {fmtDate(c.createdAt)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Link
-                            href={`/staff/complaints/${c.id}`}
-                            className="text-xs text-primary hover:underline whitespace-nowrap"
+              <>
+                {/* Mobile cards */}
+                <div className="md:hidden flex flex-col gap-3">
+                  {items.map((c) => (
+                    <div key={c.id} className="rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs text-amber-400">{c.ticketKey ?? c.id.slice(0, 8)}</span>
+                        <StatusBadge tone={STATUS_TONES[c.status]}>{STATUS_LABELS[c.status]}</StatusBadge>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium text-foreground">{c.authorRpName ?? c.authorTag ?? "—"}</span>
+                        {c.authorRpName && c.authorTag && (
+                          <span className="text-[11px] text-muted-foreground">{c.authorTag}</span>
+                        )}
+                        {c.targetName && (
+                          <span className="text-xs text-muted-foreground">→ {c.targetName}</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground line-clamp-2">{c.reason ?? c.title ?? "—"}</div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-muted-foreground">{fmtDate(c.createdAt)}</span>
+                        <Link href={`/staff/complaints/${c.id}`} className="text-xs text-primary hover:underline">
+                          Voir →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto rounded-xl border border-white/8">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/8 bg-card/40">
+                        {["Ticket", "Auteur", "Cible", "Raison", "Statut", "Créée le", ""].map((h, i) => (
+                          <th
+                            key={h || i}
+                            className={`px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap ${
+                              h === "Cible" ? "hidden sm:table-cell" : h === "Créée le" ? "hidden lg:table-cell" : ""
+                            }`}
                           >
-                            Voir →
-                          </Link>
-                        </td>
+                            {h}
+                          </th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {items.map((c, idx) => (
+                        <tr
+                          key={c.id}
+                          className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors ${idx % 2 === 0 ? "bg-white/[0.015]" : ""}`}
+                        >
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-xs text-amber-400">
+                              {c.ticketKey ?? c.id.slice(0, 8)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-foreground text-sm">{c.authorRpName ?? c.authorTag ?? "—"}</div>
+                            {c.authorRpName && c.authorTag && (
+                              <div className="text-[11px] text-muted-foreground">{c.authorTag}</div>
+                            )}
+                          </td>
+                          <td className="hidden sm:table-cell px-3 md:px-4 py-3 text-sm text-muted-foreground">
+                            {c.targetName ?? "—"}
+                          </td>
+                          <td className="px-3 md:px-4 py-3 max-w-[140px] md:max-w-[220px]">
+                            <div className="text-xs text-foreground truncate" title={c.reason ?? undefined}>
+                              {c.reason ?? c.title ?? "—"}
+                            </div>
+                          </td>
+                          <td className="px-3 md:px-4 py-3">
+                            <StatusBadge tone={STATUS_TONES[c.status]}>
+                              {STATUS_LABELS[c.status]}
+                            </StatusBadge>
+                          </td>
+                          <td className="hidden lg:table-cell px-3 md:px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                            {fmtDate(c.createdAt)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Link
+                              href={`/staff/complaints/${c.id}`}
+                              className="text-xs text-primary hover:underline whitespace-nowrap"
+                            >
+                              Voir →
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
 
             {total > 0 && (

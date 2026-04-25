@@ -3,7 +3,7 @@ import { getMemberScopeFlags, isLinkedStaffMember } from "@/lib/staff/member-sco
 
 export type MemberStatus = "active" | "demoted" | "blacklisted" | "non_link" | "reservist";
 export type ActivityBand = "inactive" | "low" | "active" | "high";
-export type QuickFilter = "all" | "inactive" | "low" | "top" | "watch";
+export type QuickFilter = "all" | "active" | "inactive" | "low" | "top" | "watch";
 export type MemberFlagTone = "slate" | "emerald" | "amber" | "rose" | "cyan";
 
 export type MemberFlag = {
@@ -263,6 +263,8 @@ export function matchesQuickFilter(member: MemberItem, quickFilter: QuickFilter,
   const exempt = isActivityExempt(member);
 
   switch (quickFilter) {
+    case "active":
+      return !exempt && (activity.key === "active" || activity.key === "high");
     case "inactive":
       return !exempt && activity.key === "inactive";
     case "low":

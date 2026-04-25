@@ -11,6 +11,7 @@ type Message = {
   discordMessageId: string;
   authorNameSnapshot: string;
   authorDiscordId: string;
+  authorRpName?: string | null;
   content: string;
   createdAtDiscord: string;
   editedAtDiscord?: string | null;
@@ -329,7 +330,12 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <div className="text-sm font-semibold text-slate-100">{msg.authorNameSnapshot}</div>
+                        <div className="text-sm font-semibold text-slate-100">
+                          {msg.authorRpName ?? msg.authorNameSnapshot}
+                        </div>
+                        {msg.authorRpName && (
+                          <div className="mt-0.5 text-xs text-slate-500">{msg.authorNameSnapshot}</div>
+                        )}
                         <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">Message archivé</div>
                       </div>
                       <div className="text-xs text-slate-400 sm:text-right">

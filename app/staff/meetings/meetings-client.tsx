@@ -279,9 +279,10 @@ export default function MeetingsClient() {
                           key={day.toISOString()}
                           type="button"
                           onClick={() => {
-                            const base = createDate ?? new Date();
                             const next = new Date(day);
-                            next.setHours(base.getHours(), base.getMinutes(), 0, 0);
+                            const h = createDate ? createDate.getHours() : 21;
+                            const m = createDate ? createDate.getMinutes() : 0;
+                            next.setHours(h, m, 0, 0);
                             setCreateDate(next);
                           }}
                           className={`rounded-md px-2 py-1 text-xs transition-colors ${selected
@@ -299,7 +300,7 @@ export default function MeetingsClient() {
 
                   <div className="mt-3 flex items-center gap-2">
                     <select
-                      value={createDate ? createDate.getHours() : new Date().getHours()}
+                      value={createDate ? createDate.getHours() : 21}
                       onChange={(event) => setHour(Number(event.target.value))}
                       className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
                     >

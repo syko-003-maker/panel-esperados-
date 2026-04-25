@@ -72,6 +72,16 @@ export async function GET(req: Request) {
       prisma.complaint.count({ where }),
     ]);
 
+    // Resolve RP names for complaint authors
+    const authorDiscordIds = [...new Set(complaints.map((c) => c.authorDiscordId).filter(Boolean))] as string[];
+    const authorMembers = authorDiscordIds.length > 0
+      ? await prisma.member.findMany({
+          where: { discordId: { in: authorDiscordIds } },
+          select: { discordId: true, rpName: true },
+        })
+      : [];
+    const rpNameByDiscordId = new Map(authorMembers.map((m) => [m.discordId, m.rpName]));
+
     const data = complaints.map((c) => {
       const payload = (c.payload as Record<string, unknown>) ?? {};
       return {
@@ -81,6 +91,7 @@ export async function GET(req: Request) {
         status: c.status,
         authorDiscordId: c.authorDiscordId ?? null,
         authorTag: c.authorTag ?? null,
+        authorRpName: c.authorDiscordId ? (rpNameByDiscordId.get(c.authorDiscordId) ?? null) : null,
         targetName: c.targetName ?? null,
         reason: (payload.reason as string) ?? null,
         discordThreadId: c.discordThreadId ?? null,
