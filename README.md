@@ -1,116 +1,186 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Panel Esperados
 
-## Getting Started
+Système d'administration complet pour la communauté RP **Los Esperados** (FiveM).  
+Gestion des membres, absences, sanctions, réunions, plaintes et intégration Discord — le tout sur une seule plateforme.
 
-First, run the development server:
+---
 
+## ✨ Fonctionnalités
+
+| Module | Description |
+|--------|-------------|
+| **Membres** | Liste, recherche, détails, sync LYG API, liaison SteamID↔Discord |
+| **Absences** | Workflow PENDING→APPROVED/REJECTED, justifications, notifications Discord |
+| **Sanctions** | 7 types (oral, léger, lourd, démote, réserviste, blacklist), sync rôles Discord |
+| **Réunions** | Gestion hebdo, présences, décisions (UP/DEMOTE/WARN), finalisation automatique |
+| **Plaintes** | Workflow complet, historique messages Discord, noms RP, liens sanctions |
+| **Banque** | Logs LYG API, alertes dettes, cache automatique |
+| **Recrutement** | Pipeline candidats, scoring, sync tickets Discord |
+| **Activité** | Score playtime + réunions + absences, snapshots hebdo, alertes |
+| **Audit** | Trace complète de toutes les actions (qui, quoi, quand) |
+| **Discord Bot** | Notifications, rôles, slash commands, webhooks entrants |
+
+---
+
+## 🛠️ Stack technique
+
+- **Framework** : Next.js (App Router) + React 19 + TypeScript
+- **Base de données** : PostgreSQL + Prisma ORM
+- **Authentification** : NextAuth.js (OAuth Discord)
+- **UI** : Tailwind CSS 4 + Radix UI + Lucide Icons
+- **Discord** : Discord.js 14 (worker séparé)
+- **Monitoring** : Sentry
+- **Infra** : VPS Ubuntu + Cloudflare Tunnel
+
+---
+
+## 🏗️ Architecture
+
+```
+panel/
+├── app/
+│   ├── staff/          # Pages staff (membres, absences, réunions...)
+│   ├── (member)/       # Pages membres (absences perso, sanctions...)
+│   └── api/            # Routes API (REST)
+├── src/
+│   ├── components/     # Composants React réutilisables
+│   ├── lib/            # Services, utilitaires, logique métier
+│   └── server/         # Auth, guards, rate limiting
+├── discord-worker/     # Service Node.js Discord séparé
+└── prisma/             # Schéma BDD + migrations (60+ modèles)
+```
+
+Deux services en production :
+- **Panel** (port 3000) — site web Next.js
+- **Discord Worker** (port 3001) — bot Discord + traitement queue
+
+---
+
+## 🚀 Installation
+
+### Prérequis
+- Node.js 18+
+- PostgreSQL
+- Un bot Discord configuré
+
+### 1. Cloner le projet
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/syko-003-maker/panel-esperados-.git
+cd panel-esperados-
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Configuration
+Créer un fichier `.env.local` à la racine :
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/panel_db"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="votre_secret_nextauth"
+DISCORD_CLIENT_ID="votre_client_id_discord"
+DISCORD_CLIENT_SECRET="votre_client_secret_discord"
+DISCORD_BOT_TOKEN="votre_token_bot"
+INGEST_SECRET="votre_secret_partage"
+WORKER_INTERNAL_URL="http://127.0.0.1:3001"
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Justifications → Discord Pipeline (Diagnostic)
-
-When members submit justifications (absence/sanction), they are sent to Discord channels.
-
-### Configuration Requirements
-
-Both **panel** and **worker** need the same secret:
-
-**Panel (.env.prod or .env.local):**
+### 3. Base de données
 ```bash
-INGEST_SECRET=your_shared_secret
-WORKER_INTERNAL_URL=http://127.0.0.1:3001  # Default, only change if worker on different host
+npx prisma migrate deploy
+npx prisma generate
 ```
 
-**Worker (.env.prod or .env):**
-```bash
-INGEST_SECRET=your_shared_secret  # Must match panel's INGEST_SECRET
-```
-
-### Test Endpoint
-
-If justifications aren't appearing on Discord, test the pipeline:
-
-```bash
-# As chef (authenticated):
-curl "http://localhost:3000/api/member/_test-discord?channel=absence"
-# or
-curl "http://localhost:3000/api/member/_test-discord?channel=sanction"
-```
-
-Response:
-```json
-{
-  "ok": true,
-  "message": "Test message envoyé avec succès",
-  "channel": "absence",
-  "messageId": "1234567890123456789",
-  "debug": {
-    "workerUrl": "http://127.0.0.1:3001",
-    "timestamp": "2026-01-31T12:34:56.789Z"
-  }
-}
-```
-
-If test fails, check logs:
-
-**Dev logs (enable with DEBUG_DISCORD_POST=true):**
-```bash
-npm run dev  # Logs show [discord-post] with URL, status, response
-```
-
-**Common issues:**
-- `INGEST_SECRET missing in panel env` → Panel .env missing INGEST_SECRET
-- `Unauthorized` → Panel and worker INGEST_SECRET don't match
-- `Channel not found` → Discord channel ID invalid or bot no access
-- `http://127.0.0.1:3001: connect ECONNREFUSED` → Worker not running
-
-### Channels
-
-- **Absence**: `1335303582043607222`
-- **Sanction**: `1409028569203740792`
-
-### Debug Logging
-
-Enable detailed logs:
+### 4. Lancer en développement
 ```bash
 # Panel
-DEBUG_DISCORD_POST=true npm run dev
+npm run dev
 
-# Worker
-npm run dev  # Logs include "internal_post_message_attempt", "internal_post_message_success"
+# Discord Worker (dans un autre terminal)
+npm run discord:dev
 ```
 
-## Notes
+---
 
-- After a DB reset/migration, sign in again to refresh the auth session.
-- When passing Prisma data to Client Components, serialize to plain JSON (Date -> ISO string, Decimal/BigInt -> string or number).
-- For local OAuth, always use http://localhost:3000 (avoid LAN IP/127.0.0.1) to prevent "state cookie missing".
-- In the Discord Dev Portal, add redirect URI: http://localhost:3000/api/auth/callback/discord
+## 🔧 Configuration Discord
 
-## Learn More
+Dans le Discord Developer Portal :
+1. Créer une application + bot
+2. Activer les intents : Server Members, Message Content
+3. Ajouter la redirect URI OAuth : http://localhost:3000/api/auth/callback/discord
+4. Inviter le bot sur le serveur avec les permissions nécessaires
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🏭 Déploiement production
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+# Build
+npm run build
 
-## Deploy on Vercel
+# Démarrer le panel
+npm run start
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Démarrer le worker Discord
+npm run discord:start
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Le site est exposé via Cloudflare Tunnel — aucun port n'est ouvert directement sur internet.
+
+---
+
+## 🔐 Sécurité
+
+- Authentification Discord OAuth obligatoire
+- RBAC (rôles + permissions granulaires) sur toutes les routes
+- Fichiers .env jamais commités (.gitignore configuré)
+- Base de données accessible uniquement en local (127.0.0.1)
+- Ports 3000 et 3001 bloqués par le pare-feu (UFW)
+- IP réelle cachée derrière Cloudflare
+
+---
+
+## 📡 Intégration Discord
+
+Le panel utilise un système de queue fiable (DiscordOutbox) :
+
+```
+Panel → crée un job en DB → Discord Worker → exécute → Discord API
+```
+
+Chaque message/rôle passe par cette queue avec retry automatique en cas d'échec.
+
+Channels configurés :
+- Absences : 1335303582043607222
+- Sanctions : 1409028569203740792
+
+### Tester les notifications Discord
+```bash
+curl "http://localhost:3000/api/member/_test-discord?channel=absence"
+```
+
+---
+
+## 🐛 Problèmes fréquents
+
+| Problème | Solution |
+|----------|---------|
+| ECONNREFUSED 3001 | Le Discord Worker n'est pas lancé |
+| INGEST_SECRET missing | Vérifier le .env du panel et du worker |
+| Session expirée après migration DB | Se déconnecter et se reconnecter |
+| Rôles Discord non synchronisés | Appeler /api/discord/resync |
+
+---
+
+## 📝 Notes de développement
+
+- Les dates côté client → toujours envoyer en ISO 8601 (toISOString())
+- Les composants Prisma passés au client → sérialiser en JSON (Date → string)
+- Pour OAuth en local → toujours utiliser http://localhost:3000 (pas l'IP LAN)
+- Le resync Discord tourne en cron toutes les 5 minutes
+
+---
+
+## 👤 Auteur
+
+Projet développé pour la communauté **Los Esperados** — FiveM RP FR.
+
+> Panel construit et maintenu par Syko.
