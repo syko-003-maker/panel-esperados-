@@ -1,5 +1,5 @@
 /**
- * Système de logs serveur — enregistre les événements importants dans un salon dédié.
+ * Système de logs serveur + auto-rôle après validation Discord Community screening.
  */
 
 import {
@@ -14,11 +14,10 @@ import {
   type User,
 } from "discord.js";
 
-const LOGS_CHANNEL_ID = "1312846003627622522";
+const LOGS_CHANNEL_ID  = "1312846003627622522";
+const CITOYEN_ROLE_ID  = "1337795596739940372";
 
 // ─── Mini-cache messages ──────────────────────────────────────────────────────
-// Garde les 2000 derniers messages en mémoire pour pouvoir les retrouver
-// si Discord ne les a pas dans son cache au moment de la suppression.
 
 interface CachedMsg {
   authorId: string;
@@ -26,123 +25,129 @@ interface CachedMsg {
   authorAvatar: string | null;
   content: string;
   channelId: string;
-  guildId: string;
+  isBot: boolean;
 }
 
-const msgCache = new Map<string, CachedMsg>(); // messageId → CachedMsg
+const msgCache = new Map<string, CachedMsg>();
 const MSG_CACHE_MAX = 2000;
 
 export function cacheMessage(message: Message): void {
-  if (message.author.bot) return;
   if (!message.guildId) return;
-
-  // Éviter une fuite mémoire : supprimer le plus vieux si trop grand
   if (msgCache.size >= MSG_CACHE_MAX) {
     const firstKey = msgCache.keys().next().value;
     if (firstKey) msgCache.delete(firstKey);
   }
-
   msgCache.set(message.id, {
-    authorId: message.author.id,
-    authorTag: message.author.tag,
+    authorId:    message.author.id,
+    authorTag:   message.author.tag,
     authorAvatar: message.author.displayAvatarURL({ size: 64 }),
-    content: message.content,
-    channelId: message.channelId,
-    guildId: message.guildId,
+    content:     message.content ?? "",
+    channelId:   message.channelId,
+    isBot:       message.author.bot,
   });
 }
 
-// ─── Utilitaire ──────────────────────────────────────────────────────────────
+// ─── Salon logs ───────────────────────────────────────────────────────────────
 
 let logsChannelCache: TextChannel | null = null;
 
 async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   try {
-    // Utiliser le cache local d'abord, sinon fetch
-    if (!logsChannelCache || logsChannelCache.guild.id !== guild.id) {
+    if (!logsChannelCache) {
       const fetched = await guild.channels.fetch(LOGS_CHANNEL_ID);
       if (!fetched || !fetched.isTextBased()) {
-        console.error("[Logs] Salon introuvable ou pas un salon texte :", LOGS_CHANNEL_ID);
+        console.error("[Logs] Salon logs introuvable :", LOGS_CHANNEL_ID);
         return;
       }
       logsChannelCache = fetched as TextChannel;
     }
     await logsChannelCache.send({ embeds: [embed] });
   } catch (err) {
-    logsChannelCache = null; // Reset en cas d'erreur
-    console.error("[Logs] Erreur envoi log :", err);
+    logsChannelCache = null;
+    console.error("[Logs] Erreur envoi :", err);
+  }
+}
+
+// ─── Auto-rôle : Discord Community screening ─────────────────────────────────
+// Quand un membre passe de pending=true à pending=false (valide le règlement Discord),
+// on lui donne automatiquement le rôle Citoyen(e) LYG.
+
+export async function onScreeningComplete(
+  oldMember: GuildMember | PartialGuildMember,
+  newMember: GuildMember
+): Promise<void> {
+  // pending: true = n'a pas encore accepté les règles Discord Community
+  const wasPending = "pending" in oldMember ? oldMember.pending : true;
+  const isNowVerified = !newMember.pending;
+
+  if (!wasPending || !isNowVerified) return; // Pas un passage de screening
+
+  try {
+    if (!newMember.roles.cache.has(CITOYEN_ROLE_ID)) {
+      await newMember.roles.add(CITOYEN_ROLE_ID);
+      console.log(`[AutoRole] Rôle Citoyen(e) LYG attribué à ${newMember.user.tag}`);
+    }
+  } catch (err) {
+    console.error("[AutoRole] Erreur attribution rôle :", err);
   }
 }
 
 // ─── Membre rejoint ───────────────────────────────────────────────────────────
 
 export function onMemberJoin(member: GuildMember): void {
-  const createdTs = Math.floor(member.user.createdTimestamp / 1000);
-  const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24));
+  const createdTs  = Math.floor(member.user.createdTimestamp / 1000);
+  const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000);
 
   const embed = new EmbedBuilder()
     .setAuthor({
-      name: `${member.user.tag} a rejoint le serveur`,
+      name:    `${member.user.tag} a rejoint le serveur`,
       iconURL: member.user.displayAvatarURL({ size: 64 }),
     })
     .setColor(0x22c55e)
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
     .setDescription(`<@${member.id}>`)
     .addFields(
-      { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
-      { name: "📅 Compte créé", value: `<t:${createdTs}:D>\n<t:${createdTs}:R>`, inline: true },
+      { name: "🆔 Discord ID",   value: `\`${member.id}\``,                                                                              inline: true },
+      { name: "📅 Compte créé",  value: `<t:${createdTs}:D>\n<t:${createdTs}:R>`,                                                        inline: true },
       { name: "⚠️ Âge du compte", value: accountAge < 7 ? `⚠️ **${accountAge} jour(s)** — Compte récent !` : `${accountAge} jour(s)`, inline: true },
     )
-    .setFooter({ text: `👥 ${member.guild.memberCount} membres sur le serveur` })
+    .setFooter({ text: `👥 ${member.guild.memberCount} membres` })
     .setTimestamp();
 
   sendLog(member.guild, embed);
 }
 
-// ─── Membre parti ─────────────────────────────────────────────────────────────
+// ─── Membre parti / kick ─────────────────────────────────────────────────────
 
 export async function onMemberLeave(member: GuildMember | PartialGuildMember): Promise<void> {
   const roles = !( member.roles instanceof Array)
-    ? member.roles.cache
-        .filter((r) => r.name !== "@everyone")
-        .map((r) => `<@&${r.id}>`)
-        .join(" ") || "Aucun"
+    ? member.roles.cache.filter((r) => r.name !== "@everyone").map((r) => `<@&${r.id}>`).join(" ") || "Aucun"
     : "—";
-
   const joinedTs = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
 
-  // Vérifier si c'est un kick via les audit logs
   let kickedBy: string | null = null;
   try {
     await new Promise((r) => setTimeout(r, 800));
-    const auditLogs = await member.guild.fetchAuditLogs({ type: 20 /* MEMBER_KICK */, limit: 5 });
-    const entry = auditLogs.entries.find(
-      (e) => e.target?.id === member.id && Date.now() - e.createdTimestamp < 5000
-    );
+    const logs = await member.guild.fetchAuditLogs({ type: 20, limit: 5 });
+    const entry = logs.entries.find((e) => e.target?.id === member.id && Date.now() - e.createdTimestamp < 5000);
     if (entry) kickedBy = `<@${entry.executor?.id}>`;
-  } catch {
-    // Non bloquant
-  }
-
-  const isKick = !!kickedBy;
+  } catch { /* non bloquant */ }
 
   const embed = new EmbedBuilder()
     .setAuthor({
-      name: isKick
-        ? `${member.user?.tag ?? member.id} a été expulsé (kick)`
-        : `${member.user?.tag ?? member.id} a quitté le serveur`,
+      name:    kickedBy ? `${member.user?.tag ?? member.id} a été expulsé` : `${member.user?.tag ?? member.id} a quitté le serveur`,
       iconURL: member.user?.displayAvatarURL({ size: 64 }) ?? undefined,
     })
-    .setColor(isKick ? 0xf97316 : 0xef4444)
+    .setColor(kickedBy ? 0xf97316 : 0xef4444)
     .setThumbnail(member.user?.displayAvatarURL({ size: 256 }) ?? null)
     .setDescription(`<@${member.id}>`)
     .addFields(
       { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
-      ...(joinedTs ? [{ name: "📅 Avait rejoint", value: `<t:${joinedTs}:R>`, inline: true }] : []),
-      ...(kickedBy ? [{ name: "👢 Expulsé par", value: kickedBy, inline: true }] : []),
+      ...(joinedTs  ? [{ name: "📅 Avait rejoint",  value: `<t:${joinedTs}:R>`, inline: true }] : []),
+      ...(kickedBy  ? [{ name: "👢 Expulsé par",     value: kickedBy,            inline: true }] : []),
       { name: "🏷️ Rôles", value: roles, inline: false },
     )
-    .setFooter({ text: `👥 ${member.guild.memberCount} membres sur le serveur` })
+    .setFooter({ text: `👥 ${member.guild.memberCount} membres` })
     .setTimestamp();
 
   sendLog(member.guild, embed);
@@ -152,62 +157,52 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
 
 export async function onMessageDelete(message: Message | PartialMessage): Promise<void> {
   if (!message.guild) return;
-  if (message.author?.bot) return;
 
-  // Récupérer depuis notre mini-cache si Discord n'a pas l'info
+  // Priorité : données Discord > mini-cache
   const cached = msgCache.get(message.id);
-  msgCache.delete(message.id); // Nettoyer après usage
+  msgCache.delete(message.id);
 
-  const authorId    = message.author?.id    ?? cached?.authorId    ?? null;
-  const authorTag   = message.author?.tag   ?? cached?.authorTag   ?? null;
+  const isBot     = message.author?.bot ?? cached?.isBot ?? false;
+  if (isBot) return; // Ignorer les messages de bots
+
+  const authorId     = message.author?.id    ?? cached?.authorId    ?? null;
+  const authorTag    = message.author?.tag   ?? cached?.authorTag   ?? null;
   const authorAvatar = message.author?.displayAvatarURL({ size: 64 }) ?? cached?.authorAvatar ?? undefined;
-  const content     = message.content       ?? cached?.content      ?? null;
+  const content      = (message.content != null && message.content !== "" ? message.content : null)
+                    ?? (cached?.content !== "" ? cached?.content : null)
+                    ?? null;
 
-  // Si c'est un bot (depuis le cache), ignorer
-  if (!authorId && !cached) return; // Rien à logger, message totalement inconnu
-
-  // Tenter de trouver qui a supprimé via les Audit Logs (si c'est un modérateur qui supprime)
+  // Chercher qui a supprimé (si c'est un modérateur)
   let deletedBy: string | null = null;
   try {
     await new Promise((r) => setTimeout(r, 800));
-    const auditLogs = await message.guild.fetchAuditLogs({ type: 72 /* MESSAGE_DELETE */, limit: 5 });
-    const entry = auditLogs.entries.find(
+    const logs = await message.guild.fetchAuditLogs({ type: 72, limit: 5 });
+    const entry = logs.entries.find(
       (e) =>
         e.target?.id === authorId &&
-        e.extra &&
-        typeof e.extra === "object" &&
-        "channel" in e.extra &&
-        (e.extra as any).channel?.id === message.channelId &&
+        (e.extra as any)?.channel?.id === message.channelId &&
         Date.now() - e.createdTimestamp < 5000
     );
     if (entry) deletedBy = `<@${entry.executor?.id}>`;
-  } catch {
-    // Non bloquant
-  }
+  } catch { /* non bloquant */ }
 
   const embed = new EmbedBuilder()
     .setAuthor({
-      name: authorTag ? `${authorTag} — message supprimé` : "Message supprimé",
+      name:    authorTag ? `${authorTag} — message supprimé` : "Message supprimé",
       iconURL: authorAvatar,
     })
     .setColor(0xf97316)
     .addFields(
-      {
-        name: "👤 Auteur",
-        value: authorId ? `<@${authorId}>` : "*Inconnu*",
-        inline: true,
-      },
-      { name: "📌 Salon", value: `<#${message.channelId}>`, inline: true },
+      { name: "👤 Auteur",  value: authorId ? `<@${authorId}>` : "*Non identifié*", inline: true },
+      { name: "📌 Salon",   value: `<#${message.channelId}>`,                       inline: true },
       ...(deletedBy ? [{ name: "🗑️ Supprimé par", value: deletedBy, inline: true }] : []),
       {
-        name: "💬 Contenu",
-        value: content
-          ? (content.length > 1000 ? content.slice(0, 1000) + "…" : content)
-          : "*[message vide ou image/fichier uniquement]*",
+        name:  "💬 Contenu",
+        value: content ? (content.length > 1000 ? content.slice(0, 1000) + "…" : content) : "*[image, fichier ou contenu non disponible]*",
         inline: false,
       },
     )
-    .setFooter({ text: `ID message : ${message.id}` })
+    .setFooter({ text: `ID : ${message.id}` })
     .setTimestamp();
 
   sendLog(message.guild, embed);
@@ -215,123 +210,93 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
 
 // ─── Message modifié ──────────────────────────────────────────────────────────
 
-export function onMessageUpdate(
-  oldMessage: Message | PartialMessage,
-  newMessage: Message | PartialMessage
-): void {
-  if (!newMessage.guild) return;
-  if (newMessage.author?.bot) return;
-  if (oldMessage.content === newMessage.content) return;
+export function onMessageUpdate(old: Message | PartialMessage, msg: Message | PartialMessage): void {
+  if (!msg.guild) return;
+  if (msg.author?.bot) return;
+  if (old.content === msg.content) return;
 
   const embed = new EmbedBuilder()
     .setAuthor({
-      name: `${newMessage.author?.tag ?? "Inconnu"} — message modifié`,
-      iconURL: newMessage.author?.displayAvatarURL({ size: 64 }) ?? undefined,
-      url: newMessage.url,
+      name:    `${msg.author?.tag ?? "Inconnu"} — message modifié`,
+      iconURL: msg.author?.displayAvatarURL({ size: 64 }) ?? undefined,
+      url:     msg.url,
     })
     .setColor(0x3b82f6)
     .addFields(
-      { name: "👤 Auteur", value: newMessage.author ? `<@${newMessage.author.id}>` : "Inconnu", inline: true },
-      { name: "📌 Salon", value: `<#${newMessage.channelId}>`, inline: true },
-      {
-        name: "📝 Avant",
-        value: oldMessage.content
-          ? (oldMessage.content.length > 500 ? oldMessage.content.slice(0, 500) + "…" : oldMessage.content)
-          : "*[non mis en cache]*",
-        inline: false,
-      },
-      {
-        name: "✏️ Après",
-        value: newMessage.content
-          ? (newMessage.content.length > 500 ? newMessage.content.slice(0, 500) + "…" : newMessage.content)
-          : "*[vide]*",
-        inline: false,
-      },
+      { name: "👤 Auteur", value: msg.author ? `<@${msg.author.id}>` : "*Inconnu*", inline: true },
+      { name: "📌 Salon",  value: `<#${msg.channelId}>`,                             inline: true },
+      { name: "📝 Avant",  value: old.content ? old.content.slice(0, 500) : "*[non disponible]*", inline: false },
+      { name: "✏️ Après",  value: msg.content ? msg.content.slice(0, 500) : "*[vide]*",           inline: false },
     )
-    .setFooter({ text: "Cliquez sur l'auteur pour voir le message" })
     .setTimestamp();
 
-  sendLog(newMessage.guild, embed);
+  sendLog(msg.guild, embed);
 }
 
 // ─── Rôles modifiés ───────────────────────────────────────────────────────────
 
-export function onMemberUpdate(
-  oldMember: GuildMember | PartialGuildMember,
-  newMember: GuildMember
-): void {
-  if (!("cache" in oldMember.roles) || !("cache" in newMember.roles)) return;
+export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): void {
+  if (!("cache" in old.roles) || !("cache" in member.roles)) return;
 
-  const added   = newMember.roles.cache.filter((r) => !oldMember.roles.cache.has(r.id));
-  const removed = oldMember.roles.cache.filter((r) => !newMember.roles.cache.has(r.id));
-
+  const added   = member.roles.cache.filter((r) => !old.roles.cache.has(r.id));
+  const removed = old.roles.cache.filter((r) => !member.roles.cache.has(r.id));
   if (added.size === 0 && removed.size === 0) return;
 
   const embed = new EmbedBuilder()
-    .setAuthor({
-      name: `${newMember.user.tag} — rôles modifiés`,
-      iconURL: newMember.user.displayAvatarURL({ size: 64 }),
-    })
+    .setAuthor({ name: `${member.user.tag} — rôles modifiés`, iconURL: member.user.displayAvatarURL({ size: 64 }) })
     .setColor(0xa855f7)
-    .setDescription(`<@${newMember.id}>`)
+    .setDescription(`<@${member.id}>`)
     .setTimestamp();
 
-  if (added.size > 0) {
-    embed.addFields({ name: `✅ Rôle(s) ajouté(s) [${added.size}]`, value: added.map((r) => `<@&${r.id}>`).join(" "), inline: false });
-  }
-  if (removed.size > 0) {
-    embed.addFields({ name: `❌ Rôle(s) retiré(s) [${removed.size}]`, value: removed.map((r) => `<@&${r.id}>`).join(" "), inline: false });
-  }
+  if (added.size > 0)   embed.addFields({ name: `✅ Ajouté(s) [${added.size}]`,   value: added.map((r)   => `<@&${r.id}>`).join(" "), inline: false });
+  if (removed.size > 0) embed.addFields({ name: `❌ Retiré(s) [${removed.size}]`, value: removed.map((r) => `<@&${r.id}>`).join(" "), inline: false });
 
-  sendLog(newMember.guild, embed);
+  sendLog(member.guild, embed);
 }
 
 // ─── Ban / Unban ──────────────────────────────────────────────────────────────
 
 export function onBanAdd(ban: { guild: Guild; user: User; reason: string | null }): void {
   const embed = new EmbedBuilder()
-    .setAuthor({
-      name: `${ban.user.tag} — banni du serveur`,
-      iconURL: ban.user.displayAvatarURL({ size: 64 }),
-    })
+    .setAuthor({ name: `${ban.user.tag} — banni`, iconURL: ban.user.displayAvatarURL({ size: 64 }) })
     .setColor(0xdc2626)
     .setThumbnail(ban.user.displayAvatarURL({ size: 256 }))
     .setDescription(`<@${ban.user.id}>`)
     .addFields(
-      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true },
-      { name: "📋 Raison", value: ban.reason ?? "Aucune raison fournie", inline: false },
+      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``,              inline: true },
+      { name: "📋 Raison",     value: ban.reason ?? "Aucune raison",     inline: false },
     )
     .setTimestamp();
-
   sendLog(ban.guild, embed);
 }
 
 export function onBanRemove(ban: { guild: Guild; user: User }): void {
   const embed = new EmbedBuilder()
-    .setAuthor({
-      name: `${ban.user.tag} — débanni`,
-      iconURL: ban.user.displayAvatarURL({ size: 64 }),
-    })
+    .setAuthor({ name: `${ban.user.tag} — débanni`, iconURL: ban.user.displayAvatarURL({ size: 64 }) })
     .setColor(0x16a34a)
     .setDescription(`<@${ban.user.id}>`)
-    .addFields(
-      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true },
-    )
+    .addFields({ name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true })
     .setTimestamp();
-
   sendLog(ban.guild, embed);
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setupServerLogs(client: Client): void {
-  client.on("guildMemberAdd",    (member) => onMemberJoin(member as GuildMember));
-  client.on("guildMemberRemove", (member) => { onMemberLeave(member as GuildMember).catch(() => {}); });
-  client.on("messageDelete",     (msg)    => { onMessageDelete(msg).catch(() => {}); });
-  client.on("messageUpdate",     (o, n)   => onMessageUpdate(o, n));
-  client.on("guildMemberUpdate", (o, n)   => onMemberUpdate(o, n as GuildMember));
-  client.on("guildBanAdd",       (ban)    => onBanAdd(ban as any));
-  client.on("guildBanRemove",    (ban)    => onBanRemove(ban as any));
+  // Logs
+  client.on("guildMemberAdd",    (m)     => onMemberJoin(m as GuildMember));
+  client.on("guildMemberRemove", (m)     => { onMemberLeave(m as GuildMember).catch(() => {}); });
+  client.on("messageDelete",     (msg)   => { onMessageDelete(msg).catch((e) => console.error("[Logs] messageDelete error:", e)); });
+  client.on("messageUpdate",     (o, n)  => onMessageUpdate(o, n));
+  client.on("guildMemberUpdate", (o, n)  => {
+    // Auto-rôle screening
+    onScreeningComplete(o, n as GuildMember).catch(() => {});
+    // Logs rôles
+    onMemberUpdate(o, n as GuildMember);
+  });
+  client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
+  client.on("guildBanRemove",    (ban)   => onBanRemove(ban as any));
 
-  console.log("[Logs] Système de logs serveur activé → salon", LOGS_CHANNEL_ID);
+  console.log("[Logs] Système de logs activé → salon", LOGS_CHANNEL_ID);
+  console.log("[AutoRole] Auto-rôle screening activé → rôle", CITOYEN_ROLE_ID);
 }
