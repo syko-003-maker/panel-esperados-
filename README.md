@@ -1,6 +1,6 @@
 # Panel Esperados
 
-Système d'administration complet pour la communauté RP **Los Esperados** (FiveM).  
+Système d'administration complet pour la communauté RP **Los Esperados** (Garry's Mod).  
 Gestion des membres, absences, sanctions, réunions, plaintes et intégration Discord — le tout sur une seule plateforme.
 
 ---
@@ -181,6 +181,6 @@ curl "http://localhost:3000/api/member/_test-discord?channel=absence"
 
 ## 👤 Auteur
 
-Projet développé pour la communauté **Los Esperados** — FiveM RP FR.
+Projet développé pour la communauté **Los Esperados** — Garry's Mod RP FR.
 
 > Panel construit et maintenu par Syko.
