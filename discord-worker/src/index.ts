@@ -110,7 +110,7 @@ function loadEnv() {
 loadEnv();
 
 import { Client, GatewayIntentBits, Partials, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags, type Interaction } from "discord.js";
-import { setupServerLogs } from "./features/logs/serverLogs.js";
+import { setupServerLogs, cacheMessage } from "./features/logs/serverLogs.js";
 import { handleReglementAccept, handleReglementPost, REGLEMENT_ACCEPT_BUTTON } from "./features/reglement/reglementRole.js";
 import { ensureContactPanel } from "./contactPanel.js";
 import { CUSTOM_ID, IDS } from "./ids.js";
@@ -486,6 +486,9 @@ client.once("ready", async () => {
 
   // ─── Logs serveur ────────────────────────────────────────────────────────
   setupServerLogs(client);
+
+  // ─── Mini-cache messages (pour logs suppression) ──────────────────────────
+  client.on("messageCreate", (msg) => { if (!msg.author.bot) cacheMessage(msg); });
 
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });

@@ -16,6 +16,42 @@ import {
 
 const LOGS_CHANNEL_ID = "1312846003627622522";
 
+// ─── Mini-cache messages ──────────────────────────────────────────────────────
+// Garde les 2000 derniers messages en mémoire pour pouvoir les retrouver
+// si Discord ne les a pas dans son cache au moment de la suppression.
+
+interface CachedMsg {
+  authorId: string;
+  authorTag: string;
+  authorAvatar: string | null;
+  content: string;
+  channelId: string;
+  guildId: string;
+}
+
+const msgCache = new Map<string, CachedMsg>(); // messageId → CachedMsg
+const MSG_CACHE_MAX = 2000;
+
+export function cacheMessage(message: Message): void {
+  if (message.author.bot) return;
+  if (!message.guildId) return;
+
+  // Éviter une fuite mémoire : supprimer le plus vieux si trop grand
+  if (msgCache.size >= MSG_CACHE_MAX) {
+    const firstKey = msgCache.keys().next().value;
+    if (firstKey) msgCache.delete(firstKey);
+  }
+
+  msgCache.set(message.id, {
+    authorId: message.author.id,
+    authorTag: message.author.tag,
+    authorAvatar: message.author.displayAvatarURL({ size: 64 }),
+    content: message.content,
+    channelId: message.channelId,
+    guildId: message.guildId,
+  });
+}
+
 // ─── Utilitaire ──────────────────────────────────────────────────────────────
 
 async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
@@ -86,24 +122,60 @@ export function onMemberLeave(member: GuildMember | PartialGuildMember): void {
 
 // ─── Message supprimé ─────────────────────────────────────────────────────────
 
-export function onMessageDelete(message: Message | PartialMessage): void {
+export async function onMessageDelete(message: Message | PartialMessage): Promise<void> {
   if (!message.guild) return;
   if (message.author?.bot) return;
 
+  // Récupérer depuis notre mini-cache si Discord n'a pas l'info
+  const cached = msgCache.get(message.id);
+  msgCache.delete(message.id); // Nettoyer après usage
+
+  const authorId    = message.author?.id    ?? cached?.authorId    ?? null;
+  const authorTag   = message.author?.tag   ?? cached?.authorTag   ?? null;
+  const authorAvatar = message.author?.displayAvatarURL({ size: 64 }) ?? cached?.authorAvatar ?? undefined;
+  const content     = message.content       ?? cached?.content      ?? null;
+
+  // Si c'est un bot (depuis le cache), ignorer
+  if (!authorId && !cached) return; // Rien à logger, message totalement inconnu
+
+  // Tenter de trouver qui a supprimé via les Audit Logs (si c'est un modérateur qui supprime)
+  let deletedBy: string | null = null;
+  try {
+    await new Promise((r) => setTimeout(r, 800));
+    const auditLogs = await message.guild.fetchAuditLogs({ type: 72 /* MESSAGE_DELETE */, limit: 5 });
+    const entry = auditLogs.entries.find(
+      (e) =>
+        e.target?.id === authorId &&
+        e.extra &&
+        typeof e.extra === "object" &&
+        "channel" in e.extra &&
+        (e.extra as any).channel?.id === message.channelId &&
+        Date.now() - e.createdTimestamp < 5000
+    );
+    if (entry) deletedBy = `<@${entry.executor?.id}>`;
+  } catch {
+    // Non bloquant
+  }
+
   const embed = new EmbedBuilder()
     .setAuthor({
-      name: message.author ? `${message.author.tag} — message supprimé` : "Message supprimé",
-      iconURL: message.author?.displayAvatarURL({ size: 64 }) ?? undefined,
+      name: authorTag ? `${authorTag} — message supprimé` : "Message supprimé",
+      iconURL: authorAvatar,
     })
     .setColor(0xf97316)
     .addFields(
-      { name: "👤 Auteur", value: message.author ? `<@${message.author.id}>` : "Inconnu", inline: true },
+      {
+        name: "👤 Auteur",
+        value: authorId ? `<@${authorId}>` : "*Inconnu*",
+        inline: true,
+      },
       { name: "📌 Salon", value: `<#${message.channelId}>`, inline: true },
+      ...(deletedBy ? [{ name: "🗑️ Supprimé par", value: deletedBy, inline: true }] : []),
       {
         name: "💬 Contenu",
-        value: message.content
-          ? (message.content.length > 1000 ? message.content.slice(0, 1000) + "…" : message.content)
-          : "*[vide ou non mis en cache]*",
+        value: content
+          ? (content.length > 1000 ? content.slice(0, 1000) + "…" : content)
+          : "*[message vide ou image/fichier uniquement]*",
         inline: false,
       },
     )
@@ -227,7 +299,7 @@ export function onBanRemove(ban: { guild: Guild; user: User }): void {
 export function setupServerLogs(client: Client): void {
   client.on("guildMemberAdd",    (member) => onMemberJoin(member as GuildMember));
   client.on("guildMemberRemove", (member) => onMemberLeave(member as GuildMember));
-  client.on("messageDelete",     (msg)    => onMessageDelete(msg));
+  client.on("messageDelete",     (msg)    => { onMessageDelete(msg).catch(() => {}); });
   client.on("messageUpdate",     (o, n)   => onMessageUpdate(o, n));
   client.on("guildMemberUpdate", (o, n)   => onMemberUpdate(o, n as GuildMember));
   client.on("guildBanAdd",       (ban)    => onBanAdd(ban as any));
