@@ -53,20 +53,11 @@ let logsClient: Client | null = null; // On garde le client pour fetch direct
 
 async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   try {
-    console.log("[Logs][sendLog] Tentative envoi dans", LOGS_CHANNEL_ID);
     const channel = await logsClient!.channels.fetch(LOGS_CHANNEL_ID) as TextChannel | null;
-    if (!channel) {
-      console.error("[Logs][sendLog] Channel null !");
-      return;
-    }
-    if (!channel.isTextBased()) {
-      console.error("[Logs][sendLog] Channel pas textBased !");
-      return;
-    }
+    if (!channel || !channel.isTextBased()) return;
     await channel.send({ embeds: [embed] });
-    console.log("[Logs][sendLog] Message envoyé ✓");
   } catch (err) {
-    console.error("[Logs][sendLog] ERREUR :", err);
+    console.error("[Logs] Erreur envoi :", err);
   }
 }
 
@@ -158,8 +149,7 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
 // ─── Message supprimé ─────────────────────────────────────────────────────────
 
 export async function onMessageDelete(message: Message | PartialMessage): Promise<void> {
-  console.log("[Logs][onMessageDelete] fired, guild:", message.guild?.id, "author:", message.author?.id, "cached:", msgCache.has(message.id));
-  if (!message.guild) { console.log("[Logs][onMessageDelete] skip: no guild"); return; }
+  if (!message.guild) return;
 
   // Récupérer depuis le mini-cache
   const cached = msgCache.get(message.id);
@@ -167,7 +157,7 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
 
   // Ignorer les messages de bots
   const isBot = message.author?.bot ?? cached?.isBot ?? false;
-  if (isBot) { console.log("[Logs][onMessageDelete] skip: isBot"); return; }
+  if (isBot) return;
 
   const authorId     = message.author?.id    ?? cached?.authorId    ?? null;
   const authorTag    = message.author?.tag   ?? cached?.authorTag   ?? null;
@@ -176,9 +166,7 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
                     ?? (cached?.content && cached.content !== "" ? cached.content : null)
                     ?? null;
 
-  console.log("[Logs][onMessageDelete] authorId:", authorId, "content:", content?.slice(0, 30));
-  // Si on n'a pas l'auteur → message inconnu (bot non caché ou avant démarrage), on ignore
-  if (!authorId) { console.log("[Logs][onMessageDelete] skip: no authorId"); return; }
+  if (!authorId) return;
 
   // Chercher qui a supprimé via les Audit Logs
   let deletedBy: string | null = null;

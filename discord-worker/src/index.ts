@@ -489,17 +489,7 @@ client.once("ready", async () => {
   setupServerLogs(client);
 
   // ─── Mini-cache messages (pour logs suppression) ──────────────────────────
-  client.on("messageCreate", (msg) => {
-    console.log("[DEBUG] messageCreate reçu:", msg.id, "guild:", msg.guildId);
-    if (!msg.author.bot) cacheMessage(msg);
-  });
-  client.on("messageDelete", (msg) => console.log("[DEBUG] messageDelete reçu:", msg.id, "guild:", msg.guild?.id));
-  // Raw gateway events — confirme que Discord envoie bien les events
-  client.on("raw", (packet: any) => {
-    if (["MESSAGE_DELETE", "MESSAGE_CREATE", "GUILD_MEMBER_ADD"].includes(packet.t)) {
-      console.log("[RAW]", packet.t, JSON.stringify(packet.d).slice(0, 100));
-    }
-  });
+  client.on("messageCreate", (msg) => { if (!msg.author.bot) cacheMessage(msg); });
 
 
   // ─── Pré-chargement des messages existants ────────────────────────────────
