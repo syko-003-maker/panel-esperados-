@@ -295,8 +295,9 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,      // Required for role sync + logs membres
     GatewayIntentBits.MessageContent,    // Required pour lire contenu messages supprimés/modifiés
     GatewayIntentBits.GuildModeration,   // Required pour logs ban/unban
+    GatewayIntentBits.GuildVoiceStates,  // Required pour logs vocal
   ],
-  partials: [Partials.Message, Partials.Channel], // Pour les messages non mis en cache
+  partials: [Partials.Message, Partials.Channel, Partials.GuildMember], // Pour les messages non mis en cache
 });
 
 client.once("ready", async () => {
@@ -488,7 +489,18 @@ client.once("ready", async () => {
   setupServerLogs(client);
 
   // ─── Mini-cache messages (pour logs suppression) ──────────────────────────
-  client.on("messageCreate", (msg) => { if (!msg.author.bot) cacheMessage(msg); });
+  client.on("messageCreate", (msg) => {
+    console.log("[DEBUG] messageCreate reçu:", msg.id, "guild:", msg.guildId);
+    if (!msg.author.bot) cacheMessage(msg);
+  });
+  client.on("messageDelete", (msg) => console.log("[DEBUG] messageDelete reçu:", msg.id, "guild:", msg.guild?.id));
+  // Raw gateway events — confirme que Discord envoie bien les events
+  client.on("raw", (packet: any) => {
+    if (["MESSAGE_DELETE", "MESSAGE_CREATE", "GUILD_MEMBER_ADD"].includes(packet.t)) {
+      console.log("[RAW]", packet.t, JSON.stringify(packet.d).slice(0, 100));
+    }
+  });
+
 
   // ─── Pré-chargement des messages existants ────────────────────────────────
   // Lance en arrière-plan après un court délai pour ne pas bloquer le démarrage
@@ -499,7 +511,7 @@ client.once("ready", async () => {
     } catch (err) {
       console.error("[Logs] Pré-cache guild introuvable :", err);
     }
-  }, 3000);
+  }, 1000);
 
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });

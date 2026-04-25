@@ -49,22 +49,24 @@ export function cacheMessage(message: Message): void {
 
 // ─── Salon logs ───────────────────────────────────────────────────────────────
 
-let logsChannelCache: TextChannel | null = null;
+let logsClient: Client | null = null; // On garde le client pour fetch direct
 
 async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   try {
-    if (!logsChannelCache) {
-      const fetched = await guild.channels.fetch(LOGS_CHANNEL_ID);
-      if (!fetched || !fetched.isTextBased()) {
-        console.error("[Logs] Salon logs introuvable :", LOGS_CHANNEL_ID);
-        return;
-      }
-      logsChannelCache = fetched as TextChannel;
+    console.log("[Logs][sendLog] Tentative envoi dans", LOGS_CHANNEL_ID);
+    const channel = await logsClient!.channels.fetch(LOGS_CHANNEL_ID) as TextChannel | null;
+    if (!channel) {
+      console.error("[Logs][sendLog] Channel null !");
+      return;
     }
-    await logsChannelCache.send({ embeds: [embed] });
+    if (!channel.isTextBased()) {
+      console.error("[Logs][sendLog] Channel pas textBased !");
+      return;
+    }
+    await channel.send({ embeds: [embed] });
+    console.log("[Logs][sendLog] Message envoyé ✓");
   } catch (err) {
-    logsChannelCache = null;
-    console.error("[Logs] Erreur envoi :", err);
+    console.error("[Logs][sendLog] ERREUR :", err);
   }
 }
 
@@ -156,7 +158,8 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
 // ─── Message supprimé ─────────────────────────────────────────────────────────
 
 export async function onMessageDelete(message: Message | PartialMessage): Promise<void> {
-  if (!message.guild) return;
+  console.log("[Logs][onMessageDelete] fired, guild:", message.guild?.id, "author:", message.author?.id, "cached:", msgCache.has(message.id));
+  if (!message.guild) { console.log("[Logs][onMessageDelete] skip: no guild"); return; }
 
   // Récupérer depuis le mini-cache
   const cached = msgCache.get(message.id);
@@ -164,7 +167,7 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
 
   // Ignorer les messages de bots
   const isBot = message.author?.bot ?? cached?.isBot ?? false;
-  if (isBot) return;
+  if (isBot) { console.log("[Logs][onMessageDelete] skip: isBot"); return; }
 
   const authorId     = message.author?.id    ?? cached?.authorId    ?? null;
   const authorTag    = message.author?.tag   ?? cached?.authorTag   ?? null;
@@ -173,8 +176,9 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
                     ?? (cached?.content && cached.content !== "" ? cached.content : null)
                     ?? null;
 
+  console.log("[Logs][onMessageDelete] authorId:", authorId, "content:", content?.slice(0, 30));
   // Si on n'a pas l'auteur → message inconnu (bot non caché ou avant démarrage), on ignore
-  if (!authorId) return;
+  if (!authorId) { console.log("[Logs][onMessageDelete] skip: no authorId"); return; }
 
   // Chercher qui a supprimé via les Audit Logs
   let deletedBy: string | null = null;
@@ -260,6 +264,58 @@ export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: Gu
   sendLog(member.guild, embed);
 }
 
+// ─── Vocal ───────────────────────────────────────────────────────────────────
+
+export function onVoiceStateUpdate(oldState: any, newState: any): void {
+  const member = newState.member ?? oldState.member;
+  if (!member || member.user.bot) return;
+
+  const guild     = newState.guild ?? oldState.guild;
+  const oldChannel = oldState.channel;
+  const newChannel = newState.channel;
+
+  if (oldChannel?.id === newChannel?.id) return; // Mute/unmute, pas un mouvement
+
+  let title: string;
+  let color: number;
+  let fields: { name: string; value: string; inline: boolean }[];
+
+  if (!oldChannel && newChannel) {
+    // Connexion
+    title = `🔊 ${member.user.tag} a rejoint un salon vocal`;
+    color = 0x22c55e;
+    fields = [
+      { name: "👤 Membre",       value: `<@${member.id}>`,          inline: true },
+      { name: "🔊 Salon rejoint", value: `<#${newChannel.id}>`,      inline: true },
+    ];
+  } else if (oldChannel && !newChannel) {
+    // Déconnexion
+    title = `🔇 ${member.user.tag} a quitté un salon vocal`;
+    color = 0xef4444;
+    fields = [
+      { name: "👤 Membre",       value: `<@${member.id}>`,          inline: true },
+      { name: "🔇 Salon quitté", value: `<#${oldChannel.id}>`,      inline: true },
+    ];
+  } else {
+    // Changement de salon
+    title = `🔀 ${member.user.tag} a changé de salon vocal`;
+    color = 0x3b82f6;
+    fields = [
+      { name: "👤 Membre",   value: `<@${member.id}>`,          inline: true },
+      { name: "🔇 Avant",    value: `<#${oldChannel.id}>`,      inline: true },
+      { name: "🔊 Après",    value: `<#${newChannel.id}>`,      inline: true },
+    ];
+  }
+
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: title, iconURL: member.user.displayAvatarURL({ size: 64 }) })
+    .setColor(color)
+    .addFields(fields)
+    .setTimestamp();
+
+  sendLog(guild, embed);
+}
+
 // ─── Ban / Unban ──────────────────────────────────────────────────────────────
 
 export function onBanAdd(ban: { guild: Guild; user: User; reason: string | null }): void {
@@ -293,27 +349,33 @@ export function onBanRemove(ban: { guild: Guild; user: User }): void {
 export async function preCacheGuildMessages(guild: Guild): Promise<void> {
   try {
     const channels = await guild.channels.fetch();
-    const textChannels = channels.filter(
+    const textChannels = [...channels.values()].filter(
       (c) => c !== null && c.isTextBased() && !c.isDMBased()
-    );
+    ) as any[];
 
     let totalCached = 0;
-    for (const [, channel] of textChannels) {
-      if (!channel || !channel.isTextBased() || channel.isDMBased()) continue;
-      try {
-        const messages = await (channel as any).messages.fetch({ limit: 100 });
-        for (const [, msg] of messages) {
-          if (!msg.author || msg.author.bot) continue;
-          cacheMessage(msg);
-          totalCached++;
-        }
-        // Petite pause pour éviter le rate limit Discord
-        await new Promise((r) => setTimeout(r, 200));
-      } catch {
-        // Salon sans permission de lecture — ignorer
+    const CONCURRENCY = 5; // 5 salons en parallèle
+
+    for (let i = 0; i < textChannels.length; i += CONCURRENCY) {
+      const batch = textChannels.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (channel) => {
+          const messages = await channel.messages.fetch({ limit: 100 });
+          let count = 0;
+          for (const [, msg] of messages) {
+            if (!msg.author || msg.author.bot) continue;
+            cacheMessage(msg);
+            count++;
+          }
+          return count;
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") totalCached += r.value;
       }
     }
-    console.log(`[Logs] Pré-cache : ${totalCached} messages chargés depuis ${textChannels.size} salons`);
+
+    console.log(`[Logs] Pré-cache : ${totalCached} messages depuis ${textChannels.length} salons`);
   } catch (err) {
     console.error("[Logs] Erreur pré-cache :", err);
   }
@@ -322,6 +384,7 @@ export async function preCacheGuildMessages(guild: Guild): Promise<void> {
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setupServerLogs(client: Client): void {
+  logsClient = client;
   // Logs
   client.on("guildMemberAdd",    (m)     => onMemberJoin(m as GuildMember));
   client.on("guildMemberRemove", (m)     => { onMemberLeave(m as GuildMember).catch(() => {}); });
@@ -333,6 +396,7 @@ export function setupServerLogs(client: Client): void {
   });
   client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
   client.on("guildBanRemove",    (ban)   => onBanRemove(ban as any));
+  client.on("voiceStateUpdate",  (o, n)  => onVoiceStateUpdate(o, n));
 
   console.log("[Logs] Système de logs activé → salon", LOGS_CHANNEL_ID);
   console.log("[AutoRole] Auto-rôle screening activé → rôle", CITOYEN_ROLE_ID);
