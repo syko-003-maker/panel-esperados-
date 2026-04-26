@@ -27,6 +27,7 @@ interface CachedMsg {
   content: string;
   channelId: string;
   isBot: boolean;
+  attachments: string[]; // URLs des pièces jointes
 }
 
 const msgCache = new Map<string, CachedMsg>();
@@ -39,12 +40,13 @@ export function cacheMessage(message: Message): void {
     if (firstKey) msgCache.delete(firstKey);
   }
   msgCache.set(message.id, {
-    authorId:    message.author.id,
-    authorTag:   message.author.tag,
+    authorId:     message.author.id,
+    authorTag:    message.author.tag,
     authorAvatar: message.author.displayAvatarURL({ size: 64 }),
-    content:     message.content ?? "",
-    channelId:   message.channelId,
-    isBot:       message.author.bot,
+    content:      message.content ?? "",
+    channelId:    message.channelId,
+    isBot:        message.author.bot,
+    attachments:  message.attachments.map((a) => a.proxyURL || a.url),
   });
 }
 
@@ -134,7 +136,7 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
     })
     .setColor(kickedBy ? 0xf97316 : 0xef4444)
     .setThumbnail(member.user?.displayAvatarURL({ size: 256 }) ?? null)
-    .setDescription(`<@${member.id}>`)
+    .setDescription(`<@${member.id}> · \`${member.user?.tag ?? member.id}\``)
     .addFields(
       { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
       ...(joinedTs  ? [{ name: "📅 Avait rejoint",  value: `<t:${joinedTs}:R>`, inline: true }] : []),
@@ -166,6 +168,7 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
   const content      = (message.content && message.content !== "" ? message.content : null)
                     ?? (cached?.content && cached.content !== "" ? cached.content : null)
                     ?? null;
+  const attachments  = cached?.attachments ?? [...(message.attachments?.values() ?? [])].map((a) => a.proxyURL || a.url);
 
   if (!authorId) return;
 
@@ -197,12 +200,21 @@ export async function onMessageDelete(message: Message | PartialMessage): Promis
         name:  "💬 Contenu",
         value: content
           ? (content.length > 1000 ? content.slice(0, 1000) + "…" : content)
-          : "*[image ou fichier uniquement]*",
+          : "*[aucun texte]*",
         inline: false,
       },
+      ...(attachments.length > 0 ? [{
+        name:  `📎 Pièce(s) jointe(s) [${attachments.length}]`,
+        value: attachments.slice(0, 5).join("\n"),
+        inline: false,
+      }] : []),
     )
     .setFooter({ text: `ID : ${message.id}` })
     .setTimestamp();
+
+  // Si le message était une image seule, l'afficher dans l'embed
+  const imageUrl = attachments.find((u) => /\.(png|jpe?g|gif|webp)(\?|$)/i.test(u));
+  if (imageUrl) embed.setImage(imageUrl);
 
   sendLog(message.guild, embed);
 }
@@ -236,6 +248,8 @@ export function onMessageUpdate(old: Message | PartialMessage, msg: Message | Pa
 
 export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): void {
   if (!member) return;
+  // Si old est partial (pas en cache), ses rôles sont vides → faux positifs, on ignore
+  if (old.partial) return;
   if (!("cache" in old.roles) || !("cache" in member.roles)) return;
 
   const added   = member.roles.cache.filter((r) => !old.roles.cache.has(r.id));
@@ -245,7 +259,7 @@ export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: Gu
   const embed = new EmbedBuilder()
     .setAuthor({ name: `${member.user.tag} — rôles modifiés`, iconURL: member.user.displayAvatarURL({ size: 64 }) })
     .setColor(0xa855f7)
-    .setDescription(`<@${member.id}>`)
+    .setDescription(`<@${member.id}> · \`${member.user.tag}\``)
     .setTimestamp();
 
   if (added.size > 0)   embed.addFields({ name: `✅ Ajouté(s) [${added.size}]`,   value: added.map((r)   => `<@&${r.id}>`).join(" "), inline: false });
