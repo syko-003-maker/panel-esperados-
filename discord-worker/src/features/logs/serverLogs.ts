@@ -136,7 +136,7 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
     })
     .setColor(kickedBy ? 0xf97316 : 0xef4444)
     .setThumbnail(member.user?.displayAvatarURL({ size: 256 }) ?? null)
-    .setDescription(`<@${member.id}> · \`${member.user?.tag ?? member.id}\``)
+    .setDescription(`**${member.user?.tag ?? "Compte supprimé"}** · \`${member.id}\``)
     .addFields(
       { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
       ...(joinedTs  ? [{ name: "📅 Avait rejoint",  value: `<t:${joinedTs}:R>`, inline: true }] : []),
@@ -259,7 +259,7 @@ export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: Gu
   const embed = new EmbedBuilder()
     .setAuthor({ name: `${member.user.tag} — rôles modifiés`, iconURL: member.user.displayAvatarURL({ size: 64 }) })
     .setColor(0xa855f7)
-    .setDescription(`<@${member.id}> · \`${member.user.tag}\``)
+    .setDescription(`**${member.user.tag}** · \`${member.id}\``)
     .setTimestamp();
 
   if (added.size > 0)   embed.addFields({ name: `✅ Ajouté(s) [${added.size}]`,   value: added.map((r)   => `<@&${r.id}>`).join(" "), inline: false });
