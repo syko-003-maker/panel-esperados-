@@ -270,49 +270,63 @@ export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: Gu
 
 // ─── Vocal ───────────────────────────────────────────────────────────────────
 
-export function onVoiceStateUpdate(oldState: any, newState: any): void {
+export async function onVoiceStateUpdate(oldState: any, newState: any): Promise<void> {
   const member = newState.member ?? oldState.member;
   if (!member || member.user.bot) return;
 
   const guild = newState.guild ?? oldState.guild;
 
-  // Récupérer les channels depuis le cache ou l'état
   const oldChannelId = oldState.channelId ?? oldState.channel?.id ?? null;
   const newChannelId = newState.channelId ?? newState.channel?.id ?? null;
 
-  if (oldChannelId === newChannelId) return; // Mute/unmute/caméra — pas un mouvement
+  if (oldChannelId === newChannelId) return;
 
   const oldChannel = oldChannelId ? (guild.channels.cache.get(oldChannelId) ?? { id: oldChannelId }) : null;
   const newChannel = newChannelId ? (guild.channels.cache.get(newChannelId) ?? { id: newChannelId }) : null;
+
+  // Détecter si un modérateur a déplacé le membre (audit log type 26 = MEMBER_MOVE)
+  let movedBy: string | null = null;
+  if (oldChannel && newChannel) {
+    try {
+      await new Promise((r) => setTimeout(r, 600));
+      const logs = await guild.fetchAuditLogs({ type: 26, limit: 5 });
+      const entry = logs.entries.find(
+        (e: any) =>
+          e.executor?.id !== member.id &&
+          Date.now() - e.createdTimestamp < 5000
+      );
+      if (entry) movedBy = `<@${entry.executor?.id}>`;
+    } catch { /* non bloquant */ }
+  }
 
   let title: string;
   let color: number;
   let fields: { name: string; value: string; inline: boolean }[];
 
   if (!oldChannel && newChannel) {
-    // Connexion
     title = `🔊 ${member.user.tag} a rejoint un salon vocal`;
     color = 0x22c55e;
     fields = [
-      { name: "👤 Membre",       value: `<@${member.id}>`,          inline: true },
-      { name: "🔊 Salon rejoint", value: `<#${newChannel.id}>`,      inline: true },
+      { name: "👤 Membre",       value: `<@${member.id}>`, inline: true },
+      { name: "🔊 Salon rejoint", value: `<#${newChannel.id}>`, inline: true },
     ];
   } else if (oldChannel && !newChannel) {
-    // Déconnexion
     title = `🔇 ${member.user.tag} a quitté un salon vocal`;
     color = 0xef4444;
     fields = [
-      { name: "👤 Membre",       value: `<@${member.id}>`,          inline: true },
-      { name: "🔇 Salon quitté", value: `<#${oldChannel.id}>`,      inline: true },
+      { name: "👤 Membre",       value: `<@${member.id}>`, inline: true },
+      { name: "🔇 Salon quitté", value: `<#${oldChannel.id}>`, inline: true },
     ];
   } else {
-    // Changement de salon
-    title = `🔀 ${member.user.tag} a changé de salon vocal`;
+    title = movedBy
+      ? `🔀 ${member.user.tag} a été déplacé dans un salon vocal`
+      : `🔀 ${member.user.tag} a changé de salon vocal`;
     color = 0x3b82f6;
     fields = [
-      { name: "👤 Membre",   value: `<@${member.id}>`,          inline: true },
-      { name: "🔇 Avant",    value: `<#${oldChannel.id}>`,      inline: true },
-      { name: "🔊 Après",    value: `<#${newChannel.id}>`,      inline: true },
+      { name: "👤 Membre", value: `<@${member.id}>`,     inline: true },
+      { name: "🔇 Avant",  value: `<#${oldChannel.id}>`, inline: true },
+      { name: "🔊 Après",  value: `<#${newChannel.id}>`, inline: true },
+      ...(movedBy ? [{ name: "👮 Déplacé par", value: movedBy, inline: true }] : []),
     ];
   }
 
@@ -450,7 +464,7 @@ export function setupServerLogs(client: Client): void {
   });
   client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
   client.on("guildBanRemove",    (ban)   => onBanRemove(ban as any));
-  client.on("voiceStateUpdate",  (o, n)  => onVoiceStateUpdate(o, n));
+  client.on("voiceStateUpdate",  (o, n)  => { onVoiceStateUpdate(o, n).catch(() => {}); });
   client.on("roleUpdate",        (o, n)  => onRoleUpdate(o, n));
 
   console.log("[Logs] Système de logs activé → salon", LOGS_CHANNEL_ID);

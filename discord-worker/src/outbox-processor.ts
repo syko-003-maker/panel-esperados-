@@ -180,7 +180,7 @@ async function sendSanctionAppliedNotification(
   const typeLabel = getSanctionLabel(payload.sanctionType);
   const description = [
     `1️⃣ **Pseudo du joueur sanctionné :**`,
-    `<@${payload.discordId}>`,
+    `${payload.memberRpName} (<@${payload.discordId}>)`,
     ``,
     `2️⃣ **Raison de la sanction :**`,
     `${payload.reason?.trim() || "Aucune"}`,
@@ -579,7 +579,11 @@ async function processJob(
       break;
 
     case "SEND_MESSAGE":
-      await handleGenericMessage(job, discordClient, logsChannel as TextChannel);
+      await handleGenericMessage(job, prisma, discordClient, logsChannel as TextChannel);
+      break;
+
+    case "DELETE_MESSAGE":
+      await handleDeleteMessage(job, discordClient);
       break;
 
     case "SANCTION_NOTIFY":
@@ -1305,6 +1309,7 @@ async function handleBankDebtPingBatch(
 
 async function handleGenericMessage(
   job: OutboxJob,
+  prisma: PrismaClient,
   discordClient: DiscordClient,
   fallbackChannel: TextChannel
 ): Promise<void> {
@@ -1322,10 +1327,41 @@ async function handleGenericMessage(
     }
   }
 
+  let sentMessage: { id: string } | null = null;
   if (rawEmbeds) {
     const builtEmbeds = rawEmbeds.map((embed) => buildEmbedFromPayload((embed ?? {}) as EmbedPayload));
-    await channel.send({ content: content || undefined, embeds: builtEmbeds });
+    sentMessage = await channel.send({ content: content || undefined, embeds: builtEmbeds });
   } else {
-    await channel.send(content);
+    sentMessage = await channel.send(content);
+  }
+
+  // Sauvegarder le messageId Discord sur l'Absence si c'est un message d'absence
+  if (sentMessage && job.entity === "Absence" && job.entityId) {
+    try {
+      await prisma.absence.updateMany({
+        where: { id: job.entityId, discordMessageId: null },
+        data: { discordMessageId: sentMessage.id },
+      });
+    } catch {
+      // Non bloquant
+    }
+  }
+}
+
+async function handleDeleteMessage(
+  job: OutboxJob,
+  discordClient: DiscordClient,
+): Promise<void> {
+  const targetChannelId = String(job.channelId ?? "").trim();
+  const messageId = String(job.meta?.messageId ?? "").trim();
+  if (!targetChannelId || !messageId) return;
+
+  try {
+    const channel = await discordClient.channels.fetch(targetChannelId);
+    if (!channel || !channel.isTextBased()) return;
+    const msg = await (channel as TextChannel).messages.fetch(messageId);
+    await msg.delete();
+  } catch {
+    // Message déjà supprimé ou introuvable — pas bloquant
   }
 }
