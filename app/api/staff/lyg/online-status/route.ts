@@ -48,7 +48,9 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const raw = searchParams.get("steamIds") ?? "";
-  const steamIds = raw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 80);
+  // Valider : steamId = 17 chiffres uniquement (format Steam64)
+  const STEAM_ID_RE = /^\d{17}$/;
+  const steamIds = raw.split(",").map((s) => s.trim()).filter((s) => STEAM_ID_RE.test(s)).slice(0, 80);
 
   if (steamIds.length === 0) {
     return NextResponse.json({ ok: true, data: {} });
