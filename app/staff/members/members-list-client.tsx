@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import type { StaffMemberDto } from "@/types/staff";
 import { formatPlaytime } from "@/lib/formatPlaytime";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
-import { DataTile } from "@/components/staff/ui/DataTile";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
@@ -588,8 +587,3 @@ function MemberStatusBadge({ member, analyticsAvailable }: { member: MemberItem;
   return null;
 }
 
-function SummaryCard({ label, value, tone }: { label: string; value: number | string; tone: "default" | "success" | "warning" | "danger" }) {
-  return (
-    <DataTile label={label} value={value} tone={tone} />
-  );
-}
