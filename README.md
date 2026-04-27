@@ -10,7 +10,8 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 ### 🖥️ Panel Web
 | Module | Description |
 |--------|-------------|
-| **Membres** | Liste, recherche, filtres (actifs, inactifs...), détails, sync LYG API, liaison SteamID↔Discord |
+| **Membres** | Liste avec filtres rapides (actifs, inactifs, faible activité, top actifs, à surveiller, **en jeu**), compteurs en temps réel, statut connexion LYG affiché sur chaque carte, recherche, tri |
+| **Warns in-game** | Page dédiée listant tous les membres actifs ayant reçu une sanction in-game (depuis la DB LYG), triés par date de dernier warn, avec détail des 10 derniers warns par membre |
 | **Absences** | Workflow PENDING→APPROVED/REJECTED, justifications, notifications Discord embed, suppression auto du message Discord à expiration |
 | **Sanctions** | 7 types (oral, léger, lourd, démote, réserviste, blacklist), sync rôles Discord |
 | **Réunions** | Gestion hebdo, présences, décisions (UP/DEMOTE/WARN), finalisation automatique |
@@ -20,7 +21,7 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 | **Activité** | Score playtime + réunions + absences, snapshots hebdo, alertes |
 | **Audit** | Trace complète de toutes les actions (qui, quoi, quand) |
 
-### 🤖 Bot Discord (remplace DraftBot + JohnBot)
+### 🤖 Bot Discord
 
 #### 📋 Logs automatiques (salon dédié)
 | Événement | Description |
@@ -33,6 +34,7 @@ Gestion des membres, absences, sanctions, réunions, plaintes et intégration Di
 | ✏️ Message modifié | Avant / après |
 | 🔄 Rôles modifiés | Rôles ajoutés / retirés |
 | 🔊 Vocal | Connexion / déconnexion / changement de salon |
+| ⚠️ **Warn in-game** | Nouveau warn LYG détecté pour un membre actif → embed Discord avec raison, type, date et total warns |
 
 #### 🛡️ Modération
 | Commande | Description |
@@ -88,26 +90,58 @@ Les modérateurs (permission `Gérer les messages`) sont immunisés.
 ```
 panel/
 ├── app/
-│   ├── staff/              # Pages staff (membres, absences, réunions...)
-│   ├── (member)/           # Pages membres (absences perso, banque...)
-│   └── api/                # Routes API (REST)
+│   ├── staff/
+│   │   ├── members/            # Liste membres + fiche détail
+│   │   ├── warns/              # Page warns in-game (lecture DB)
+│   │   ├── absences/           # Gestion absences
+│   │   ├── sanctions/          # Gestion sanctions
+│   │   ├── reunions/           # Gestion réunions
+│   │   └── ...
+│   ├── (member)/               # Pages membres (absences perso, banque...)
+│   └── api/
+│       ├── staff/
+│       │   ├── members/        # CRUD membres
+│       │   ├── lyg/
+│       │   │   ├── online-status/   # Statut connexion in-game (cache 5min)
+│       │   │   └── warns-summary/   # Résumé warns depuis DB
+│       │   └── ...
+│       └── ...
 ├── src/
-│   ├── components/         # Composants React réutilisables
-│   ├── lib/                # Services, utilitaires, logique métier
-│   └── server/             # Auth, guards, rate limiting
+│   ├── components/             # Composants React réutilisables
+│   ├── lib/                    # Services, utilitaires, logique métier
+│   └── server/                 # Auth, guards, rate limiting
 ├── discord-worker/
 │   └── src/
 │       ├── features/
-│       │   ├── logs/       # Logs serveur + auto-rôle
-│       │   ├── moderation/ # Commandes ban/kick/mute/warn/clear
-│       │   └── reglement/  # Bouton acceptation règlement
-│       └── index.ts        # Point d'entrée bot
-└── prisma/                 # Schéma BDD + migrations (60+ modèles)
+│       │   ├── logs/           # Logs serveur + auto-rôle
+│       │   ├── moderation/     # Commandes ban/kick/mute/warn/clear
+│       │   ├── reglement/      # Bouton acceptation règlement
+│       │   └── lygWarnPoller.ts  # Poller warns in-game (toutes les 15min)
+│       └── index.ts            # Point d'entrée bot
+└── prisma/                     # Schéma BDD + migrations
 ```
 
 Deux services en production :
-- **Panel** (port 3000) — site web Next.js
-- **Discord Worker** (port 3001) — bot Discord + traitement queue
+- **panel-esperados.service** — site web Next.js (port 3000)
+- **discord-worker.service** — bot Discord + poller LYG
+
+---
+
+## 🔄 Poller Warns in-game
+
+Le bot poll l'API LYG toutes les **15 minutes** pour détecter les nouvelles sanctions in-game :
+
+```
+discord-worker → LYG API /warns/:steamId → compare avec DB → nouveau warn ?
+  ├─ Warn < 7 jours  → stocké en DB + embed Discord dans le salon logs
+  └─ Warn > 7 jours  → stocké en DB silencieusement (notified=true, pas de message)
+```
+
+**Déduplication** : contrainte unique `(steamId, warnDate, type)` en base — impossible d'envoyer deux fois la même notification.
+
+**Membres concernés** : uniquement les membres actifs avec `gradeLevel > 0` (exclut démotés, blacklistés, réservistes, membres ayant quitté le serveur Discord).
+
+**Anti rate-limit** : appels séquentiels avec 300ms de délai entre chaque membre. Arrêt immédiat du cycle si l'API retourne 429.
 
 ---
 
@@ -136,11 +170,14 @@ DISCORD_CLIENT_SECRET="votre_client_secret_discord"
 DISCORD_BOT_TOKEN="votre_token_bot"
 INGEST_SECRET="votre_secret_partage"
 WORKER_INTERNAL_URL="http://127.0.0.1:3001"
+LYG_BASE_URL="https://api.lyg.fr/api"
+LYG_TOKEN="votre_token_lyg"
+DISCORD_LOGS_CHANNEL_ID="id_du_salon_logs"
 ```
 
 ### 3. Base de données
 ```bash
-npx prisma migrate deploy
+npx prisma db push
 npx prisma generate
 ```
 
@@ -150,7 +187,7 @@ npx prisma generate
 npm run dev
 
 # Discord Worker (dans un autre terminal)
-npm run discord:dev
+cd discord-worker && npm run dev
 ```
 
 ---
@@ -169,14 +206,13 @@ npm run discord:dev
 ## 🏭 Déploiement production
 
 ```bash
-# Build
+# Build panel
 npm run build
+sudo systemctl restart panel-esperados.service
 
-# Démarrer le panel
-npm run start
-
-# Démarrer le worker Discord
-npm run discord:start
+# Build + restart discord worker
+cd discord-worker && npm run build
+sudo systemctl restart discord-worker.service
 ```
 
 Le site est exposé via Cloudflare Tunnel — aucun port n'est ouvert directement sur internet.
@@ -186,10 +222,10 @@ Le site est exposé via Cloudflare Tunnel — aucun port n'est ouvert directemen
 ## 🔐 Sécurité
 
 - Authentification Discord OAuth obligatoire
-- RBAC (rôles + permissions granulaires) sur toutes les routes
+- RBAC (rôles + permissions granulaires) sur toutes les routes — guard `requireChefOrEtatMajor`
 - Fichiers .env jamais commités (.gitignore configuré)
 - Base de données accessible uniquement en local (127.0.0.1)
-- Ports 3000 et 3001 bloqués par le pare-feu (UFW)
+- Ports 3000 bloqués par le pare-feu (UFW)
 - IP réelle cachée derrière Cloudflare
 
 ---
@@ -215,6 +251,8 @@ Chaque message/rôle passe par cette queue avec retry automatique en cas d'éche
 | Session expirée après migration DB | Se déconnecter et se reconnecter |
 | Rôles Discord non synchronisés | Appeler `/syncroles` dans Discord |
 | Logs Discord vides | Vérifier que Message Content Intent est activé dans le Developer Portal |
+| Warns in-game non reçus | Vérifier `LYG_TOKEN` et `DISCORD_LOGS_CHANNEL_ID` dans le .env du discord-worker |
+| Membres fantômes dans warns | Membres avec `gradeLevel=0` filtrés automatiquement — vérifier la sync Discord roles |
 
 ---
 
@@ -224,6 +262,8 @@ Chaque message/rôle passe par cette queue avec retry automatique en cas d'éche
 - Les composants Prisma passés au client → sérialiser en JSON (Date → string)
 - Pour OAuth en local → toujours utiliser `http://localhost:3000` (pas l'IP LAN)
 - Le bot pré-charge les 100 derniers messages de chaque salon au démarrage (pour les logs de suppression)
+- `resolveFamilyId("esperados")` → retourne le CUID de la famille en DB (ne jamais utiliser le slug directement dans Prisma)
+- Statut connexion LYG : le champ `connected` est un entier `0`/`1`, utiliser `Boolean()` pour convertir
 
 ---
 
