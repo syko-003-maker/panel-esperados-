@@ -3,6 +3,7 @@ import { getSession } from "@/auth";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { triggerDiscordRenameAsync } from "@/lib/discord/rename";
 
 /**
  * ✅ MEGA PATCH #2: PATCH /api/staff/members/[memberId]/update-rpname
@@ -75,8 +76,10 @@ export async function PATCH(
       { staffId: session.user.id }
     );
 
-    // ✅ TODO: Trigger Discord bot rename si nécessaire
-    // (implémenter plus tard avec endpoint bot internal)
+    // Déclencher le renommage Discord en arrière-plan (fire-and-forget)
+    if (updated.discordId) {
+      triggerDiscordRenameAsync(updated.discordId, trimmedRpName);
+    }
 
     return NextResponse.json({
       ok: true,

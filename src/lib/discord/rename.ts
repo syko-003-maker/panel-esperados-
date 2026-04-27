@@ -36,16 +36,13 @@ export async function triggerDiscordRename(
       return { success: false, reason: "worker_not_configured" };
     }
 
-    const response = await fetch(`${workerUrl}/internal/rename`, {
+    const response = await fetch(`${workerUrl}/internal/discord/rename`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Internal-Secret": process.env.WORKER_INTERNAL_SECRET || "",
+        "x-ingest-secret": process.env.INGEST_SECRET || "",
       },
-      body: JSON.stringify({
-        discordId,
-        newNickname: rpName,
-      }),
+      body: JSON.stringify({ discordId, rpName, reason: "staff-update" }),
     });
 
     if (!response.ok) {

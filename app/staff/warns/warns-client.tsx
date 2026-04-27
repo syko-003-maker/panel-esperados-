@@ -167,7 +167,7 @@ export default function WarnsClient() {
                   {isOpen && (
                     <div className="border-t border-white/8 px-4 pb-4 pt-3">
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        5 derniers warns
+                        10 derniers warns
                       </p>
                       <div className="space-y-2">
                         {member.recentWarns.map((warn, i) => (
