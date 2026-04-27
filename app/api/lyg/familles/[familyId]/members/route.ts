@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { FAMILY_SLUG } from "@/lib/family";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 
 type Context = {
   params: Promise<{
@@ -8,6 +9,8 @@ type Context = {
 };
 
 export async function GET(req: Request, context: Context) {
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
   const { familyId: receivedFamilyId } = await context.params;
 
   // CRITICAL: Force SLUG ONLY - reject or warn if different

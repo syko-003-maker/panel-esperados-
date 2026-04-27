@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { getDiscordRolesForUserWithStatus, CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
 import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 import { debug } from "@/lib/logger";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 
 // ✅ CRITICAL: Log environment variables immediately
 const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
@@ -114,6 +115,9 @@ async function verifyMemberStatusViaRest(discordId: string): Promise<"active" | 
 }
 
 export async function GET(req: Request) {
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
+
   try {
     const url = new URL(req.url);
     const discordIdsParam = url.searchParams.get("discordIds");

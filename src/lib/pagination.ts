@@ -77,7 +77,7 @@ export function parsePaginationParams(searchParams: URLSearchParams): Pagination
  */
 export function parseSearchParams(searchParams: URLSearchParams) {
   return {
-    q: (searchParams.get("q") ?? "").trim().toLowerCase(),
+    q: (searchParams.get("q") ?? "").trim().toLowerCase().slice(0, 100),
     status: searchParams.get("status") ?? null,
     type: searchParams.get("type") ?? null,
     activeOnly: searchParams.get("activeOnly") === "true",

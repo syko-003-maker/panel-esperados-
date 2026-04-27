@@ -5,8 +5,11 @@
 import { NextResponse } from "next/server";
 import { debug } from "@/lib/logger";
 import { batchFetchDiscordMembers } from "@/lib/discord-batch-reliable";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 
 export async function GET(req: Request) {
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
   const url = new URL(req.url);
   const idsParam = url.searchParams.get("ids");
 

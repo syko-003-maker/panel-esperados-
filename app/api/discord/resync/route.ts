@@ -199,9 +199,8 @@ async function resyncAllMembers(): Promise<{ synced: number; errors: number }> {
 }
 
 export async function POST(req: Request) {
-  // Verify secret
-  const url = new URL(req.url);
-  const secret = url.searchParams.get("secret");
+  // Verify secret via header (not URL — secrets in URLs appear in server logs)
+  const secret = req.headers.get("x-worker-secret") ?? new URL(req.url).searchParams.get("secret");
 
   if (WORKER_SECRET && secret !== WORKER_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

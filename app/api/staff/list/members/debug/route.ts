@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 
 /**
- * DEBUG ROUTE: No filters, just raw member list
+ * DEBUG ROUTE: Raw member list
  * GET /api/staff/list/members/debug
- * PUBLIC - No auth needed for debugging
+ * Protected: requires Chef or Etat-Major
  */
 export async function GET() {
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) return guard;
   try {
     console.log("\n=== DEBUG ROUTE: RAW MEMBER LIST ===");
 
