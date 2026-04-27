@@ -23,6 +23,9 @@ import {
 	NotebookPen,
 	Shield,
 	UserRound,
+	Wifi,
+	WifiOff,
+	TriangleAlert,
 } from "lucide-react";
 
 type GradeHistoryEntry = {
@@ -82,6 +85,20 @@ type Recruitment = {
 	createdAt: string;
 };
 
+type LygPlayerInfo = {
+	steamid: string;
+	last_name: string;
+	coins: number;
+	connected: boolean;
+};
+
+type LygWarn = {
+	reason: string;
+	type: string;
+	date: string;
+	expired: boolean;
+};
+
 type AbsenceEntry = {
 	id: string;
 	type: "MEETING" | "GENERAL";
@@ -139,6 +156,9 @@ export function MemberDetailClient({
 	const [complaints, setComplaints] = useState<Complaint[]>([]);
 	const [recruitments, setRecruitments] = useState<Recruitment[]>([]);
 	const [absences, setAbsences] = useState<AbsenceEntry[]>([]);
+	const [playerInfo, setPlayerInfo] = useState<LygPlayerInfo | null>(null);
+	const [warns, setWarns] = useState<LygWarn[]>([]);
+	const [warnsTotal, setWarnsTotal] = useState(0);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -157,21 +177,36 @@ export function MemberDetailClient({
 		async function loadRelatedData() {
 			setError(null);
 			try {
-				const historyRes = await fetch(`/api/staff/members/by-discord/${member.discordId}/history`, { cache: "no-store" });
-				if (historyRes.ok) {
-					const historyData = await historyRes.json();
+				const [historyRes, complaintsRes, recruitmentsRes, playerRes, warnsRes] = await Promise.allSettled([
+					fetch(`/api/staff/members/by-discord/${member.discordId}/history`, { cache: "no-store" }),
+					fetch("/api/staff/complaints", { cache: "no-store" }),
+					fetch(`/api/staff/list/recruitments?q=${member.discordId}`, { cache: "no-store" }),
+					member.steamId ? fetch(`/api/staff/members/${member.id}/lyg-player`, { cache: "no-store" }) : Promise.resolve(null),
+					member.steamId ? fetch(`/api/staff/members/${member.id}/lyg-warns?limit=50`, { cache: "no-store" }) : Promise.resolve(null),
+				]);
+
+				if (historyRes.status === "fulfilled" && historyRes.value?.ok) {
+					const historyData = await historyRes.value.json();
 					setAbsences(Array.isArray(historyData?.data?.absences) ? historyData.data.absences : []);
 				}
-
-				const complaintsRes = await fetch("/api/staff/complaints", { cache: "no-store" });
-				if (complaintsRes.ok) {
-					const data = await complaintsRes.json();
+				if (complaintsRes.status === "fulfilled" && complaintsRes.value?.ok) {
+					const data = await complaintsRes.value.json();
 					setComplaints((data?.data || []).slice(0, 10));
 				}
-				const recruitmentsRes = await fetch(`/api/staff/list/recruitments?q=${member.discordId}`, { cache: "no-store" });
-				if (recruitmentsRes.ok) {
-					const data = await recruitmentsRes.json();
+				if (recruitmentsRes.status === "fulfilled" && recruitmentsRes.value?.ok) {
+					const data = await recruitmentsRes.value.json();
 					setRecruitments(data?.data || []);
+				}
+				if (playerRes.status === "fulfilled" && playerRes.value?.ok) {
+					const data = await playerRes.value.json();
+					if (data?.ok) setPlayerInfo(data.data);
+				}
+				if (warnsRes.status === "fulfilled" && warnsRes.value?.ok) {
+					const data = await warnsRes.value.json();
+					if (data?.ok) {
+						setWarns(data.data?.data ?? []);
+						setWarnsTotal(data.data?.total ?? 0);
+					}
 				}
 			} catch (err) {
 				console.error("Failed to load related data:", err);
@@ -264,6 +299,33 @@ export function MemberDetailClient({
 				</div>
 			</MotionSection>
 
+			{member.steamId ? (
+				<MotionSection delay={0.05}>
+					<div className="grid gap-3 md:grid-cols-3">
+						<DataTile
+							label="Statut en jeu"
+							value={
+								playerInfo === null
+									? "Chargement..."
+									: playerInfo.connected
+										? <span className="flex items-center gap-2 text-emerald-400"><Wifi className="h-4 w-4" /> Connecté</span>
+										: <span className="flex items-center gap-2 text-slate-400"><WifiOff className="h-4 w-4" /> Hors ligne</span>
+							}
+							tone={playerInfo?.connected ? "success" : "default"}
+						/>
+						<DataTile
+							label="Dernier nom RP (jeu)"
+							value={playerInfo?.last_name ?? "—"}
+						/>
+						<DataTile
+							label="Coins"
+							value={playerInfo ? `${playerInfo.coins.toLocaleString("fr-FR")} 💰` : "—"}
+							tone="info"
+						/>
+					</div>
+				</MotionSection>
+			) : null}
+
 			{error ? (
 				<SectionCard
 					title="Chargement partiel"
@@ -316,6 +378,35 @@ export function MemberDetailClient({
 					</div>
 				)}
 			</SectionCard>
+
+			{member.steamId ? (
+				<SectionCard
+					title={`Warns in-game (${warnsTotal})`}
+					description="Avertissements reçus en jeu sur le serveur Garry's Mod, récupérés depuis l'API LYG."
+					icon={TriangleAlert}
+				>
+					{loading ? (
+						<LoadingState title="Chargement des warns" description="Récupération des warns depuis l'API LYG." />
+					) : warns.length === 0 ? (
+						<EmptyState title="Aucun warn" description="Ce membre n'a reçu aucun avertissement en jeu." />
+					) : (
+						<SurfaceTable headers={["Statut", "Type", "Raison", "Date"]}>
+							{warns.map((warn, i) => (
+								<tr key={i} className="border-t border-white/8">
+									<td className="px-4 py-3">
+										<StatusBadge tone={warn.expired ? "neutral" : "warning"}>
+											{warn.expired ? "Expiré" : "Actif"}
+										</StatusBadge>
+									</td>
+									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{warn.type}</td>
+									<td className="px-4 py-3 text-sm text-slate-400">{warn.reason}</td>
+									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(warn.date)}</td>
+								</tr>
+							))}
+						</SurfaceTable>
+					)}
+				</SectionCard>
+			) : null}
 
 			<SectionCard
 				title={`Sanctions (${member.sanctions.length})`}

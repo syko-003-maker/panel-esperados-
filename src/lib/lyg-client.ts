@@ -823,6 +823,63 @@ export function getBodySnippet(text: string | undefined, maxLen = 500): string {
  */
 export const lygFetchMembers = fetchLygMembers;
 
+// ─── Player info (/api/players/:steamid) ─────────────────────────────────────
+
+export interface LygPlayerInfo {
+  steamid: string;
+  last_name: string;
+  discordid: string;
+  coins: number;
+  connected: boolean;
+}
+
+export async function fetchLygPlayer(
+  steamId: string,
+  opts?: { timeoutMs?: number }
+): Promise<LygResponse<LygPlayerInfo>> {
+  const res = await lyFetch<any>(`/api/players/${steamId}`, opts);
+  if (res.ok && res.data) {
+    const playerData: LygPlayerInfo = res.data?.data ?? res.data;
+    return { ...res, data: playerData };
+  }
+  return { ...res, data: undefined };
+}
+
+// ─── Warns (/api/warns/:steamid64) ───────────────────────────────────────────
+
+export interface LygWarn {
+  reason: string;
+  type: string;
+  date: string;
+  expired: boolean;
+}
+
+export interface LygWarnsResponse {
+  data: LygWarn[];
+  total: number;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+export async function fetchLygWarns(
+  steamId64: string,
+  opts?: { timeoutMs?: number; page?: number; limit?: number }
+): Promise<LygResponse<LygWarnsResponse>> {
+  const params = new URLSearchParams();
+  if (opts?.page)  params.set("page",  String(opts.page));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+  const path  = `/api/warns/${steamId64}${query ? `?${query}` : ""}`;
+  const res   = await lyFetch<LygWarnsResponse>(path, { timeoutMs: opts?.timeoutMs });
+  return res;
+}
+
 /**
  * Fetch family endpoint text (legacy compatibility - now uses single endpoint).
  * This function is used by lyg-banklogs.ts for compatibility.
