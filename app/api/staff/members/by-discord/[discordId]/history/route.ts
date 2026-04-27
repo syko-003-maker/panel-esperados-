@@ -3,6 +3,7 @@ import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { formatBanklogTime } from "@/lib/banklogs-formatter";
 import { computeAbsenceUiStatus, parseAbsenceMeta } from "@/lib/meetings";
+import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 
 export async function GET(
   _req: Request,
@@ -14,11 +15,12 @@ export async function GET(
 
   try {
     const { discordId } = await params;
+    const familyId = await resolveFamilyId(DEFAULT_FAMILY_ID);
 
     const member = await prisma.member.findUnique({
       where: {
         familyId_discordId: {
-          familyId: "esperados",
+          familyId,
           discordId,
         },
       },
@@ -108,7 +110,12 @@ export async function GET(
     }) : [];
 
     const absences = await prisma.absence.findMany({
-      where: { memberId: member.id },
+      where: {
+        OR: [
+          { memberId: member.id },
+          ...(member.discordId ? [{ discordId: member.discordId }] : []),
+        ],
+      },
       orderBy: { createdAt: "desc" },
       take: 50,
       select: {

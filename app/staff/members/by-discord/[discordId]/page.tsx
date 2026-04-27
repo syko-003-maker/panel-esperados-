@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
-import { getSession } from "@/auth";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
+import { requireChefOrEtatMajor } from "@/lib/guards";
 import { MemberDetailClient } from "./member-detail-client";
 
 export default async function MemberDetailPage({
@@ -11,19 +11,17 @@ export default async function MemberDetailPage({
 }) {
   const { discordId } = await params;
 
-  const session = await getSession();
-  if (!session?.user) {
-    redirect("/api/auth/signin");
+  const guard = await requireChefOrEtatMajor();
+  if (guard instanceof Response) {
+    const location = guard.headers.get("Location") ?? "/staff/forbidden";
+    redirect(location);
   }
 
-  const user = await prisma.user.findFirst({
-    where: { email: session.user.email },
-    select: { isStaff: true, isChef: true },
-  });
-
-  if (!user?.isStaff && !user?.isChef) {
-    redirect("/");
-  }
+  // Resolve isChef for UI permissions (best-effort)
+  const userEmail = guard.session?.user?.email ?? null;
+  const dbUser = userEmail
+    ? await prisma.user.findFirst({ where: { email: userEmail }, select: { isChef: true } })
+    : null;
 
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
 
@@ -97,5 +95,5 @@ export default async function MemberDetailPage({
     })),
   };
 
-  return <MemberDetailClient member={data} isChef={user?.isChef ?? false} />;
+  return <MemberDetailClient member={data} isChef={dbUser?.isChef ?? false} />;
 }

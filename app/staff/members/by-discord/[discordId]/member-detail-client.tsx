@@ -17,10 +17,8 @@ import {
 	AlertTriangle,
 	ArrowLeft,
 	CalendarDays,
-	ClipboardList,
 	History,
-	MessageSquareText,
-	NotebookPen,
+
 	Shield,
 	UserRound,
 	Wifi,
@@ -68,21 +66,6 @@ type Member = {
 	updatedAt: string;
 	gradeHistory: GradeHistoryEntry[];
 	sanctions: SanctionEntry[];
-};
-
-type Complaint = {
-	id: string;
-	channelId: string;
-	status: string;
-	createdAtDiscord: string;
-};
-
-type Recruitment = {
-	id: string;
-	ticketKey: string;
-	status: string;
-	rpName: string | null;
-	createdAt: string;
 };
 
 type LygPlayerInfo = {
@@ -153,8 +136,6 @@ export function MemberDetailClient({
 	member: Member;
 	isChef: boolean;
 }) {
-	const [complaints, setComplaints] = useState<Complaint[]>([]);
-	const [recruitments, setRecruitments] = useState<Recruitment[]>([]);
 	const [absences, setAbsences] = useState<AbsenceEntry[]>([]);
 	const [playerInfo, setPlayerInfo] = useState<LygPlayerInfo | null>(null);
 	const [warns, setWarns] = useState<LygWarn[]>([]);
@@ -162,25 +143,12 @@ export function MemberDetailClient({
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
-	const staffNotes = useMemo(() => {
-		return member.gradeHistory
-			.filter((h) => Boolean(h.notes?.trim()))
-			.map((h) => ({
-				id: h.id,
-				date: h.changedAt,
-				author: h.changedBy ?? member.discordId,
-				content: h.notes?.trim() ?? "",
-			}));
-	}, [member.gradeHistory, member.discordId]);
-
 	useEffect(() => {
 		async function loadRelatedData() {
 			setError(null);
 			try {
-				const [historyRes, complaintsRes, recruitmentsRes, playerRes, warnsRes] = await Promise.allSettled([
+				const [historyRes, playerRes, warnsRes] = await Promise.allSettled([
 					fetch(`/api/staff/members/by-discord/${member.discordId}/history`, { cache: "no-store" }),
-					fetch("/api/staff/complaints", { cache: "no-store" }),
-					fetch(`/api/staff/list/recruitments?q=${member.discordId}`, { cache: "no-store" }),
 					member.steamId ? fetch(`/api/staff/members/${member.id}/lyg-player`, { cache: "no-store" }) : Promise.resolve(null),
 					member.steamId ? fetch(`/api/staff/members/${member.id}/lyg-warns?limit=50`, { cache: "no-store" }) : Promise.resolve(null),
 				]);
@@ -189,19 +157,11 @@ export function MemberDetailClient({
 					const historyData = await historyRes.value.json();
 					setAbsences(Array.isArray(historyData?.data?.absences) ? historyData.data.absences : []);
 				}
-				if (complaintsRes.status === "fulfilled" && complaintsRes.value?.ok) {
-					const data = await complaintsRes.value.json();
-					setComplaints((data?.data || []).slice(0, 10));
-				}
-				if (recruitmentsRes.status === "fulfilled" && recruitmentsRes.value?.ok) {
-					const data = await recruitmentsRes.value.json();
-					setRecruitments(data?.data || []);
-				}
 				if (playerRes.status === "fulfilled" && playerRes.value?.ok) {
 					const data = await playerRes.value.json();
 					if (data?.ok) setPlayerInfo(data.data);
 				}
-				if (warnsRes.status === "fulfilled" && warnsRes.value?.ok) {
+				if (warnsRes.status === "fulfilled" && warnsRes.value) {
 					const data = await warnsRes.value.json();
 					if (data?.ok) {
 						setWarns(data.data?.data ?? []);
@@ -257,7 +217,7 @@ export function MemberDetailClient({
 	})();
 
 	const rankTone = stableRank.rankRoleId || stableRank.rankLabel ? "accent" : stableRank.neutralState ? "warning" : "neutral";
-	const complaintsPreview = complaints.slice(0, 10);
+
 
 	return (
 		<PageShell
@@ -431,83 +391,6 @@ export function MemberDetailClient({
 							);
 						})}
 					</SurfaceTable>
-				)}
-			</SectionCard>
-
-			<SectionCard
-				title={`Plaintes liées (${complaintsPreview.length})`}
-				description="Dernières plaintes visibles depuis le panel staff pour ce membre."
-				icon={MessageSquareText}
-			>
-				{loading ? (
-					<LoadingState title="Chargement des plaintes" description="Récupération des plaintes liées au membre." />
-				) : complaintsPreview.length === 0 ? (
-					<EmptyState title="Aucune plainte trouvée" description="Aucune plainte exploitable n'a été trouvée pour ce membre." />
-				) : (
-					<SurfaceTable headers={["Statut", "Canal", "Date de création"]}>
-						{complaintsPreview.map((complaint) => {
-							const meta = getStatusMeta(complaint.status, "complaint");
-							return (
-								<tr key={complaint.id} className="border-t border-white/8">
-									<td className="px-4 py-3">
-										<StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
-									</td>
-									<td className="px-4 py-3 font-mono text-sm text-slate-300">{complaint.channelId}</td>
-									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(complaint.createdAtDiscord)}</td>
-								</tr>
-							);
-						})}
-					</SurfaceTable>
-				)}
-			</SectionCard>
-
-			<SectionCard
-				title={`Recrutements liés (${recruitments.length})`}
-				description="Suivi rapide des recrutements associés au Discord de ce membre."
-				icon={ClipboardList}
-			>
-				{loading ? (
-					<LoadingState title="Chargement des recrutements" description="Récupération des recrutements liés au membre." />
-				) : recruitments.length === 0 ? (
-					<EmptyState title="Aucun recrutement trouvé" description="Aucun recrutement lié n'a été identifié pour ce membre." />
-				) : (
-					<SurfaceTable headers={["Statut", "Ticket", "Nom RP", "Date de création"]}>
-						{recruitments.map((recruitment) => {
-							const meta = getStatusMeta(recruitment.status, "recruitment");
-							return (
-								<tr key={recruitment.id} className="border-t border-white/8">
-									<td className="px-4 py-3">
-										<StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
-									</td>
-									<td className="px-4 py-3 font-mono text-sm text-slate-300">{recruitment.ticketKey}</td>
-									<td className="px-4 py-3 text-sm text-slate-100">{recruitment.rpName || "-"}</td>
-									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(recruitment.createdAt)}</td>
-								</tr>
-							);
-						})}
-					</SurfaceTable>
-				)}
-			</SectionCard>
-
-			<SectionCard
-				title="Notes internes staff"
-				description="Notes métier historisées depuis les changements de grade et annotations internes."
-				icon={NotebookPen}
-			>
-				{staffNotes.length === 0 ? (
-					<EmptyState title="Aucune note interne" description="Aucune note staff n'est disponible pour cette fiche membre." />
-				) : (
-					<div className="space-y-3">
-						{staffNotes.map((note, index) => (
-							<MotionSection key={note.id} delay={0.02 + index * 0.01}>
-								<div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-									<div className="text-xs text-slate-500">{fmtDate(note.date)}</div>
-									<div className="mt-2 text-sm font-semibold text-slate-100">Auteur : {note.author}</div>
-									<div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{note.content}</div>
-								</div>
-							</MotionSection>
-						))}
-					</div>
 				)}
 			</SectionCard>
 

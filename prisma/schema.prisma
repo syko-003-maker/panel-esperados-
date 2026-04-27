@@ -178,6 +178,7 @@ model Member {
   meetingRows   MeetingRow[]
   complaintsFiled Complaint[] @relation("ComplaintFiled")
   complaintsReceived Complaint[] @relation("ComplaintReceived")
+  lygWarns       LygWarn[]
 
   @@unique([familyId, steamId])
   @@unique([familyId, discordId])
@@ -1290,4 +1291,22 @@ model DiscordWarn {
   createdAt     DateTime @default(now())
 
   @@index([guildId, targetId])
+}
+
+model LygWarn {
+  id         String   @id @default(cuid())
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  steamId    String
+  reason     String
+  type       String
+  warnDate   DateTime
+  expired    Boolean  @default(false)
+  notified   Boolean  @default(false) // warn Discord envoyé ?
+  seenAt     DateTime @default(now())
+
+  @@unique([steamId, warnDate, type]) // déduplique par steamId+date+type
+  @@index([memberId])
+  @@index([steamId])
+  @@index([warnDate])
 }

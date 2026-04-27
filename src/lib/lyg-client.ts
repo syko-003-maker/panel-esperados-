@@ -839,7 +839,8 @@ export async function fetchLygPlayer(
 ): Promise<LygResponse<LygPlayerInfo>> {
   const res = await lyFetch<any>(`/api/players/${steamId}`, opts);
   if (res.ok && res.data) {
-    const playerData: LygPlayerInfo = res.data?.data ?? res.data;
+    const raw = res.data?.data ?? res.data;
+    const playerData: LygPlayerInfo = { ...raw, connected: Boolean(raw?.connected) };
     return { ...res, data: playerData };
   }
   return { ...res, data: undefined };

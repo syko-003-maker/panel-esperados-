@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
 import { getSession } from "@/auth";
-import { enqueueMessageFromTemplate, getOrCreateDiscordConfig } from "@/lib/discord/discord";
+import { enqueueMessage, getOrCreateDiscordConfig } from "@/lib/discord/discord";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { resolveFamilyId } from "@/lib/family";
 
@@ -388,19 +388,33 @@ export async function POST(req: Request) {
 
     try {
       const config = await getOrCreateDiscordConfig(familySlug);
-      await enqueueMessageFromTemplate({
-        familyId,
-        channelId: config.absencesChannelId,
-        key: "absence.requested",
-        vars: {
-          discordId: member.discordId ?? discordId,
-          startAt: created.startAt.toISOString(),
-          endAt: created.endAt.toISOString(),
-          status: created.status,
-        },
-        entity: "Absence",
-        entityId: created.id,
-      });
+      if (config.absencesChannelId) {
+        const fmtFr = (d: Date) =>
+          d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const memberDiscordId = member.discordId ?? discordId;
+        const periodeLabel = `Du ${fmtFr(created.startAt)} au ${fmtFr(created.endAt)}`;
+        const embed = {
+          title: "📅 Absence déclarée",
+          description: "Nouvelle absence déclarée par le staff.",
+          color: 0x3b82f6,
+          fields: [
+            { name: "👤 Membre", value: member.rpName || "Inconnu", inline: true },
+            ...(memberDiscordId ? [{ name: "🆔 Discord ID", value: memberDiscordId, inline: true }] : []),
+            { name: "📅 Période concernée", value: periodeLabel, inline: false },
+            ...(created.reason ? [{ name: "📝 Motif", value: created.reason, inline: false }] : []),
+          ],
+          footer: { text: "Panel Los Esperados" },
+          timestamp: new Date().toISOString(),
+        };
+        await enqueueMessage({
+          familyId,
+          channelId: config.absencesChannelId,
+          content: memberDiscordId ? `<@${memberDiscordId}>` : "",
+          entity: "Absence",
+          entityId: created.id,
+          meta: { embeds: [embed] },
+        });
+      }
     } catch (err) {
       logWarn("absence_create_discord_enqueue_failed", { requestId, error: String(err) });
     }

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import Link from "next/link";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import type { StaffMemberDto } from "@/types/staff";
 import { formatPlaytime } from "@/lib/formatPlaytime";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
@@ -37,6 +36,8 @@ function getAbsenceTypeLabel(type: "MEETING" | "GENERAL") {
   return type === "MEETING" ? "Absence réunion" : "Absence générale";
 }
 
+type OnlineStatus = { connected: boolean; last_name: string | null; coins: number | null };
+
 type MembersScope = "active" | "all" | "demoted" | "non_link" | "blacklisted" | "reservists";
 type MembersSortBy = "name" | "grade" | "playtime7d" | "status";
 type MembersSortDir = "asc" | "desc";
@@ -50,13 +51,16 @@ const SCOPE_OPTIONS: Array<{ value: MembersScope; label: string }> = [
   { value: "non_link", label: "Non link" },
 ];
 
-const QUICK_FILTER_OPTIONS: Array<{ value: QuickFilter; label: string }> = [
-  { value: "all", label: "Tout" },
-  { value: "active", label: "Actifs" },
-  { value: "inactive", label: "Inactifs" },
-  { value: "low", label: "Faible activite" },
-  { value: "top", label: "Top actifs" },
-  { value: "watch", label: "A surveiller" },
+type ExtendedFilter = QuickFilter | "online";
+
+const QUICK_FILTER_OPTIONS: Array<{ value: ExtendedFilter; label: string; icon: string; color: "default" | "green" | "emerald" | "rose" | "amber" | "cyan" | "orange" }> = [
+  { value: "all",      label: "Tous",            icon: "◈",  color: "default"  },
+  { value: "online",   label: "En jeu",          icon: "●",  color: "green"    },
+  { value: "active",   label: "Actifs",          icon: "▲",  color: "emerald"  },
+  { value: "inactive", label: "Inactifs",        icon: "▼",  color: "rose"     },
+  { value: "low",      label: "Faible activité", icon: "◐",  color: "amber"    },
+  { value: "top",      label: "Top actifs",      icon: "★",  color: "cyan"     },
+  { value: "watch",    label: "À surveiller",    icon: "⚑",  color: "orange"   },
 ];
 
 export default function MembersListClient() {
@@ -65,11 +69,12 @@ export default function MembersListClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [analyticsAvailable, setAnalyticsAvailable] = useState(false);
   const [scope, setScope] = useState<MembersScope>("active");
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
+  const [quickFilter, setQuickFilter] = useState<ExtendedFilter>("all");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<MembersSortBy>("grade");
   const [sortDir, setSortDir] = useState<MembersSortDir>("desc");
+  const [onlineMap, setOnlineMap] = useState<Record<string, OnlineStatus>>({});
 
   const loadMembers = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -90,6 +95,18 @@ export default function MembersListClient() {
     }
   }, [scope, search, sortBy, sortDir]);
 
+  const fetchOnlineStatus = useCallback(async (memberList: MemberItem[]) => {
+    const steamIds = memberList.map((m) => m.steamId).filter(Boolean) as string[];
+    if (steamIds.length === 0) return;
+    try {
+      const res = await fetch(`/api/staff/lyg/online-status?steamIds=${steamIds.join(",")}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (json?.ok && json.data) setOnlineMap(json.data);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
   const scopeLabel = scope === "active"
     ? "actif"
     : scope === "reservists"
@@ -102,18 +119,25 @@ export default function MembersListClient() {
         ? "non link"
       : "visible";
 
+  // Members (playtime from DB) — rafraîchi toutes les 10s, léger
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      void loadMembers();
-    }, 180);
-    const interval = setInterval(() => {
-      void loadMembers();
-    }, 30000);
-    return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
+    const timeout = setTimeout(() => void loadMembers(), 180);
+    const interval = setInterval(() => void loadMembers(), 10_000);
+    return () => { clearTimeout(timeout); clearInterval(interval); };
   }, [loadMembers]);
+
+  // Statuts LYG (API externe) — premier fetch dès que la liste est prête, puis toutes les 45s
+  const onlineInitDone = useRef(false);
+  useEffect(() => {
+    if (members.length === 0) return;
+    // Premier appel au chargement initial seulement
+    if (!onlineInitDone.current) {
+      onlineInitDone.current = true;
+      void fetchOnlineStatus(members);
+    }
+    const interval = setInterval(() => void fetchOnlineStatus(members), 5 * 60_000);
+    return () => clearInterval(interval);
+  }, [members, fetchOnlineStatus]);
 
   const summary = useMemo(() => {
     const activeCount = members.filter((member) => getMemberStatus(member) === "active").length;
@@ -138,10 +162,17 @@ export default function MembersListClient() {
     };
   }, [members]);
 
-  const displayedMembers = useMemo(
-    () => members.filter((member) => matchesQuickFilter(member, quickFilter, analyticsAvailable)),
-    [members, quickFilter, analyticsAvailable],
-  );
+  const displayedMembers = useMemo(() => {
+    let filtered = members.filter((member) =>
+      matchesQuickFilter(member, quickFilter === "online" ? "all" : quickFilter, analyticsAvailable)
+    );
+    if (quickFilter === "online") {
+      filtered = filtered.filter(
+        (member) => member.steamId && Boolean(onlineMap[member.steamId]?.connected)
+      );
+    }
+    return filtered;
+  }, [members, quickFilter, analyticsAvailable, onlineMap]);
 
   const copyValue = useCallback(async (value: string, key: string) => {
     try {
@@ -283,35 +314,89 @@ export default function MembersListClient() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Filtres rapides</p>
-        <div className="mt-2.5 flex flex-wrap gap-2.5">
-          {QUICK_FILTER_OPTIONS.map((option) => {
-            const selected = quickFilter === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setQuickFilter(option.value)}
-                aria-pressed={selected}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selected
-                  ? "border-[#7a1f2b]/55 bg-[#7a1f2b]/18 text-rose-100"
-                  : "border-white/10 bg-white/4 text-foreground/70 hover:bg-white/8"
-                  }`}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {QUICK_FILTER_OPTIONS.map((option) => {
+          const selected = quickFilter === option.value;
+          const count = option.value === "all"
+            ? members.length
+            : option.value === "online"
+            ? members.filter((m) => m.steamId && Boolean(onlineMap[m.steamId]?.connected)).length
+            : option.value === "active"
+            ? members.filter((m) => !isActivityExempt(m) && (getActivityBand(m.playtime7d).key === "active" || getActivityBand(m.playtime7d).key === "high")).length
+            : option.value === "inactive"
+            ? members.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "inactive").length
+            : option.value === "low"
+            ? members.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "low").length
+            : option.value === "top"
+            ? members.filter((m) => getActivityBand(m.playtime7d).key === "high").length
+            : option.value === "watch"
+            ? members.filter((m) => isWatchMember(m, analyticsAvailable)).length
+            : 0;
 
-      <div className="grid gap-3 md:grid-cols-5">
-        <SummaryCard label="Actifs" value={summary.activeCount} tone="success" />
-        <SummaryCard label="Réservistes" value={summary.reservistCount} tone="default" />
-        <SummaryCard label="Blacklist" value={summary.blacklistedCount} tone="default" />
-        <SummaryCard label="Demote" value={summary.demotedCount} tone="danger" />
-        <SummaryCard label="Non link" value={summary.nonLinkCount} tone="warning" />
+          const styles = {
+            default:  {
+              card: selected ? "border-white/20 bg-white/[0.08] shadow-[0_4px_20px_-4px_rgba(255,255,255,0.06)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-white/12 hover:bg-white/[0.04]",
+              count: selected ? "text-white" : "text-foreground/40",
+              label: selected ? "text-foreground/80" : "text-foreground/35",
+              bar: "bg-white/30",
+            },
+            green:    {
+              card: selected ? "border-emerald-500/40 bg-emerald-500/[0.08] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.2)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-emerald-500/20 hover:bg-emerald-500/[0.04]",
+              count: selected ? "text-emerald-300" : "text-foreground/40",
+              label: selected ? "text-emerald-200/70" : "text-foreground/35",
+              bar: "bg-emerald-400/60",
+            },
+            emerald:  {
+              card: selected ? "border-emerald-600/35 bg-emerald-600/[0.07] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.15)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-emerald-600/18 hover:bg-emerald-600/[0.04]",
+              count: selected ? "text-emerald-300" : "text-foreground/40",
+              label: selected ? "text-emerald-200/70" : "text-foreground/35",
+              bar: "bg-emerald-500/50",
+            },
+            rose:     {
+              card: selected ? "border-rose-500/40 bg-rose-500/[0.08] shadow-[0_4px_20px_-4px_rgba(244,63,94,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-rose-500/20 hover:bg-rose-500/[0.04]",
+              count: selected ? "text-rose-300" : "text-foreground/40",
+              label: selected ? "text-rose-200/70" : "text-foreground/35",
+              bar: "bg-rose-400/60",
+            },
+            amber:    {
+              card: selected ? "border-amber-500/40 bg-amber-500/[0.07] shadow-[0_4px_20px_-4px_rgba(245,158,11,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-amber-500/20 hover:bg-amber-500/[0.04]",
+              count: selected ? "text-amber-300" : "text-foreground/40",
+              label: selected ? "text-amber-200/70" : "text-foreground/35",
+              bar: "bg-amber-400/55",
+            },
+            cyan:     {
+              card: selected ? "border-cyan-500/40 bg-cyan-500/[0.07] shadow-[0_4px_20px_-4px_rgba(6,182,212,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-cyan-500/20 hover:bg-cyan-500/[0.04]",
+              count: selected ? "text-cyan-300" : "text-foreground/40",
+              label: selected ? "text-cyan-200/70" : "text-foreground/35",
+              bar: "bg-cyan-400/55",
+            },
+            orange:   {
+              card: selected ? "border-orange-500/40 bg-orange-500/[0.07] shadow-[0_4px_20px_-4px_rgba(249,115,22,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-orange-500/20 hover:bg-orange-500/[0.04]",
+              count: selected ? "text-orange-300" : "text-foreground/40",
+              label: selected ? "text-orange-200/70" : "text-foreground/35",
+              bar: "bg-orange-400/55",
+            },
+          }[option.color];
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setQuickFilter(option.value)}
+              aria-pressed={selected}
+              className={`group relative flex flex-col items-start overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-150 ${styles.card}`}
+            >
+              {/* accent bar top */}
+              {selected && <div className={`absolute inset-x-0 top-0 h-[2px] ${styles.bar}`} />}
+              <span className={`text-2xl font-bold tabular-nums leading-none transition-colors ${styles.count}`}>
+                {count}
+              </span>
+              <span className={`mt-1.5 text-[11px] font-semibold transition-colors ${styles.label}`}>
+                {option.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {displayedMembers.length === 0 ? (
@@ -320,13 +405,15 @@ export default function MembersListClient() {
           description={scope === "active" ? "Aucun membre actif ne correspond aux filtres courants." : "Aucun membre ne correspond aux filtres courants."}
         />
       ) : (
-      <>
-        {/* ── Vue cartes (mobile) ── */}
-        <div className="flex flex-col gap-2 md:hidden">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {displayedMembers.map((member) => {
             const activity = getActivityBand(member.playtime7d);
             const exemptActivity = isActivityExempt(member);
             const isZeroPlaytime = (member.playtime7d ?? 0) === 0;
+            const hasPrevious = analyticsAvailable && typeof member.previousPlaytime7d === "number";
+            const online = member.steamId ? onlineMap[member.steamId] : undefined;
+            const isConnected = Boolean(online?.connected);
+
             const playtimeToneClassName = exemptActivity
               ? "border-white/15 bg-white/[0.06] text-foreground/80"
               : isZeroPlaytime
@@ -334,181 +421,124 @@ export default function MembersListClient() {
               : activity.key === "low"
                 ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
+
             return (
-              <Link
+              <div
                 key={member.id}
-                href={`/staff/members/by-discord/${member.discordId}`}
                 className={[
-                  "rounded-xl border border-white/8 bg-[rgba(14,5,7,0.58)] px-4 py-3 flex items-center gap-3 hover:bg-white/[0.06] transition-colors",
+                  "relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm",
                   getMemberRowClassName(member, analyticsAvailable),
                 ].filter(Boolean).join(" ")}
               >
-                <MemberAvatar member={member} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate font-semibold text-foreground text-sm">{member.rpName ?? "-"}</p>
-                    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${playtimeToneClassName}`}>
-                      {formatPlaytime(member.playtime7d)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{member.grade ?? "-"}</span>
-                    <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
-                  </div>
-                  {member.activeAbsence ? (
-                    <div className={`mt-1.5 inline-flex flex-wrap items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${
-                      member.activeAbsence.upcoming
-                        ? "border-blue-500/30 bg-blue-500/8 text-blue-100"
-                        : "border-amber-500/30 bg-amber-500/8 text-amber-100"
+                {/* Card top accent bar — green when connected */}
+                <div className={`h-0.5 w-full ${isConnected ? "bg-emerald-500/70" : isZeroPlaytime && !exemptActivity ? "bg-rose-500/60" : activity.key === "low" && !exemptActivity ? "bg-amber-500/50" : "bg-gradient-to-r from-[#7a1f2b]/80 via-rose-700/40 to-transparent"}`} />
+
+                <div className="flex flex-col gap-0 flex-1 p-4">
+                  {/* Online status badge — first thing visible */}
+                  {member.steamId && (
+                    <div className={`mb-3 flex items-center gap-1.5 self-start rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                      online === undefined
+                        ? "border-white/10 bg-white/[0.04] text-muted-foreground"
+                        : isConnected
+                        ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-300"
+                        : "border-white/10 bg-white/[0.04] text-foreground/40"
                     }`}>
-                      {member.activeAbsence.upcoming && <span className="font-semibold text-blue-300">À venir •</span>}
+                      <span className={`h-1.5 w-1.5 rounded-full ${online === undefined ? "bg-white/20" : isConnected ? "bg-emerald-400 shadow-[0_0_5px_1px_rgba(52,211,153,0.5)]" : "bg-white/20"}`} />
+                      {online === undefined ? "…" : isConnected ? "En jeu" : "Hors ligne"}
+                    </div>
+                  )}
+
+                  {/* Avatar + name row */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative shrink-0">
+                      <MemberAvatar member={member} size="lg" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-sm text-foreground leading-tight">{member.rpName ?? "—"}</p>
+                      <p className="truncate text-[11px] text-muted-foreground mt-0.5 leading-tight">{member.grade ?? "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* Status + absence */}
+                  <div className="flex flex-wrap items-center gap-1.5 min-h-[22px]">
+                    <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
+                    {member.rankLabel && (
+                      <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-foreground/60 truncate max-w-[120px]">
+                        {member.rankLabel}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Absence banner */}
+                  {member.activeAbsence && (
+                    <div className={`mt-2.5 flex flex-wrap items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] leading-tight ${
+                      member.activeAbsence.upcoming
+                        ? "border-blue-500/25 bg-blue-500/8 text-blue-200"
+                        : "border-amber-500/25 bg-amber-500/8 text-amber-200"
+                    }`}>
+                      {member.activeAbsence.upcoming && <span className="font-bold text-blue-300">À venir ·</span>}
                       <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
-                      <span className={member.activeAbsence.upcoming ? "text-blue-200/70" : "text-amber-200/70"}>
-                        • {member.activeAbsence.upcoming
+                      <span className="opacity-70">
+                        · {member.activeAbsence.upcoming
                           ? `dès le ${new Date(member.activeAbsence.startAt).toLocaleDateString("fr-FR")}`
                           : `jusqu'au ${new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}`}
                       </span>
                     </div>
-                  ) : null}
+                  )}
+
+                  {/* Spacer */}
+                  <div className="flex-1" />
+
+                  {/* Divider */}
+                  <div className="mt-3 border-t border-white/6" />
+
+                  {/* Playtime row */}
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Playtime 7j</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {hasPrevious && !exemptActivity && (
+                        <span className={`text-[10px] font-semibold ${(member.playtimeDelta7d ?? 0) > 0 ? "text-emerald-400" : (member.playtimeDelta7d ?? 0) < 0 ? "text-rose-400" : "text-muted-foreground"}`}>
+                          {formatPlaytimeDelta(member.playtimeDelta7d)}
+                        </span>
+                      )}
+                      <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${playtimeToneClassName}`}>
+                        {formatPlaytime(member.playtime7d)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!exemptActivity && (
+                    <div className="mt-1.5 flex justify-end">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${activity.badgeClassName}`}>
+                        {activity.label}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              </Link>
+
+              </div>
             );
           })}
         </div>
-
-        {/* ── Vue tableau (desktop) ── */}
-        <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.58)] shadow-[0_25px_70px_-40px_rgba(2,0,1,0.75)] backdrop-blur-sm">
-          <table className="w-full table-auto text-sm">
-            <thead>
-              <tr className="border-b border-white/8 bg-card/80 text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                <th className="px-6 py-4 align-middle font-semibold">Membre</th>
-                <th className="px-6 py-4 align-middle font-semibold">SteamID</th>
-                <th className="px-6 py-4 align-middle font-semibold">Grade</th>
-                <th className="px-6 py-4 align-middle font-semibold">Statut</th>
-                <th className="px-6 py-4 align-middle text-right font-semibold">Playtime 7j</th>
-                <th className="px-6 py-4 align-middle font-semibold"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayedMembers.map((member) => {
-                const activity = getActivityBand(member.playtime7d);
-                const exemptActivity = isActivityExempt(member);
-                const isZeroPlaytime = (member.playtime7d ?? 0) === 0;
-                const steamCopyKey = `steam-${member.id}`;
-                const discordCopyKey = `discord-${member.id}`;
-                const hasPrevious = analyticsAvailable && typeof member.previousPlaytime7d === "number";
-                const playtimeToneClassName = exemptActivity
-                  ? "border-white/15 bg-white/[0.06] text-foreground/80"
-                  : isZeroPlaytime
-                  ? "border-rose-500/35 bg-rose-500/12 text-rose-100"
-                  : activity.key === "low"
-                    ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
-                return (
-                  <tr
-                    key={member.id}
-                    className={[
-                      "border-b border-white/6 text-foreground transition-colors hover:bg-white/[0.04] hover:ring-1 hover:ring-inset hover:ring-white/10 last:border-b-0",
-                      getMemberRowClassName(member, analyticsAvailable),
-                      isZeroPlaytime && !exemptActivity ? "ring-1 ring-inset ring-white/6" : "",
-                    ].filter(Boolean).join(" ")}
-                  >
-                    <td className="px-6 py-4 align-middle">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <MemberAvatar member={member} />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">{member.rpName ?? "-"}</p>
-                          {member.activeAbsence ? (
-                            <div className={`mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
-                              member.activeAbsence.upcoming
-                                ? "border-blue-500/30 bg-blue-500/8 text-blue-100"
-                                : "border-amber-500/30 bg-amber-500/8 text-amber-100"
-                            }`}>
-                              {member.activeAbsence.upcoming && <span className="font-semibold text-blue-300">À venir •</span>}
-                              <span className="font-semibold">{getAbsenceTypeLabel(member.activeAbsence.type)}</span>
-                              <span className={member.activeAbsence.upcoming ? "text-blue-200/70" : "text-amber-200/70"}>
-                                • {member.activeAbsence.upcoming
-                                  ? `dès le ${new Date(member.activeAbsence.startAt).toLocaleDateString("fr-FR")}`
-                                  : `jusqu'au ${new Date(member.activeAbsence.endAt).toLocaleDateString("fr-FR")}`}
-                              </span>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-middle font-mono text-xs text-foreground/70 whitespace-nowrap">
-                      <div>{member.steamId ?? "-"}</div>
-                      <div className="mt-2.5 flex flex-wrap gap-2 font-sans text-[11px]">
-                        {member.steamId ? (
-                          <button type="button" onClick={() => void copyValue(member.steamId!, steamCopyKey)} title="Copier SteamID"
-                            className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === steamCopyKey ? "border-emerald-500/50 bg-emerald-500/18 text-emerald-100" : "border-white/10 bg-card/70 text-foreground/70 hover:bg-card/90"}`}>
-                            {copiedKey === steamCopyKey ? "SteamID copie" : "Copier SteamID"}
-                          </button>
-                        ) : null}
-                        {member.discordId ? (
-                          <button type="button" onClick={() => void copyValue(member.discordId!, discordCopyKey)} title="Copier Discord ID"
-                            className={`rounded-md border px-2.5 py-1 font-semibold transition-colors ${copiedKey === discordCopyKey ? "border-amber-500/45 bg-amber-500/12 text-amber-100" : "border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"}`}>
-                            {copiedKey === discordCopyKey ? "Discord ID copie" : "Copier Discord ID"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-middle truncate text-foreground/80">{member.grade ?? "-"}</td>
-                    <td className="px-6 py-4 align-middle">
-                      <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
-                    </td>
-                    <td className="px-6 py-4 align-middle whitespace-nowrap text-right">
-                      <div className="flex justify-end">
-                        <span className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${playtimeToneClassName}`}>
-                          {formatPlaytime(member.playtime7d)}
-                        </span>
-                      </div>
-                      {!exemptActivity ? (
-                        <div className="mt-1.5 flex justify-end">
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${activity.badgeClassName}`}>
-                            {activity.label}
-                          </span>
-                        </div>
-                      ) : null}
-                      {hasPrevious && !exemptActivity ? (
-                        <div className={`mt-1.5 text-xs ${(member.playtimeDelta7d ?? 0) > 0 ? "text-emerald-300" : (member.playtimeDelta7d ?? 0) < 0 ? "text-rose-300" : "text-muted-foreground"}`}>
-                          {formatPlaytimeDelta(member.playtimeDelta7d)}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-6 py-4 align-middle">
-                      {member.discordId ? (
-                        <Link
-                          href={`/staff/members/by-discord/${member.discordId}`}
-                          className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.10] whitespace-nowrap"
-                        >
-                          Voir la fiche →
-                        </Link>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </>
       )}
     </div>
   );
 }
 
-function MemberAvatar({ member }: { member: MemberItem }) {
+function MemberAvatar({ member, size = "md" }: { member: MemberItem; size?: "md" | "lg" }) {
   const [imgFailed, setImgFailed] = useState(false);
   const avatarUrl = getDiscordAvatarUrl(member.discordId, member.discordAvatarHash);
   const fallback = (member.rpName ?? "?").trim().charAt(0).toUpperCase() || "?";
+  const sizeClass = size === "lg" ? "h-12 w-12 text-base" : "h-10 w-10 text-sm";
 
   if (avatarUrl && !imgFailed) {
     return (
       <img
         src={avatarUrl}
         alt={member.rpName ?? "Avatar Discord"}
-        className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover"
+        className={`${sizeClass} shrink-0 rounded-full border border-white/10 object-cover`}
         loading="lazy"
         referrerPolicy="no-referrer"
         onError={() => setImgFailed(true)}
@@ -517,7 +547,7 @@ function MemberAvatar({ member }: { member: MemberItem }) {
   }
 
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-card/80 text-sm font-semibold text-foreground/80">
+    <div className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-full border border-white/10 bg-card/80 font-semibold text-foreground/80`}>
       {fallback}
     </div>
   );

@@ -403,27 +403,36 @@ export default function DashboardClient() {
               Tout voir <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
-          <div className="overflow-x-auto">
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y divide-white/[0.04]">
+            {transactions.map((tx: any, i: number) => (
+              <div key={i} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <TxIcon type={tx.type} />
+                  <div>
+                    <div className="text-sm text-slate-300">{formatType(tx.type)}</div>
+                    <div className="text-xs text-slate-500">{formatDate(tx.date)}</div>
+                  </div>
+                </div>
+                <span className={`font-semibold tabular-nums text-sm ${txColor(tx.type)}`}>
+                  {tx.type === 1 ? "+" : "−"}{formatAmount(Math.abs(tx.amount))}
+                </span>
+              </div>
+            ))}
+          </div>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Date
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Type
-                  </th>
-                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Montant
-                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Date</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Type</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Montant</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((tx: any, i: number) => (
-                  <tr
-                    key={i}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
-                  >
+                  <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
                     <td className="px-5 py-3 text-slate-400">{formatDate(tx.date)}</td>
                     <td className="px-5 py-3">
                       <span className="flex items-center gap-2">
@@ -432,8 +441,7 @@ export default function DashboardClient() {
                       </span>
                     </td>
                     <td className={`px-5 py-3 text-right font-semibold tabular-nums ${txColor(tx.type)}`}>
-                      {tx.type === 1 ? "+" : "−"}
-                      {formatAmount(Math.abs(tx.amount))}
+                      {tx.type === 1 ? "+" : "−"}{formatAmount(Math.abs(tx.amount))}
                     </td>
                   </tr>
                 ))}

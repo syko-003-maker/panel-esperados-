@@ -140,6 +140,7 @@ import {
 import { handleRecruitmentDecision } from "./recruitment-decision.js";
 import { handleComplaintDecision } from "./complaint-decision.js";
 import { processOutboxQueue } from "./outbox-processor.js";
+import { pollLygWarns } from "./features/lygWarnPoller.js";
 import {
   runBanklogsAutoSyncJob,
   getBanklogsSyncIntervalMs,
@@ -508,6 +509,18 @@ client.once("ready", async () => {
       console.error("[Logs] Pré-cache guild introuvable :", err);
     }
   }, 1000);
+
+  // Schedule LYG warn polling every 5 minutes
+  let lastLygWarnPoll = 0;
+  setInterval(() => {
+    const now = Date.now();
+    if (now - lastLygWarnPoll >= 15 * 60_000) {
+      lastLygWarnPoll = now;
+      pollLygWarns(client, prisma).catch((err) =>
+        console.error("[lygWarnPoller] uncaught:", err)
+      );
+    }
+  }, 60_000); // vérifié toutes les minutes, déclenché toutes les 5 min
 
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });

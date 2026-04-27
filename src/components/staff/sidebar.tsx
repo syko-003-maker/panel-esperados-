@@ -17,6 +17,7 @@ import {
   Briefcase,
   Clock,
   BarChart3,
+  TriangleAlert,
 } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
@@ -33,6 +34,7 @@ const SIDEBAR_ITEMS = [
       { icon: Briefcase, label: "Recrutements", href: "/staff/recruitments" },
       { icon: FileText, label: "Plaintes", href: "/staff/complaints" },
       { icon: AlertCircle, label: "Sanctions", href: "/staff/sanctions" },
+      { icon: TriangleAlert, label: "Warns in-game", href: "/staff/warns" },
       { icon: Clock, label: "Absences", href: "/staff/absences" },
       { icon: Logs, label: "Réunions", href: "/staff/meetings" },
     ],

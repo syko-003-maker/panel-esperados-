@@ -1029,8 +1029,9 @@ async function poll(client: Client) {
   outboxProcessing = true;
 
   try {
-    // Check for expired sanctions every 60 seconds
     const now = Date.now();
+
+    // Check for expired sanctions every 60 seconds
     if (now - lastExpirationCheck >= 60000) {
       lastExpirationCheck = now;
       await processExpiredSanctions(client);
