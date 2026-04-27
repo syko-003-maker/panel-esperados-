@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import type { StaffMemberDto } from "@/types/staff";
 import { formatPlaytime } from "@/lib/formatPlaytime";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
@@ -334,10 +335,11 @@ export default function MembersListClient() {
                 ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
             return (
-              <div
+              <Link
                 key={member.id}
+                href={`/staff/members/by-discord/${member.discordId}`}
                 className={[
-                  "rounded-xl border border-white/8 bg-[rgba(14,5,7,0.58)] px-4 py-3 flex items-center gap-3",
+                  "rounded-xl border border-white/8 bg-[rgba(14,5,7,0.58)] px-4 py-3 flex items-center gap-3 hover:bg-white/[0.06] transition-colors",
                   getMemberRowClassName(member, analyticsAvailable),
                 ].filter(Boolean).join(" ")}
               >
@@ -369,7 +371,7 @@ export default function MembersListClient() {
                     </div>
                   ) : null}
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -384,6 +386,7 @@ export default function MembersListClient() {
                 <th className="px-6 py-4 align-middle font-semibold">Grade</th>
                 <th className="px-6 py-4 align-middle font-semibold">Statut</th>
                 <th className="px-6 py-4 align-middle text-right font-semibold">Playtime 7j</th>
+                <th className="px-6 py-4 align-middle font-semibold"></th>
               </tr>
             </thead>
             <tbody>
@@ -471,6 +474,16 @@ export default function MembersListClient() {
                         <div className={`mt-1.5 text-xs ${(member.playtimeDelta7d ?? 0) > 0 ? "text-emerald-300" : (member.playtimeDelta7d ?? 0) < 0 ? "text-rose-300" : "text-muted-foreground"}`}>
                           {formatPlaytimeDelta(member.playtimeDelta7d)}
                         </div>
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-4 align-middle">
+                      {member.discordId ? (
+                        <Link
+                          href={`/staff/members/by-discord/${member.discordId}`}
+                          className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.10] whitespace-nowrap"
+                        >
+                          Voir la fiche →
+                        </Link>
                       ) : null}
                     </td>
                   </tr>
