@@ -3,7 +3,11 @@
 # Usage: ./test-contact-notification.sh
 
 WORKER_URL="http://localhost:3001"
-WORKER_SECRET="${DISCORD_WORKER_SECRET:=esperados_ingest_secret_prod_v1_2024}"
+if [ -z "$DISCORD_WORKER_SECRET" ]; then
+  echo "ERROR: DISCORD_WORKER_SECRET env variable is required"
+  exit 1
+fi
+WORKER_SECRET="$DISCORD_WORKER_SECRET"
 
 echo "Testing contact notification endpoint..."
 echo "Worker URL: $WORKER_URL"

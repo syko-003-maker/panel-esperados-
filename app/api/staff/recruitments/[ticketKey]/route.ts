@@ -188,7 +188,6 @@ async function handleRecruitmentDecision(
       },
     });
 
-    console.log(`[recruitments] Decision recorded: ticketKey=${ticketKey} decision=${decision} staff=${staffMember.discordId} threadId=${recruitment.ticketKey || recruitment.discordThreadId}`);
 
     return NextResponse.json({ ok: true, recruitment: updatedRecruitment });
   } catch (err: any) {

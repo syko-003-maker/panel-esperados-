@@ -26,7 +26,6 @@ export async function GET(req: NextRequest) {
 
     const userId = (session as any)?.user?.id ?? (session as any)?.userId;
     const sessionDiscordId = (session as any)?.discordId ?? (session as any)?.user?.discordId;
-    console.log("[dashboard] session", { userId, discordId: sessionDiscordId });
 
     const scope = await getMemberScopeOrNull(session);
     if (!scope) {
@@ -38,7 +37,6 @@ export async function GET(req: NextRequest) {
     }
 
     const { discordId, rpName, memberId } = scope;
-    console.log("[dashboard] scope OK", { rpName, memberId, discordId });
 
     // Load member for steamId and familyId
     let steamId: string | null = null;

@@ -2,7 +2,11 @@
 # Usage: .\test-contact-notification.ps1
 
 $WORKER_URL = "http://localhost:3001"
-$WORKER_SECRET = $env:DISCORD_WORKER_SECRET ?? "esperados_ingest_secret_prod_v1_2024"
+if (-not $env:DISCORD_WORKER_SECRET) {
+    Write-Host "ERROR: DISCORD_WORKER_SECRET env variable is required" -ForegroundColor Red
+    exit 1
+}
+$WORKER_SECRET = $env:DISCORD_WORKER_SECRET
 
 Write-Host "Testing contact notification endpoint..." -ForegroundColor Green
 Write-Host "Worker URL: $WORKER_URL"

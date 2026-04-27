@@ -30,9 +30,9 @@ function ensureEnvFile(envPath: string, isRoot: boolean = false): void {
       // Root .env.prod includes panel + worker config
       content += `# Panel Configuration
 NEXTAUTH_URL=${panelBaseUrl}
-NEXTAUTH_SECRET=losesperados_super_secret_ultra
+NEXTAUTH_SECRET=${process.env.NEXTAUTH_SECRET || "CHANGE_ME_NEXTAUTH_SECRET"}
 INGEST_BASE_URL=${ingestBaseUrl}
-INGEST_SECRET=${process.env.INGEST_SECRET || "esperados_ingest_secret_prod"}
+INGEST_SECRET=${process.env.INGEST_SECRET || "CHANGE_ME_INGEST_SECRET"}
 
 # Discord Bot (Panel)
 DISCORD_BOT_TOKEN=${process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || "YOUR_BOT_TOKEN"}
@@ -50,7 +50,7 @@ CONTACT_CHANNEL_ID=${FIXED_CHANNELS.CONTACT_CHANNEL_ID}
 TICKETS_PARENT_CHANNEL_ID=${FIXED_CHANNELS.TICKETS_PARENT_CHANNEL_ID}
 TICKETS_LOGS_CHANNEL_ID=${FIXED_CHANNELS.TICKETS_LOGS_CHANNEL_ID}
 INGEST_BASE_URL=${ingestBaseUrl}
-INGEST_SECRET=${process.env.INGEST_SECRET || "esperados_ingest_secret_prod"}
+INGEST_SECRET=${process.env.INGEST_SECRET || "CHANGE_ME_INGEST_SECRET"}
 
 NODE_ENV=production
 `;

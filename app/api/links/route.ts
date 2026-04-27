@@ -68,7 +68,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "rpName is required" }, { status: 400 });
     }
 
-    console.log("[POST /api/links] Linking member:", { discordId, steamId, rpName });
 
     const existingByDiscord = await prisma.member.findUnique({
       where: { familyId_discordId: { familyId, discordId } },
@@ -143,12 +142,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "LINK_FAILED" }, { status: 500 });
     }
 
-    console.log("[POST /api/links] Member linked successfully:", {
-      id: link.id,
-      discordId: link.discordId,
-      steamId: link.steamId,
-      rpName: link.rpName,
-    });
 
     return NextResponse.json(link, { status: 201 });
   } catch (error: unknown) {
