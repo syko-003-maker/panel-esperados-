@@ -54,7 +54,7 @@ type ManualSyncResponse = {
 const formatBrussels = formatBanklogTime;
 
 function fmtMoney(n: number) {
-  return new Intl.NumberFormat("fr-BE").format(n);
+  return new Intl.NumberFormat("fr-BE").format(n) + " €";
 }
 
 function formatRelativeSync(value: string | null, nowMs: number) {

@@ -34,6 +34,7 @@ export function StaffLayout({
       "complaints-tickets": "Plaintes",
       sanctions: "Sanctions",
       absences: "Absences",
+      warns: "Warns in-game",
       banklogs: "Banque",
       stats: "Statistiques",
       activity: "Activité",

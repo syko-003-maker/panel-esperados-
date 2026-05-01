@@ -95,10 +95,10 @@ export default function StaffDashboardClient() {
   const pendingAbsencesArr = Array.isArray(pendingAbsences) ? pendingAbsences : [];
 
   const stats = [
-    { icon: AlertCircle, label: "Plaintes ouvertes", value: complaintsArr.length, tone: "warning" as const },
-    { icon: FileText, label: "Recrutements en attente", value: recruitmentsArr.length, tone: "info" as const },
-    { icon: Ban, label: "Sanctions actives", value: sanctionsArr.length, tone: "danger" as const },
-    { icon: Users, label: "Membres actifs", value: membersCount, tone: "success" as const },
+    { icon: AlertCircle, label: "Plaintes ouvertes", value: complaintsArr.length, tone: "warning" as const, href: "/staff/complaints" },
+    { icon: FileText, label: "Recrutements en attente", value: recruitmentsArr.length, tone: "info" as const, href: "/staff/recruitments" },
+    { icon: Ban, label: "Sanctions actives", value: sanctionsArr.length, tone: "danger" as const, href: "/staff/sanctions" },
+    { icon: Users, label: "Membres actifs", value: membersCount, tone: "success" as const, href: "/staff/members" },
   ];
 
   return (
@@ -167,32 +167,33 @@ export default function StaffDashboardClient() {
         {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
-            <DataTile
-              key={idx}
-              label={stat.label}
-              className="min-h-[108px]"
-              value={
-                <div className="flex min-h-[2.75rem] items-center justify-between gap-3">
-                  <div className="text-4xl font-bold tracking-tight text-slate-50">
-                    {loading ? <Skeleton className="h-8 w-14" /> : stat.value}
+            <Link key={idx} href={stat.href} className="block group">
+              <DataTile
+                label={stat.label}
+                className="min-h-[108px] transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-white/12 group-hover:shadow-lg cursor-pointer"
+                value={
+                  <div className="flex min-h-[2.75rem] items-center justify-between gap-3">
+                    <div className="text-4xl font-bold tracking-tight text-slate-50">
+                      {loading ? <Skeleton className="h-8 w-14" /> : stat.value}
+                    </div>
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${
+                      stat.tone === "warning" ? "border-amber-500/30 bg-amber-500/12" :
+                      stat.tone === "danger" ? "border-red-500/30 bg-red-500/12" :
+                      stat.tone === "success" ? "border-emerald-500/30 bg-emerald-500/12" :
+                      "border-[#9b2335]/30 bg-[#9b2335]/12"
+                    }`}>
+                      <Icon className={`h-6 w-6 ${
+                        stat.tone === "warning" ? "text-amber-300" :
+                        stat.tone === "danger" ? "text-red-300" :
+                        stat.tone === "success" ? "text-emerald-300" :
+                        "text-rose-300"
+                      }`} />
+                    </div>
                   </div>
-                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${
-                    stat.tone === "warning" ? "border-amber-500/30 bg-amber-500/12" :
-                    stat.tone === "danger" ? "border-red-500/30 bg-red-500/12" :
-                    stat.tone === "success" ? "border-emerald-500/30 bg-emerald-500/12" :
-                    "border-[#9b2335]/30 bg-[#9b2335]/12"
-                  }`}>
-                    <Icon className={`h-6 w-6 ${
-                      stat.tone === "warning" ? "text-amber-300" :
-                      stat.tone === "danger" ? "text-red-300" :
-                      stat.tone === "success" ? "text-emerald-300" :
-                      "text-rose-300"
-                    }`} />
-                  </div>
-                </div>
-              }
-              tone={stat.tone}
-            />
+                }
+                tone={stat.tone}
+              />
+            </Link>
           );
         })}
       </div>

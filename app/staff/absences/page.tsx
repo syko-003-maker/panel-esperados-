@@ -2,6 +2,7 @@ import { requireChefOrEtatMajor } from "@/lib/guards";
 import AbsencesClient from "./absences-client";
 import { redirect } from "next/navigation";
 import { PageShell } from "@/components/staff/ui/PageShell";
+import { Clock } from "lucide-react";
 
 export default async function StaffAbsencesPage() {
   const guard = await requireChefOrEtatMajor();
@@ -14,6 +15,7 @@ export default async function StaffAbsencesPage() {
     <PageShell
       title="Absences"
       description="Gestion des absences membres"
+      icon={Clock}
     >
       <AbsencesClient />
     </PageShell>

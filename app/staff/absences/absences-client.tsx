@@ -201,7 +201,7 @@ type AbsenceItem = {
 
 const TYPE_COLORS: Record<AbsenceItem["type"], string> = {
   MEETING: "bg-amber-500/15 text-amber-300 border border-amber-500/25",
-  GENERAL: "bg-violet-500/20 text-violet-300 border border-violet-500/30",
+  GENERAL: "bg-[#9b2335]/20 text-rose-300 border border-[#9b2335]/40",
 };
 
 const STATUSES: Array<AbsenceItem["uiStatus"]> = ["PENDING", "APPROVED", "REJECTED", "EXPIRED"];
@@ -560,7 +560,7 @@ export default function AbsencesClient() {
                       className={`flex flex-col gap-1.5 px-4 py-4 rounded-xl border text-left transition-all ${
                         active
                           ? t === "GENERAL"
-                            ? "bg-violet-500/15 border-violet-500/50 text-violet-200"
+                            ? "bg-[#9b2335]/20 border-[#9b2335]/60 text-rose-200"
                             : "bg-amber-500/12 border-amber-500/40 text-amber-200"
                           : "bg-white/4 border-white/8 text-muted-foreground hover:border-white/15 hover:text-foreground"
                       }`}
