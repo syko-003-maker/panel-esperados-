@@ -338,43 +338,12 @@ export default async function StaffStatsPage() {
     >
       {/* KPI Grid - 6 cards compactes et sobres */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        <KpiCard
-          label="Dépôts"
-          value={totalDeposit}
-          icon={TrendingUp}
-          color="text-emerald-400"
-        />
-        <KpiCard
-          label="Retraits"
-          value={totalWithdraw}
-          icon={TrendingDown}
-          color="text-blue-400"
-        />
-        <KpiCard
-          label="Net"
-          value={totalNet}
-          icon={DollarSign}
-          color={totalNet >= 0 ? "text-emerald-400" : "text-red-400"}
-        />
-        <KpiCard
-          label="Débiteurs"
-          value={globalDebtMembersCount}
-          icon={AlertCircle}
-          color="text-amber-400"
-          isCount
-        />
-        <KpiCard
-          label="Déficit"
-          value={globalTotalDebt}
-          icon={ArrowDown}
-          color="text-red-400"
-        />
-        <KpiCard
-          label="Banque famille"
-          value={familyBankBalance}
-          icon={Landmark}
-          color="text-amber-300"
-        />
+        <KpiCard label="Dépôts"         value={totalDeposit}           icon={TrendingUp}  variant="emerald" />
+        <KpiCard label="Retraits"        value={totalWithdraw}          icon={TrendingDown} variant="blue" />
+        <KpiCard label="Net"             value={totalNet}               icon={DollarSign}  variant={totalNet >= 0 ? "emerald" : "red"} />
+        <KpiCard label="Débiteurs"       value={globalDebtMembersCount} icon={AlertCircle} variant="orange" isCount />
+        <KpiCard label="Déficit"         value={globalTotalDebt}        icon={ArrowDown}   variant="red" />
+        <KpiCard label="Banque famille"  value={familyBankBalance}      icon={Landmark}    variant="amber" />
       </div>
 
       {/* Client Component for interactive UI */}
@@ -406,6 +375,14 @@ export default async function StaffStatsPage() {
 // SERVER-SIDE ONLY COMPONENTS
 // ============================================================================
 
+const KPI_VARIANTS = {
+  emerald: { text: "text-emerald-400", icon: "text-emerald-400", bg: "bg-emerald-500/[0.04] border-emerald-500/20" },
+  blue:    { text: "text-blue-400",    icon: "text-blue-400",    bg: "bg-blue-500/[0.04] border-blue-500/20" },
+  red:     { text: "text-red-400",     icon: "text-red-400",     bg: "bg-red-500/[0.04] border-red-500/20" },
+  orange:  { text: "text-orange-400",  icon: "text-orange-400",  bg: "bg-orange-500/[0.04] border-orange-500/20" },
+  amber:   { text: "text-amber-300",   icon: "text-amber-300",   bg: "bg-amber-500/[0.04] border-amber-500/20" },
+} as const;
+
 /**
  * KPI Card - compact et sobre
  */
@@ -413,24 +390,25 @@ function KpiCard({
   label,
   value,
   icon: Icon,
-  color = "text-white",
+  variant = "amber",
   isCount = false,
 }: {
   label: string;
   value: number | null;
   icon: React.ComponentType<{ className?: string }>;
-  color?: string;
+  variant?: keyof typeof KPI_VARIANTS;
   isCount?: boolean;
 }) {
+  const v = KPI_VARIANTS[variant];
   return (
-    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-3 overflow-hidden">
+    <div className={`rounded-xl border p-3 overflow-hidden ${v.bg}`}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider leading-tight">
           {label}
         </span>
-        <Icon className={`h-3.5 w-3.5 ${color} opacity-60 flex-shrink-0 mt-0.5`} />
+        <Icon className={`h-3.5 w-3.5 opacity-70 flex-shrink-0 mt-0.5 ${v.icon}`} />
       </div>
-      <div className={`text-lg font-bold leading-tight truncate ${color}`}>
+      <div className={`text-lg font-bold leading-tight truncate ${v.text}`}>
         {value == null ? "N/A" : isCount ? value : formatMoney(value)}
       </div>
     </div>

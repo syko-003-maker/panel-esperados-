@@ -338,13 +338,17 @@ export default function SanctionsClient() {
 
   if (members.length === 0 && !loading) {
     return (
-      <EmptyState
-        icon={<Users />}
-        title="Aucun membre trouvé"
-        description="Importez ou liez des membres pour créer des sanctions"
-        actionLabel="Aller aux membres"
-        onAction={() => (window.location.href = "/staff/members")}
-      />
+      <SectionCard title="Sanctions" description="Créer et gérer les sanctions des membres">
+        <div className="flex min-h-[260px] items-center justify-center">
+          <EmptyState
+            icon={<Users />}
+            title="Aucun membre trouvé"
+            description="Importez ou liez des membres pour créer des sanctions"
+            actionLabel="Aller aux membres"
+            onAction={() => (window.location.href = "/staff/members")}
+          />
+        </div>
+      </SectionCard>
     );
   }
 

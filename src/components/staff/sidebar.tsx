@@ -106,10 +106,10 @@ export function Sidebar({
                         href={item.href}
                         prefetch={false}
                         onClick={onClose}
-                        className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-all duration-200 ease-in-out ${
+                        className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ease-in-out ${
                           active
-                            ? "border-l-2 border-l-[#c42a43] border-r-transparent border-t-transparent border-b-transparent rounded-r-2xl rounded-l-none bg-[#7a1f2b]/35 text-slate-50 pl-[10px] shadow-[0_4px_24px_-4px_rgba(196,42,67,0.45)]"
-                            : "border border-transparent text-foreground/70 hover:border-white/8 hover:bg-white/[0.05] hover:text-slate-100 transition-all duration-150"
+                            ? "bg-[#7a1f2b]/40 text-slate-50 shadow-[inset_3px_0_0_#c42a43,0_4px_20px_-4px_rgba(196,42,67,0.40)]"
+                            : "text-foreground/70 hover:bg-white/[0.05] hover:text-slate-100"
                         }`}
                       >
                         <Icon

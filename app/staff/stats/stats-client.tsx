@@ -81,7 +81,7 @@ export default function StatsClient(props: StatsClientProps) {
         <StatusBadge tone="warning">Devise: EUR</StatusBadge>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
         <RankedMiniList title="Top entrants" icon={TrendingUp} rows={props.topDeposits} color="text-emerald-300" />
         <RankedMiniList title="Top sortants" icon={TrendingDown} rows={props.topWithdraws} color="text-blue-300" />
         <RankedMiniList title="Top positif" icon={DollarSign} rows={props.topNet} color="text-green-300" />
@@ -190,6 +190,7 @@ function DebtorsGlobalSection({ debtors, maxDebt }: { debtors: DebtorRow[]; maxD
       title="Débiteurs"
       description="Vue consolidée des membres actuellement en déficit."
       icon={AlertCircle}
+      className="h-full"
     >
       {debtors.length === 0 ? (
         <EmptyState
@@ -234,7 +235,7 @@ function RankedMiniList({
   color: string;
 }) {
   return (
-    <SectionCard title={title} icon={Icon} actions={<StatusBadge>Top 15</StatusBadge>}>
+    <SectionCard title={title} icon={Icon} actions={<StatusBadge>Top 15</StatusBadge>} className="h-full">
       {rows.length === 0 ? (
         <EmptyState
           icon={<AlertCircle className="h-12 w-12" />}

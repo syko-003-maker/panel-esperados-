@@ -213,7 +213,7 @@ export default function ComplaintsClient() {
                       <div className="text-xs text-muted-foreground line-clamp-2">{c.reason ?? c.title ?? "—"}</div>
                       <div className="flex items-center justify-between pt-1">
                         <span className="text-[11px] text-muted-foreground">{fmtDate(c.createdAt)}</span>
-                        <Link href={`/staff/complaints/${c.id}`} className="text-xs text-primary hover:underline">
+                        <Link href={`/staff/complaints/${c.id}`} className="text-xs font-medium text-amber-300 hover:text-amber-200 hover:underline transition-colors">
                           Voir →
                         </Link>
                       </div>
@@ -274,7 +274,7 @@ export default function ComplaintsClient() {
                           <td className="px-4 py-3">
                             <Link
                               href={`/staff/complaints/${c.id}`}
-                              className="text-xs text-primary hover:underline whitespace-nowrap"
+                              className="text-xs font-medium text-amber-300 hover:text-amber-200 hover:underline whitespace-nowrap transition-colors"
                             >
                               Voir →
                             </Link>

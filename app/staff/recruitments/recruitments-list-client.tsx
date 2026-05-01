@@ -343,11 +343,10 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                           <MotionButtonFrame>
                             <button
                               onClick={() => { setConfirmDeleteId(r.id); setConfirmRefuseId(null); setDeleteError(null); }}
-                              className="inline-flex items-center gap-1.5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/15"
+                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/8 bg-transparent text-red-500/50 transition-colors hover:border-red-500/30 hover:bg-red-500/8 hover:text-red-400"
                               title="Supprimer ce recrutement"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                              Supprimer
                             </button>
                           </MotionButtonFrame>
                         </>
