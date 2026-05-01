@@ -609,12 +609,12 @@ export default function SanctionsClient() {
                       {canDeleteItem ? (
                         <Button
                           size="sm"
-                          variant="destructive"
-                          className="rounded-xl"
+                          variant="ghost"
+                          className="rounded-xl border border-red-500/25 bg-transparent text-red-400/80 hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300 text-xs px-2.5 h-7"
                           onClick={() => deleteSanction(item)}
                           disabled={deletingId === item.id || clearingId === item.id}
                         >
-                          {deletingId === item.id ? "Suppression..." : "Supprimer"}
+                          {deletingId === item.id ? "…" : "Supprimer"}
                         </Button>
                       ) : null}
                       {canClearItem ? (

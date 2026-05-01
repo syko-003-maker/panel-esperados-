@@ -12,9 +12,11 @@ import { MotionButtonFrame, MotionSection, StaffMotionProvider } from "@/compone
 export function StaffLayout({
   children,
   accessLevel = "full",
+  user,
 }: {
   children: React.ReactNode;
   accessLevel?: "full" | "recruiter";
+  user?: { name?: string | null; image?: string | null };
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
@@ -124,6 +126,27 @@ export function StaffLayout({
                 <h2 className="truncate text-lg font-semibold tracking-tight text-slate-50">{getPageTitle()}</h2>
               </div>
             </div>
+
+            {/* Connected user */}
+            {user && (
+              <div className="flex items-center gap-2.5 pl-4">
+                {user.image ? (
+                  <img
+                    src={user.image}
+                    alt={user.name ?? ""}
+                    className="h-8 w-8 rounded-full border border-white/10 object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[#7a1f2b]/40 text-xs font-bold text-amber-200">
+                    {(user.name ?? "?").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="hidden sm:block max-w-[120px] truncate text-sm font-medium text-slate-300">
+                  {user.name ?? "—"}
+                </span>
+              </div>
+            )}
           </header>
 
           <main className="flex-1 overflow-y-auto">

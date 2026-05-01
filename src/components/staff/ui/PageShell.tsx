@@ -13,24 +13,26 @@ export function PageShell({ title, description, icon: Icon, actions, children }:
   return (
     <div className="mx-auto w-full max-w-[96rem] space-y-6">
       <MotionSection>
-        <div className="relative overflow-hidden rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.78),rgba(10,3,5,0.86))] px-6 py-6 shadow-[0_30px_80px_-38px_rgba(2,0,1,0.90)] backdrop-blur-xl sm:px-8">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(122,31,43,0.22),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.07),transparent_32%)]" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-4">
+        <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.78),rgba(10,3,5,0.86))] px-5 py-4 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.90)] backdrop-blur-xl sm:px-6">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(122,31,43,0.20),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.06),transparent_32%)]" />
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
               {Icon && (
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#9b2335]/40 bg-[#9b2335]/25 shadow-[0_12px_30px_rgba(155,35,53,0.25)]">
-                  <Icon className="h-7 w-7 text-amber-300" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#9b2335]/40 bg-[#9b2335]/25 shadow-[0_8px_20px_rgba(155,35,53,0.22)]">
+                  <Icon className="h-5 w-5 text-amber-300" />
                 </div>
               )}
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Espace staff</div>
-                <h1 className="text-3xl font-bold tracking-tight text-slate-50 sm:text-[2rem]">{title}</h1>
-                {description && (
-                  <p className="max-w-3xl text-sm leading-6 text-slate-300">{description}</p>
-                )}
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Espace staff</div>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  <h1 className="text-xl font-bold tracking-tight text-slate-50 sm:text-2xl">{title}</h1>
+                  {description && (
+                    <p className="text-xs leading-5 text-slate-400">{description}</p>
+                  )}
+                </div>
               </div>
             </div>
-            {actions && <div className="relative flex flex-wrap items-center gap-2">{actions}</div>}
+            {actions && <div className="relative flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
           </div>
         </div>
       </MotionSection>

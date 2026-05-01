@@ -423,15 +423,15 @@ function KpiCard({
   isCount?: boolean;
 }) {
   return (
-    <div className="rounded-lg bg-white/5 border border-white/10 p-3">
+    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-3 overflow-hidden">
       <div className="flex items-start justify-between gap-2 mb-2">
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wide">
+        <span className="text-[10px] font-semibold text-white/55 uppercase tracking-wider leading-tight">
           {label}
         </span>
-        <Icon className={`h-4 w-4 ${color} opacity-70 flex-shrink-0`} />
+        <Icon className={`h-3.5 w-3.5 ${color} opacity-60 flex-shrink-0 mt-0.5`} />
       </div>
-      <div className={`text-2xl font-bold ${color}`}>
-        {value == null ? "Indisponible" : isCount ? value : formatMoney(value)}
+      <div className={`text-lg font-bold leading-tight truncate ${color}`}>
+        {value == null ? "N/A" : isCount ? value : formatMoney(value)}
       </div>
     </div>
   );

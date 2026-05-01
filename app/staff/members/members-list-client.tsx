@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import type { StaffMemberDto } from "@/types/staff";
 import { formatPlaytime } from "@/lib/formatPlaytime";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
+import { ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
@@ -431,14 +433,20 @@ export default function MembersListClient() {
             ]);
             const isTopGrade = member.rankRoleId ? TOP_GRADE_IDS.has(member.rankRoleId) : false;
 
+            const cardHref = member.discordId
+              ? `/staff/members/by-discord/${member.discordId}`
+              : null;
+
             return (
-              <div
+              <Link
                 key={member.id}
+                href={cardHref ?? "#"}
+                tabIndex={cardHref ? 0 : -1}
                 className={[
-                  "group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] transition-all duration-200 hover:-translate-y-0.5 cursor-pointer",
+                  "group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] transition-all duration-200 hover:-translate-y-1",
                   isTopGrade
-                    ? "border-amber-500/30 hover:border-amber-400/50 hover:shadow-[0_16px_40px_-8px_rgba(245,158,11,0.25)]"
-                    : "border-white/8 hover:border-white/15 hover:shadow-[0_16px_40px_-8px_rgba(122,31,43,0.30)]",
+                    ? "border-amber-500/30 hover:border-amber-400/50 hover:shadow-[0_20px_50px_-8px_rgba(245,158,11,0.30)]"
+                    : "border-white/8 hover:border-white/18 hover:shadow-[0_20px_50px_-8px_rgba(122,31,43,0.35)]",
                   getMemberRowClassName(member, analyticsAvailable),
                 ].filter(Boolean).join(" ")}
               >
@@ -540,7 +548,12 @@ export default function MembersListClient() {
                   )}
                 </div>
 
-              </div>
+                {/* Voir le profil — hover indicator */}
+                <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-slate-400 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  Profil <ChevronRight className="h-3 w-3" />
+                </div>
+
+              </Link>
             );
           })}
         </div>

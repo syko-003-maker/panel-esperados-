@@ -167,10 +167,10 @@ export default function StaffDashboardClient() {
         {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
-            <Link key={idx} href={stat.href} className="block group">
+            <Link key={idx} href={stat.href} className="block group h-full">
               <DataTile
                 label={stat.label}
-                className="min-h-[108px] transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-white/12 group-hover:shadow-lg cursor-pointer"
+                className="h-full min-h-[100px] transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-white/12 group-hover:shadow-lg cursor-pointer"
                 value={
                   <div className="flex min-h-[2.75rem] items-center justify-between gap-3">
                     <div className="text-4xl font-bold tracking-tight text-slate-50">

@@ -243,7 +243,13 @@ export default async function Layout({
   // Staff: render normal staff layout
   return (
     <div className="relative">
-      <StaffLayout accessLevel={accessLevel}>
+      <StaffLayout
+        accessLevel={accessLevel}
+        user={{
+          name: session.user?.name ?? null,
+          image: session.user?.image ?? null,
+        }}
+      >
         {children}
       </StaffLayout>
     </div>
