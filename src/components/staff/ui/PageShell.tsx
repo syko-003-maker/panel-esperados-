@@ -18,13 +18,13 @@ export function PageShell({ title, description, icon: Icon, actions, children }:
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-4">
               {Icon && (
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#7a1f2b]/35 bg-[#7a1f2b]/20 shadow-[0_12px_30px_rgba(122,31,43,0.18)]">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#9b2335]/40 bg-[#9b2335]/25 shadow-[0_12px_30px_rgba(155,35,53,0.25)]">
                   <Icon className="h-7 w-7 text-amber-300" />
                 </div>
               )}
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Espace staff</div>
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-50 sm:text-[2rem]">{title}</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-slate-50 sm:text-[2rem]">{title}</h1>
                 {description && (
                   <p className="max-w-3xl text-sm leading-6 text-slate-300">{description}</p>
                 )}

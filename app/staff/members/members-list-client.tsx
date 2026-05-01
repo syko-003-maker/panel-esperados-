@@ -269,7 +269,7 @@ export default function MembersListClient() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="RP name, SteamID, Discord ID"
-            className="mt-2 w-full rounded-lg border border-white/10 bg-card/70 px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-amber-500/40"
+            className="mt-2 w-full rounded-lg border border-white/12 bg-card/70 px-3 py-2 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 focus:bg-white/[0.06]"
           />
         </div>
 
@@ -426,7 +426,7 @@ export default function MembersListClient() {
               <div
                 key={member.id}
                 className={[
-                  "relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm",
+                  "group relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] transition-all duration-200 hover:border-white/15 hover:shadow-[0_16px_40px_-8px_rgba(122,31,43,0.30)] hover:-translate-y-0.5 cursor-pointer",
                   getMemberRowClassName(member, analyticsAvailable),
                 ].filter(Boolean).join(" ")}
               >
@@ -454,8 +454,8 @@ export default function MembersListClient() {
                       <MemberAvatar member={member} size="lg" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-sm text-foreground leading-tight">{member.rpName ?? "—"}</p>
-                      <p className="truncate text-[11px] text-muted-foreground mt-0.5 leading-tight">{member.grade ?? "—"}</p>
+                      <p className="truncate font-semibold text-[15px] text-slate-50 leading-tight">{member.rpName ?? "—"}</p>
+                      <p className="truncate text-xs text-slate-400 mt-0.5 leading-tight">{member.grade ?? "—"}</p>
                     </div>
                   </div>
 
@@ -495,7 +495,7 @@ export default function MembersListClient() {
                   {/* Playtime row */}
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Playtime 7j</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Playtime 7j</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {hasPrevious && !exemptActivity && (

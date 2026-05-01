@@ -15,7 +15,7 @@ export function SectionCard({ title, description, icon: Icon, actions, children,
   return (
     <MotionCard
       className={cn(
-        "relative overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.68),rgba(10,3,5,0.78))] shadow-[0_24px_64px_-40px_rgba(2,0,1,0.80)] backdrop-blur-xl",
+        "relative overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.68),rgba(10,3,5,0.78))] shadow-[0_24px_64px_-40px_rgba(2,0,1,0.80)] backdrop-blur-xl transition-all duration-200",
         className
       )}
     >
@@ -29,8 +29,8 @@ export function SectionCard({ title, description, icon: Icon, actions, children,
               </div>
             )}
             <div className="space-y-1">
-              {title && <h2 className="text-lg font-semibold tracking-tight text-slate-50">{title}</h2>}
-              {description && <p className="text-sm leading-6 text-slate-400">{description}</p>}
+              {title && <h2 className="text-[17px] font-semibold tracking-tight text-slate-50">{title}</h2>}
+              {description && <p className="text-[13px] leading-5 text-slate-400">{description}</p>}
             </div>
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}

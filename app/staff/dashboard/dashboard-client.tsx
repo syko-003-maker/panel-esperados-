@@ -173,11 +173,21 @@ export default function StaffDashboardClient() {
               className="min-h-[108px]"
               value={
                 <div className="flex min-h-[2.75rem] items-center justify-between gap-3">
-                  <div className="text-2xl font-semibold tracking-tight text-slate-50">
+                  <div className="text-4xl font-bold tracking-tight text-slate-50">
                     {loading ? <Skeleton className="h-8 w-14" /> : stat.value}
                   </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
-                    <Icon className="h-5 w-5 text-slate-200" />
+                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${
+                    stat.tone === "warning" ? "border-amber-500/30 bg-amber-500/12" :
+                    stat.tone === "danger" ? "border-red-500/30 bg-red-500/12" :
+                    stat.tone === "success" ? "border-emerald-500/30 bg-emerald-500/12" :
+                    "border-[#9b2335]/30 bg-[#9b2335]/12"
+                  }`}>
+                    <Icon className={`h-6 w-6 ${
+                      stat.tone === "warning" ? "text-amber-300" :
+                      stat.tone === "danger" ? "text-red-300" :
+                      stat.tone === "success" ? "text-emerald-300" :
+                      "text-rose-300"
+                    }`} />
                   </div>
                 </div>
               }

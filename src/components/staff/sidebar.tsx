@@ -108,14 +108,14 @@ export function Sidebar({
                         onClick={onClose}
                         className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-all duration-200 ease-in-out ${
                           active
-                            ? "border-[#7a1f2b]/35 bg-[#7a1f2b]/18 text-slate-50 shadow-[0_14px_32px_-26px_rgba(122,31,43,0.60)]"
-                            : "border-transparent text-foreground/80 hover:border-white/8 hover:bg-white/[0.04] hover:text-foreground"
+                            ? "border-l-2 border-l-[#9b2335] border-r-transparent border-t-transparent border-b-transparent rounded-r-2xl rounded-l-none bg-[#7a1f2b]/20 text-slate-50 pl-[10px] shadow-[0_4px_20px_-4px_rgba(155,35,53,0.35)]"
+                            : "border border-transparent text-foreground/70 hover:border-white/8 hover:bg-white/[0.05] hover:text-slate-100 transition-all duration-150"
                         }`}
                       >
                         <Icon
                           className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${
                             active
-                              ? "text-amber-300 opacity-100"
+                              ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]"
                               : "opacity-70 group-hover:opacity-100"
                           }`}
                         />
