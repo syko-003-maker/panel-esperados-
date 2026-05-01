@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
+import { Users, AlertTriangle, Clock, BarChart3, type LucideIcon } from "lucide-react";
 
 type WarnEntry = {
   reason: string;
@@ -96,10 +97,10 @@ export default function WarnsClient() {
     <div className="space-y-5">
       {/* Stats bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Membres avec warns" value={members.length} color="amber" />
-        <StatCard label="Warns actifs" value={activeOnlyMembers.length} color="rose" />
-        <StatCard label="Warns expirés seulement" value={expiredOnlyMembers.length} color="default" />
-        <StatCard label="Total warns" value={members.reduce((s, m) => s + m.totalWarns, 0)} color="default" />
+        <StatCard label="Membres avec warns" value={members.length} color="amber" icon={Users} />
+        <StatCard label="Warns actifs" value={activeOnlyMembers.length} color="rose" icon={AlertTriangle} />
+        <StatCard label="Warns expirés" value={expiredOnlyMembers.length} color="default" icon={Clock} />
+        <StatCard label="Total warns" value={members.reduce((s, m) => s + m.totalWarns, 0)} color="default" icon={BarChart3} />
       </div>
 
       <SectionCard
@@ -134,7 +135,11 @@ export default function WarnsClient() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-sm text-foreground">{member.rpName ?? "—"}</span>
-                        <span className="text-xs text-muted-foreground">{member.grade ?? "—"}</span>
+                        {member.grade && (
+                          <span className="rounded-full border border-white/12 bg-white/[0.07] px-2 py-0.5 text-[10px] font-medium text-slate-300">
+                            {member.grade}
+                          </span>
+                        )}
                         {hasActive && (
                           <span className="rounded-full border border-rose-500/40 bg-rose-500/12 px-2 py-0.5 text-[10px] font-bold text-rose-300">
                             {member.activeWarns} actif{member.activeWarns > 1 ? "s" : ""}
@@ -196,15 +201,26 @@ export default function WarnsClient() {
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: "amber" | "rose" | "default" }) {
+function StatCard({ label, value, color, icon: Icon }: { label: string; value: number; color: "amber" | "rose" | "default"; icon?: LucideIcon }) {
   const colorClass =
     color === "amber" ? "text-amber-300" :
     color === "rose"  ? "text-rose-300"  :
     "text-foreground";
+  const iconBg =
+    color === "amber" ? "border-amber-500/25 bg-amber-500/10" :
+    color === "rose"  ? "border-rose-500/25 bg-rose-500/10"  :
+    "border-white/10 bg-white/[0.06]";
   return (
     <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${colorClass}`}>{value}</p>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        {Icon && (
+          <div className={`flex h-7 w-7 items-center justify-center rounded-lg border ${iconBg}`}>
+            <Icon className={`h-3.5 w-3.5 ${colorClass}`} />
+          </div>
+        )}
+      </div>
+      <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
     </div>
   );
 }

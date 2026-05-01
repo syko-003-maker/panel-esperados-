@@ -839,9 +839,6 @@ export default function AbsencesClient() {
                           <div className="font-medium text-foreground text-sm">
                             {item.member?.rpName ?? "—"}
                           </div>
-                          <div className="hidden sm:block text-[11px] text-muted-foreground font-mono mt-0.5">
-                            {item.member?.discordId ?? item.discordId ?? "—"}
-                          </div>
                         </td>
 
                         {/* Type */}
@@ -864,16 +861,18 @@ export default function AbsencesClient() {
                         </td>
 
                         {/* Motif */}
-                        <td className="hidden md:table-cell px-3 md:px-4 py-3 max-w-[180px]">
-                          <div className="text-xs text-foreground truncate">{item.reason ?? "—"}</div>
+                        <td className="hidden md:table-cell px-3 md:px-4 py-3 max-w-[200px]">
+                          <div className="text-xs text-foreground truncate" title={item.reason ?? undefined}>
+                            {item.reason ?? "—"}
+                          </div>
                           {item.rejectionReason && (
                             <div className="text-[11px] text-rose-300 mt-0.5 truncate" title={item.rejectionReason}>
-                              Refus : {item.rejectionReason}
+                              ↳ Refus : {item.rejectionReason}
                             </div>
                           )}
-                          {item.notes && (
-                            <div className="text-[11px] text-muted-foreground mt-0.5 truncate" title={item.notes}>
-                              {item.notes}
+                          {item.notes && item.notes !== item.reason && (
+                            <div className="text-[11px] text-muted-foreground/70 mt-0.5 truncate" title={item.notes}>
+                              + {item.notes}
                             </div>
                           )}
                         </td>

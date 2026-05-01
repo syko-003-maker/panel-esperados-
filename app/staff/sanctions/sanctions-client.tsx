@@ -445,7 +445,6 @@ export default function SanctionsClient() {
             >
               {saving ? "Création..." : "Créer la sanction"}
             </Button>
-            <p className="text-xs text-muted-foreground">La création conserve la logique actuelle et envoie toujours les valeurs backend d&apos;origine.</p>
           </div>
 
           {error && (
