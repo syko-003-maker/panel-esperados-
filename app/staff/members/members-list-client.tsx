@@ -422,28 +422,50 @@ export default function MembersListClient() {
                 ? "border-amber-500/35 bg-amber-500/10 text-amber-100"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
 
+            // Top grades: Chef famille, Général, Consejero, Comandante → bordure or
+            const TOP_GRADE_IDS = new Set([
+              "1429607761720770623", // Chef famille
+              "1312845999739375710", // Général
+              "1312845999366209686", // Consejero
+              "1312845999366209685", // Comandante
+            ]);
+            const isTopGrade = member.rankRoleId ? TOP_GRADE_IDS.has(member.rankRoleId) : false;
+
             return (
               <div
                 key={member.id}
                 className={[
-                  "group relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] transition-all duration-200 hover:border-white/15 hover:shadow-[0_16px_40px_-8px_rgba(122,31,43,0.30)] hover:-translate-y-0.5 cursor-pointer",
+                  "group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] transition-all duration-200 hover:-translate-y-0.5 cursor-pointer",
+                  isTopGrade
+                    ? "border-amber-500/30 hover:border-amber-400/50 hover:shadow-[0_16px_40px_-8px_rgba(245,158,11,0.25)]"
+                    : "border-white/8 hover:border-white/15 hover:shadow-[0_16px_40px_-8px_rgba(122,31,43,0.30)]",
                   getMemberRowClassName(member, analyticsAvailable),
                 ].filter(Boolean).join(" ")}
               >
-                {/* Card top accent bar — green when connected */}
-                <div className={`h-0.5 w-full ${isConnected ? "bg-emerald-500/70" : isZeroPlaytime && !exemptActivity ? "bg-rose-500/60" : activity.key === "low" && !exemptActivity ? "bg-amber-500/50" : "bg-gradient-to-r from-[#7a1f2b]/80 via-rose-700/40 to-transparent"}`} />
+                {/* Card top accent bar */}
+                <div className={`h-0.5 w-full ${
+                  isTopGrade ? "bg-gradient-to-r from-amber-400/70 via-amber-300/40 to-transparent"
+                  : isConnected ? "bg-emerald-500/70"
+                  : isZeroPlaytime && !exemptActivity ? "bg-rose-500/60"
+                  : activity.key === "low" && !exemptActivity ? "bg-amber-500/50"
+                  : "bg-gradient-to-r from-[#7a1f2b]/80 via-rose-700/40 to-transparent"
+                }`} />
 
                 <div className="flex flex-col gap-0 flex-1 p-4">
-                  {/* Online status badge — first thing visible */}
+                  {/* Online status badge */}
                   {member.steamId && (
-                    <div className={`mb-3 flex items-center gap-1.5 self-start rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    <div className={`mb-3 flex items-center gap-2 self-start rounded-full border px-3 py-1 text-[11px] font-bold ${
                       online === undefined
                         ? "border-white/10 bg-white/[0.04] text-muted-foreground"
                         : isConnected
-                        ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-300"
-                        : "border-white/10 bg-white/[0.04] text-foreground/40"
+                        ? "border-emerald-400/50 bg-emerald-500/18 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.15)]"
+                        : "border-white/8 bg-white/[0.03] text-foreground/35"
                     }`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${online === undefined ? "bg-white/20" : isConnected ? "bg-emerald-400 shadow-[0_0_5px_1px_rgba(52,211,153,0.5)]" : "bg-white/20"}`} />
+                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                        online === undefined ? "bg-white/20"
+                        : isConnected ? "bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.6)]"
+                        : "bg-white/15"
+                      }`} />
                       {online === undefined ? "…" : isConnected ? "En jeu" : "Hors ligne"}
                     </div>
                   )}
