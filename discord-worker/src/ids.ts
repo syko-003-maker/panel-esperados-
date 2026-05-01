@@ -11,9 +11,10 @@ function getEnv(key: string, required: boolean = true): string {
 
 const ROLE_ID_REGEX = /^[0-9]{17,20}$/;
 const DEFAULT_ROLE_IDS = {
-  CHEF_FAMILLE_ROLE_ID: "1429607761720770623",
-  ETAT_MAJOR_ROLE_ID: "1312845999366209683",
-  RECRUTEUR_ROLE_ID: "1312845999215214618",
+  CHEF_FAMILLE_ROLE_ID:       "1429607761720770623",
+  SOUS_CHEF_FAMILLE_ROLE_ID:  "1488610892282335314",
+  ETAT_MAJOR_ROLE_ID:         "1312845999366209683",
+  RECRUTEUR_ROLE_ID:          "1312845999215214618",
 } as const;
 
 function resolveRoleId(label: keyof typeof DEFAULT_ROLE_IDS): string | null {
@@ -70,6 +71,8 @@ export const IDS = new Proxy(
           return getEnv("GUILD_ID");
         case "CHEF_FAMILLE_ROLE_ID":
           return resolveRoleId("CHEF_FAMILLE_ROLE_ID");
+        case "SOUS_CHEF_FAMILLE_ROLE_ID":
+          return resolveRoleId("SOUS_CHEF_FAMILLE_ROLE_ID");
         case "ETAT_MAJOR_ROLE_ID":
           return resolveRoleId("ETAT_MAJOR_ROLE_ID");
         case "RECRUTEUR_ROLE_ID":

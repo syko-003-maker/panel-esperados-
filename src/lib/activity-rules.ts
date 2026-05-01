@@ -1,4 +1,5 @@
 import { DEFAULT_ACTIVITY_CONFIG } from "@/lib/activity-config";
+import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
 
 export type ActivityFlag = "INACTIVE_14D" | "LOW_PLAYTIME";
 export type SuggestedAction = "NONE" | "WARN_ORAL" | "WARN_LIGHT" | "RECOMMEND_KICK";
@@ -22,6 +23,7 @@ type MemberLike = {
   familyRole?: string | null;
   group?: string | null;
   roles?: string[] | null;
+  discordRoleIds?: string[] | null; // champ DB — utilisé pour l'exemption Chef/Sous-Chef
 };
 
 function valueContainsWl1(value: string) {
@@ -31,6 +33,15 @@ function valueContainsWl1(value: string) {
 export function isWl1Exempt(member: MemberLike | null | undefined): boolean {
   if (!member) return false;
   if (member.isChef) return true;
+
+  // Exemption Chef Famille / Sous-Chef Famille via discordRoleIds (champ DB)
+  const roleIds = Array.isArray(member.discordRoleIds) ? member.discordRoleIds : [];
+  if (
+    (CHEF_FAMILLE_ROLE_ID && roleIds.includes(CHEF_FAMILLE_ROLE_ID)) ||
+    (SOUS_CHEF_FAMILLE_ROLE_ID && roleIds.includes(SOUS_CHEF_FAMILLE_ROLE_ID))
+  ) {
+    return true;
+  }
 
   const candidates = [
     member.rank,

@@ -144,6 +144,7 @@ function getPanelUrl(type: "recruitment" | "complaint", ticketKey: string): stri
 function getStaffPing(guild: Guild | null): string | null {
   const mentions = [
     safeRoleMention(guild, IDS.CHEF_FAMILLE_ROLE_ID, "(rôle chef-famille)"),
+    safeRoleMention(guild, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, "(rôle sous-chef-famille)"),
     safeRoleMention(guild, IDS.ETAT_MAJOR_ROLE_ID, "(rôle état-major)"),
   ].filter(Boolean).join(" ");
   return mentions || null;
@@ -152,6 +153,7 @@ function getStaffPing(guild: Guild | null): string | null {
 function getRecruitmentStaffPing(guild: Guild | null): string | null {
   const mentions = [
     safeRoleMention(guild, IDS.CHEF_FAMILLE_ROLE_ID, "(rôle chef-famille)"),
+    safeRoleMention(guild, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, "(rôle sous-chef-famille)"),
     safeRoleMention(guild, IDS.ETAT_MAJOR_ROLE_ID, "(rôle état-major)"),
     safeRoleMention(guild, IDS.RECRUTEUR_ROLE_ID, "(rôle recruteur)"),
   ].filter(Boolean).join(" ");
@@ -207,13 +209,13 @@ async function createTicketThread(
 }
 
 function getComplaintStaffRoleIds(): string[] {
-  return [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID].filter(
+  return [IDS.CHEF_FAMILLE_ROLE_ID, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID].filter(
     (roleId): roleId is string => Boolean(roleId)
   );
 }
 
 function getRecruitmentStaffRoleIds(): string[] {
-  return [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
+  return [IDS.CHEF_FAMILLE_ROLE_ID, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
     (roleId): roleId is string => Boolean(roleId)
   );
 }

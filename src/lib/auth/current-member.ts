@@ -33,6 +33,7 @@ export type CurrentMemberResult = {
     grade: string | null;
     gradeLevel: number;
     isActive: boolean;
+    createdAt: Date;
   } | null;
 };
 
@@ -86,6 +87,7 @@ export async function getCurrentMember(session: Session): Promise<CurrentMemberR
       grade: true,
       gradeLevel: true,
       isActive: true,
+      createdAt: true,
     },
   });
 

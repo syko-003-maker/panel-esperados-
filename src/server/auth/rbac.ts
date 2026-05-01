@@ -2,6 +2,7 @@ import { debug, logger, warn } from "@/lib/logger";
 import { getDiscordIdForSession } from "./discord";
 import {
   CHEF_FAMILLE_ROLE_ID,
+  SOUS_CHEF_FAMILLE_ROLE_ID,
   ETAT_MAJOR_ROLE_ID,
   RECRUTEUR_ROLE_ID,
   getDiscordRolesForUser,
@@ -43,7 +44,7 @@ export async function getUserRole(session: any): Promise<Role> {
   logDiscordRoleConfig("getUserRole");
 
   const roles = await getDiscordRolesForUser(discordId);
-  const isChefOrEtatMajor = hasAnyRole(roles, [CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID]);
+  const isChefOrEtatMajor = hasAnyRole(roles, [CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID]);
   if (isChefOrEtatMajor) {
     logger.debug("rbac", `getUserRole: ${discordId} => chef (discord role)`);
     if (shouldLogRbac()) {

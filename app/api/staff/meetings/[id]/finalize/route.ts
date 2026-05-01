@@ -397,17 +397,38 @@ export async function POST(
             roleId: targetRoleId,
             entity: "Meeting",
             entityId: meetingId,
+            meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
           });
-          // Remove previous rank role if different from the new one.
-          const oldRoleId = member.roleDiscordId ?? member.rankRoleId ?? null;
-          if (oldRoleId && oldRoleId !== targetRoleId) {
+
+          // Collecter TOUS les anciens rôles de grade à retirer.
+          // Priorité : discordRoleIds (source de vérité Discord) + champs legacy DB.
+          const ALL_RANK_ROLE_IDS = new Set(Object.keys(GRADE_LABEL_BY_ROLE_ID));
+          const roleIdsToRemove = new Set<string>();
+
+          // 1. Champs legacy DB (roleDiscordId / rankRoleId)
+          const legacyOld = member.roleDiscordId ?? member.rankRoleId ?? null;
+          if (legacyOld && legacyOld !== targetRoleId) {
+            roleIdsToRemove.add(legacyOld);
+          }
+
+          // 2. Rôles Discord actuels du membre (le plus fiable)
+          if (Array.isArray(member.discordRoleIds)) {
+            for (const rid of member.discordRoleIds) {
+              if (rid !== targetRoleId && ALL_RANK_ROLE_IDS.has(rid)) {
+                roleIdsToRemove.add(rid);
+              }
+            }
+          }
+
+          for (const rid of roleIdsToRemove) {
             await enqueueRemoveRole({
               familyId: familyDbId,
               guildId: GUILD_ID,
               userDiscordId: member.discordId,
-              roleId: oldRoleId,
+              roleId: rid,
               entity: "Meeting",
               entityId: meetingId,
+              meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
             });
           }
         }

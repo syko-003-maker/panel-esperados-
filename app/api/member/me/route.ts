@@ -11,41 +11,25 @@ export async function GET(req: NextRequest) {
     // ✅ Récupérer le member via la source unique (Account.providerAccountId)
     const result = await getCurrentMemberOrThrowish();
 
-    // ✅ LOG DEBUG pour tracer le problème "Compte non lié"
-    console.log("[api/member/me] result:", {
-      ok: result.ok,
-      discordId: result.ok ? result.discordId : result.discordId,
-      familyId: result.ok ? result.familyId : result.familyId,
-      memberId: result.ok ? result.member.id : "N/A",
-      error: result.ok ? null : result.error,
-    });
-
     if (!result.ok) {
       return NextResponse.json(
-        { 
-          error: result.error,
-          debug: {
-            discordId: result.discordId,
-            familyId: result.familyId,
-          }
-        },
+        { error: result.error },
         { status: result.status }
       );
     }
 
     const member = result.member;
 
-    // ✅ Retourner le profil complet
     return NextResponse.json({
       discordId: member.discordId,
       discordTag: result.session?.user?.name || null,
       discordAvatar: result.session?.user?.image || null,
       rpName: member.rpName,
       steamId: member.steamId,
-      steamName: null, // TODO: récupérer depuis une autre source si disponible
-      linkedAt: new Date().toISOString(), // TODO: utiliser createdAt du Member si disponible
-      verified: true, // Member trouvé = vérifié
-      status: "ACTIVE" as const, // TODO: ajouter un champ status dans Member si nécessaire
+      steamName: null,
+      linkedAt: member.createdAt.toISOString(),
+      verified: true,
+      status: member.isActive ? ("ACTIVE" as const) : ("INACTIVE" as const),
     });
   } catch (error) {
     console.error("[api/member/me] unexpected error:", error);

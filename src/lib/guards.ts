@@ -7,6 +7,7 @@ import { debug } from "@/lib/logger";
 import { headers } from "next/headers";
 import {
   CHEF_FAMILLE_ROLE_ID,
+  SOUS_CHEF_FAMILLE_ROLE_ID,
   ETAT_MAJOR_ROLE_ID,
   RECRUTEUR_ROLE_ID,
   hasAnyRole,
@@ -279,7 +280,7 @@ export async function requireChef(): Promise<GuardResult> {
   if (rolesResult.error === "UNAVAILABLE") {
     return discordUnavailableResponse();
   }
-  const hasAccess = hasAnyRole(rolesResult.roles, [CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID]);
+  const hasAccess = hasAnyRole(rolesResult.roles, [CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID]);
 
   if (!hasAccess) return jsonError(403, "Forbidden");
   return { session };
@@ -382,9 +383,10 @@ export async function requireStaffFull(): Promise<GuardResult> {
 
   const userRoles = rolesResult.roles ?? [];
   
-  // Build list of full-staff role IDs: CHEF_FAMILLE + ETAT_MAJOR + HAUT_GRADE + JEFE_DE_JEFES + EL_PADRINO + DISCORD_STAFF_FULL_ROLE_IDS
+  // Build list of full-staff role IDs: CHEF_FAMILLE + SOUS_CHEF_FAMILLE + ETAT_MAJOR + HAUT_GRADE + JEFE_DE_JEFES + EL_PADRINO + DISCORD_STAFF_FULL_ROLE_IDS
   const fullStaffRoleIds = [
     CHEF_FAMILLE_ROLE_ID,
+    SOUS_CHEF_FAMILLE_ROLE_ID,
     ETAT_MAJOR_ROLE_ID,
     process.env.HAUT_GRADE_ROLE_ID ?? "",
     process.env.JEFE_DE_JEFES_ROLE_ID ?? "",

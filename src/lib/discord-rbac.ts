@@ -19,6 +19,7 @@ interface StaffRoleConfig {
 // Default staff role IDs (from Discord)
 const DEFAULT_STAFF_ROLE_IDS = [
   "1429607761720770623", // Chef Famille
+  "1488610892282335314", // Sous-Chef Famille
   "1312845999366209683", // Etat-Major
 ];
 

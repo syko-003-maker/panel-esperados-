@@ -9,9 +9,10 @@ export type DiscordRoleResult = {
 };
 
 const DEFAULT_ROLE_IDS = {
-  CHEF_FAMILLE_ROLE_ID: "1429607761720770623",
-  ETAT_MAJOR_ROLE_ID: "1312845999366209683",
-  RECRUTEUR_ROLE_ID: "1312845999215214618",
+  CHEF_FAMILLE_ROLE_ID:      "1429607761720770623",
+  SOUS_CHEF_FAMILLE_ROLE_ID: "1488610892282335314",
+  ETAT_MAJOR_ROLE_ID:        "1312845999366209683",
+  RECRUTEUR_ROLE_ID:         "1312845999215214618",
 } as const;
 
 // ─────────────────────────────────────────────────────────────
@@ -109,6 +110,10 @@ function resolveRoleId(label: keyof typeof DEFAULT_ROLE_IDS, envValue?: string):
 export const CHEF_FAMILLE_ROLE_ID = resolveRoleId(
   "CHEF_FAMILLE_ROLE_ID",
   process.env.CHEF_FAMILLE_ROLE_ID
+);
+export const SOUS_CHEF_FAMILLE_ROLE_ID = resolveRoleId(
+  "SOUS_CHEF_FAMILLE_ROLE_ID",
+  process.env.SOUS_CHEF_FAMILLE_ROLE_ID
 );
 export const ETAT_MAJOR_ROLE_ID = resolveRoleId(
   "ETAT_MAJOR_ROLE_ID",
@@ -499,8 +504,8 @@ export function isRecruiter(roles: string[]): boolean {
  * Check if user has staff full role
  */
 export function isStaffFull(roles: string[]): boolean {
-  // Include hardcoded CHEF_FAMILLE + ETAT_MAJOR as fallback alongside env var
-  const ids = [...getStaffFullRoleIds(), CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID].filter(isValidRoleId);
+  // Include hardcoded CHEF_FAMILLE + SOUS_CHEF_FAMILLE + ETAT_MAJOR as fallback alongside env var
+  const ids = [...getStaffFullRoleIds(), CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID].filter(isValidRoleId);
   return hasAnyRole(roles, ids) && !isDemoted(roles);
 }
 

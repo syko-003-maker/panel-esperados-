@@ -383,7 +383,7 @@ async function hasChefRole(interaction: ChatInputCommandInteraction | ButtonInte
   try {
     const member = await interaction.guild.members.fetch(interaction.user.id);
     // Check if member has Chef Famille or État-Major role
-    const roleIds = [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID].filter(
+    const roleIds = [IDS.CHEF_FAMILLE_ROLE_ID, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID].filter(
       (id): id is string => typeof id === "string" && /^[0-9]{17,20}$/.test(id)
     );
     if (roleIds.length > 0) {

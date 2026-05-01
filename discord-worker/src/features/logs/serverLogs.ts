@@ -246,7 +246,7 @@ export function onMessageUpdate(old: Message | PartialMessage, msg: Message | Pa
 
 // ─── Rôles modifiés ───────────────────────────────────────────────────────────
 
-export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): void {
+export async function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): Promise<void> {
   if (!member) return;
   // Si old est partial (pas en cache), ses rôles sont vides → faux positifs, on ignore
   if (old.partial) return;
@@ -256,12 +256,26 @@ export function onMemberUpdate(old: GuildMember | PartialGuildMember, member: Gu
   const removed = old.roles.cache.filter((r) => !member.roles.cache.has(r.id));
   if (added.size === 0 && removed.size === 0) return;
 
+  // Chercher qui a modifié les rôles via les Audit Logs (type 25 = MEMBER_ROLE_UPDATE)
+  let modifiedBy: string | null = null;
+  try {
+    await new Promise((r) => setTimeout(r, 800));
+    const logs = await member.guild.fetchAuditLogs({ type: 25, limit: 5 });
+    const entry = logs.entries.find(
+      (e) => e.target?.id === member.id && Date.now() - e.createdTimestamp < 5000
+    );
+    if (entry && entry.executor && entry.executor.id !== member.id) {
+      modifiedBy = `<@${entry.executor.id}>`;
+    }
+  } catch { /* non bloquant */ }
+
   const embed = new EmbedBuilder()
     .setAuthor({ name: `${member.user.tag} — rôles modifiés`, iconURL: member.user.displayAvatarURL({ size: 64 }) })
     .setColor(0xa855f7)
     .setDescription(`**${member.user.tag}** · \`${member.id}\``)
     .setTimestamp();
 
+  if (modifiedBy) embed.addFields({ name: "👤 Modifié par", value: modifiedBy, inline: true });
   if (added.size > 0)   embed.addFields({ name: `✅ Ajouté(s) [${added.size}]`,   value: added.map((r)   => `<@&${r.id}>`).join(" "), inline: false });
   if (removed.size > 0) embed.addFields({ name: `❌ Retiré(s) [${removed.size}]`, value: removed.map((r) => `<@&${r.id}>`).join(" "), inline: false });
 
@@ -460,7 +474,7 @@ export function setupServerLogs(client: Client): void {
   client.on("messageUpdate",     (o, n)  => onMessageUpdate(o, n));
   client.on("guildMemberUpdate", (o, n)  => {
     onScreeningComplete(o, n as GuildMember).catch(() => {});
-    onMemberUpdate(o, n as GuildMember);
+    onMemberUpdate(o, n as GuildMember).catch(() => {});
   });
   client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
   client.on("guildBanRemove",    (ban)   => onBanRemove(ban as any));

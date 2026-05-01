@@ -10,6 +10,7 @@
 
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
 import type { PrismaClient } from "@prisma/client";
+import { IDS } from "../ids.js";
 
 const LYG_BASE_URL = process.env.LYG_BASE_URL ?? "https://api.lyg.fr/api";
 const LYG_TOKEN    = process.env.LYG_TOKEN ?? "";
@@ -31,6 +32,10 @@ async function fetchWarnsFromLyg(steamId: string): Promise<{ total: number; warn
       headers: { Authorization: `Bearer ${LYG_TOKEN}`, Accept: "application/json" },
       signal: AbortSignal.timeout(7_000),
     } as RequestInit);
+
+    // Track call vers le panel
+    const { trackLygCall } = await import("../lib/lyg-track.js");
+    trackLygCall(res.ok, res.status, "/api/warns/:steamId");
 
     if (res.status === 429) return "rate_limited";
     if (!res.ok) return null;
@@ -54,17 +59,24 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
   const DEMOTE_ROLE_ID    = "1340837563753304075";
   const BLACKLIST_ROLE_ID = "1338901141873758288";
   const RESERVIST_ROLE_ID = "1312845999366209682";
+  const CHEF_ROLE_ID      = IDS.CHEF_FAMILLE_ROLE_ID      as string | null;
+  const SOUS_CHEF_ROLE_ID = IDS.SOUS_CHEF_FAMILLE_ROLE_ID as string | null;
+
+  // Construire les filtres d'exclusion dynamiquement (chef/sous-chef peuvent être null si non configurés)
+  const excludeRoles = [
+    { discordRoleIds: { has: DEMOTE_ROLE_ID    } },
+    { discordRoleIds: { has: BLACKLIST_ROLE_ID } },
+    { discordRoleIds: { has: RESERVIST_ROLE_ID } },
+    ...(CHEF_ROLE_ID      ? [{ discordRoleIds: { has: CHEF_ROLE_ID      } }] : []),
+    ...(SOUS_CHEF_ROLE_ID ? [{ discordRoleIds: { has: SOUS_CHEF_ROLE_ID } }] : []),
+  ];
 
   const members = await prisma.member.findMany({
     where: {
       steamId: { not: null },
       isActive: true,
       gradeLevel: { gt: 0 },
-      NOT: [
-        { discordRoleIds: { has: DEMOTE_ROLE_ID    } },
-        { discordRoleIds: { has: BLACKLIST_ROLE_ID } },
-        { discordRoleIds: { has: RESERVIST_ROLE_ID } },
-      ],
+      NOT: excludeRoles,
     },
     select: { id: true, steamId: true, rpName: true, discordId: true, grade: true },
   });
@@ -80,7 +92,7 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
       console.warn("[lygWarnPoller] Rate limit LYG — arrêt du cycle");
       break;
     }
-    if (!result) { await sleep(300); continue; }
+    if (!result) { await sleep(10_000); continue; }
 
     // Upsert chaque warn en DB, récupérer les nouveaux
     for (const w of result.warns) {
@@ -122,34 +134,77 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
             if (channel?.isTextBased?.()) {
               const memberMention = member.discordId ? `<@${member.discordId}>` : `**${member.rpName ?? "Inconnu"}**`;
               const profileUrl = `${siteBase}/staff/members/by-discord/${member.discordId}`;
-              const warnDate_str = warnDate.toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
+              // Timestamp Discord natif — s'affiche dans le fuseau horaire de chaque utilisateur
+              const warnDate_str = `<t:${Math.floor(warnDate.getTime() / 1000)}:f>`;
 
-              const typeColor =
-                w.type.toLowerCase().includes("ban")  ? 0xe53935 :
-                w.type.toLowerCase().includes("kick") ? 0xfb8c00 :
-                0xf59e0b;
+              const typeLower = w.type.toLowerCase();
+              const isBan  = typeLower.includes("ban");
+              const isKick = typeLower.includes("kick");
+
+              const typeColor = isBan ? 0xe53935 : isKick ? 0xfb8c00 : 0xf59e0b;
+              const typeEmoji = isBan ? "🔨" : isKick ? "👢" : "⚠️";
+              const typeLabel = isBan ? "Bannissement" : isKick ? "Kick" : "Avertissement";
 
               const totalWarns = await prisma.lygWarn.count({
                 where: { memberId: member.id },
               });
 
-              const embed = new EmbedBuilder()
-                .setColor(typeColor)
-                .setTitle(`⚠️ Nouveau warn in-game — ${w.type}`)
-                .setDescription(`${memberMention} · \`${member.rpName ?? "?"}\` · ${member.grade ?? "—"}`)
-                .addFields(
-                  { name: "Raison",      value: w.reason,         inline: false },
-                  { name: "Type",        value: w.type,           inline: true  },
-                  { name: "Date",        value: warnDate_str,     inline: true  },
-                  { name: "Total warns", value: `${totalWarns}`,  inline: true  },
-                )
-                .setTimestamp();
+              const warnSeverity =
+                totalWarns >= 5 ? "🔴 Critique" :
+                totalWarns >= 3 ? "🟠 Élevé"   :
+                totalWarns >= 2 ? "🟡 Modéré"  :
+                                  "🟢 Premier warn";
 
+              // Récupérer la photo de profil Discord
+              let avatarUrl: string | null = null;
               if (member.discordId) {
-                embed.addFields({ name: "Fiche", value: `[Voir le profil](${profileUrl})`, inline: false });
+                try {
+                  const discordUser = await client.users.fetch(member.discordId);
+                  avatarUrl = discordUser.displayAvatarURL({ size: 128 });
+                } catch { /* ignore si l'utilisateur est introuvable */ }
               }
 
-              await (channel as TextChannel).send({ embeds: [embed] });
+              const embed = new EmbedBuilder()
+                .setColor(typeColor)
+                .setAuthor({
+                  name: member.rpName ?? "Membre inconnu",
+                  iconURL: avatarUrl ?? undefined,
+                })
+                .setTitle(`${typeEmoji} Nouveau warn — ${typeLabel}`)
+                .setDescription(
+                  `${memberMention}\n` +
+                  `> 🎖️ **Grade :** ${member.grade ?? "—"}\n` +
+                  `> 📋 **Raison :** ${w.reason}`
+                )
+                .addFields(
+                  { name: "🏷️ Type",          value: w.type,        inline: true },
+                  { name: "📅 Date",           value: warnDate_str,  inline: true },
+                  { name: "📊 Total warns",    value: `**${totalWarns}** — ${warnSeverity}`, inline: false },
+                )
+                .setTimestamp()
+                .setFooter({ text: "Los Esperados • Système de sanctions" });
+
+              if (avatarUrl) embed.setThumbnail(avatarUrl);
+
+              if (member.discordId) {
+                embed.addFields({
+                  name: "🔗 Fiche membre",
+                  value: `[Voir le profil](${profileUrl})`,
+                  inline: false,
+                });
+              }
+
+              // Ping Chef Famille + Sous-Chef Famille + Etat Major
+              const pingContent = [
+                IDS.CHEF_FAMILLE_ROLE_ID,
+                IDS.SOUS_CHEF_FAMILLE_ROLE_ID,
+                IDS.ETAT_MAJOR_ROLE_ID,
+              ]
+                .filter(Boolean)
+                .map((id: string) => `<@&${id}>`)
+                .join(" ");
+
+              await (channel as TextChannel).send({ content: pingContent || undefined, embeds: [embed] });
 
               // Marquer comme notifié
               await prisma.lygWarn.updateMany({
@@ -172,7 +227,7 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
       }
     }
 
-    await sleep(300);
+    await sleep(10_000);
   }
 
   console.log(`[lygWarnPoller] Cycle terminé — ${members.length} membres traités`);

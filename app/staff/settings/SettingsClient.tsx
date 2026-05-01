@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { PageShell, SectionCard } from "@/components/staff/ui";
-import { Bot, FileText, Send } from "lucide-react";
+import { Bot, FileText, Send, Server } from "lucide-react";
 
 export default function SettingsClient() {
   return (
@@ -52,6 +52,24 @@ export default function SettingsClient() {
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Historique des messages envoyés
+                </p>
+              </div>
+            </Link>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Système" description="Monitoring du VPS, des services et de l'API LYG">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link href="/staff/system" className="block group">
+              <div className="p-6 rounded-lg border border-slate-800 bg-slate-900/20 hover:bg-slate-900/40 transition-colors">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Server className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-foreground">Système & API LYG</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  CPU, RAM, disque, services et consommation API LYG en temps réel
                 </p>
               </div>
             </Link>

@@ -57,6 +57,7 @@ export async function postLinkRequestMessage(
     safeRoleMention(guild, IDS.RECRUTEUR_ROLE_ID, "(rôle recruteur)"),
     safeRoleMention(guild, IDS.ETAT_MAJOR_ROLE_ID, "(rôle état-major)"),
     safeRoleMention(guild, IDS.CHEF_FAMILLE_ROLE_ID, "(rôle chef-famille)"),
+    safeRoleMention(guild, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, "(rôle sous-chef-famille)"),
   ].filter(Boolean).join(" ");
 
   const message = await textChannel.send({

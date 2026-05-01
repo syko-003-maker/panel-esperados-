@@ -23,6 +23,10 @@ type CurrentMemberOk = {
     discordId: string | null;
     rpName: string | null;
     age: number | null;
+    grade: string | null;
+    gradeLevel: number;
+    isActive: boolean;
+    createdAt: Date;
   };
   session: Awaited<ReturnType<typeof getSession>>;
 };

@@ -37,7 +37,7 @@ export async function runControlledLygSync<TMetrics extends Record<string, unkno
 
   const lastAttemptAt = meta.lastAttemptAt ? new Date(meta.lastAttemptAt) : null;
   if (lastAttemptAt && now.getTime() - lastAttemptAt.getTime() < minIntervalMs) {
-    console.log("[LYG_SYNC][RUNNER] skip_rate_limit", {
+    console.log("[LYG_SYNC][RUNNER] skip_min_interval", {
       type: input.type,
       source: input.source,
       familyId: input.familyId,

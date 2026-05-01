@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
 import { getSession } from "@/auth";
-import { enqueueMessageFromTemplate, getOrCreateDiscordConfig } from "@/lib/discord/discord";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { AbsenceStatus } from "@prisma/client";
 
@@ -249,27 +248,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         meta: { oldStatus: existing.status, newStatus: updated.status },
       },
     });
-
-    if (updated.status === "APPROVED") {
-      try {
-        const config = await getOrCreateDiscordConfig(updated.familyId);
-        await enqueueMessageFromTemplate({
-          familyId: updated.familyId,
-          channelId: config.absencesChannelId,
-          key: "absence.approved",
-          vars: {
-            discordId: updated.discordId,
-            startAt: updated.startAt.toISOString(),
-            endAt: updated.endAt.toISOString(),
-            status: updated.status,
-          },
-          entity: "Absence",
-          entityId: updated.id,
-        });
-      } catch (err) {
-        logWarn("absence_decide_discord_enqueue_failed", { requestId, id });
-      }
-    }
 
     logInfo("absence_decided", { requestId, id, status: updated.status });
     return NextResponse.json({ ok: true, requestId, data: toResponseAbsence(updated) });

@@ -44,10 +44,9 @@ export async function POST(req: Request) {
     const beforeActive = await prisma.member.count({
       where: { familyId: family.id, isActive: true },
     });
-    // TODO: Re-enable after prisma generate
-    const beforeGhosts = 0; // await prisma.member.count({
-    //   where: { familyId: family.id, source: "BANKLOG_GHOST" },
-    // });
+    const beforeGhosts = await prisma.member.count({
+      where: { familyId: family.id, source: "BANKLOG_GHOST" },
+    });
 
     const actions: string[] = [];
     let ghostsDeleted = 0;
@@ -55,16 +54,16 @@ export async function POST(req: Request) {
 
     if (!dryRun) {
       // 1. Delete BANKLOG_GHOST members
-      // TODO: Re-enable after prisma generate
-      // const deleteResult = await prisma.member.deleteMany({
-      //   where: {
-      //     familyId: family.id,
-      //     source: "BANKLOG_GHOST",
-      //   },
-      // });
-      // ghostsDeleted = deleteResult.count;
-      // actions.push(`Deleted ${ghostsDeleted} BANKLOG_GHOST members`);
-      actions.push(`[DISABLED] Ghost deletion requires prisma generate first`);
+      const deleteResult = await prisma.member.deleteMany({
+        where: {
+          familyId: family.id,
+          source: "BANKLOG_GHOST",
+        },
+      });
+      ghostsDeleted = deleteResult.count;
+      if (ghostsDeleted > 0) {
+        actions.push(`Supprimé ${ghostsDeleted} membre(s) BANKLOG_GHOST`);
+      }
 
       // 2. Find and deactivate duplicate steamIds
       const steamIdGroups = await prisma.member.groupBy({
@@ -139,7 +138,7 @@ export async function POST(req: Request) {
       }
     } else {
       // Dry run: just report what would be done
-      actions.push(`[DRY RUN] Would delete ${beforeGhosts} BANKLOG_GHOST members (requires prisma generate)`);
+      actions.push(`[DRY RUN] Supprimerait ${beforeGhosts} membre(s) BANKLOG_GHOST`);
 
       const steamIdGroups = await prisma.member.groupBy({
         by: ["steamId"],

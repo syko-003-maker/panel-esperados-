@@ -1,5 +1,6 @@
 import { BLACKLIST_ROLE_ID, getDiscordGrade, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
 
 type MemberScopeInput = {
   discordId?: string | null;
@@ -66,6 +67,11 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     roleSet.has(RESERVIST_ROLE_ID) ||
     statusHints.includes("reserviste") ||
     statusHints.includes("reservist");
+  // Chef & Sous-Chef Famille : exclus du suivi playtime / sanctions
+  const isChefExempt =
+    (CHEF_FAMILLE_ROLE_ID && roleSet.has(CHEF_FAMILLE_ROLE_ID)) ||
+    (SOUS_CHEF_FAMILLE_ROLE_ID && roleSet.has(SOUS_CHEF_FAMILLE_ROLE_ID)) ||
+    statusHints.includes("chef");
 
   const hasDiscordGrade = Boolean(gradeInfo.grade);
 
@@ -78,6 +84,7 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     isDemoted,
     isBlacklisted,
     isReservist,
+    isChefExempt,
   };
 }
 

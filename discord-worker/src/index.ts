@@ -514,13 +514,13 @@ client.once("ready", async () => {
   let lastLygWarnPoll = 0;
   setInterval(() => {
     const now = Date.now();
-    if (now - lastLygWarnPoll >= 15 * 60_000) {
+    if (now - lastLygWarnPoll >= 60 * 60_000) {
       lastLygWarnPoll = now;
       pollLygWarns(client, prisma).catch((err) =>
         console.error("[lygWarnPoller] uncaught:", err)
       );
     }
-  }, 60_000); // vérifié toutes les minutes, déclenché toutes les 5 min
+  }, 60_000); // vérifié toutes les minutes, déclenché toutes les 60 min (budget LYG)
 
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });

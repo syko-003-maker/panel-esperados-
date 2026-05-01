@@ -129,12 +129,13 @@ export default function MembersListClient() {
   const onlineInitDone = useRef(false);
   useEffect(() => {
     if (members.length === 0) return;
-    // Premier appel au chargement initial seulement
+    // Premier appel au chargement
     if (!onlineInitDone.current) {
       onlineInitDone.current = true;
       void fetchOnlineStatus(members);
     }
-    const interval = setInterval(() => void fetchOnlineStatus(members), 5 * 60_000);
+    // Cache server-side rafraîchi en continu → on peut polling tranquille toutes les 30s (lecture mémoire)
+    const interval = setInterval(() => void fetchOnlineStatus(members), 30_000);
     return () => clearInterval(interval);
   }, [members, fetchOnlineStatus]);
 

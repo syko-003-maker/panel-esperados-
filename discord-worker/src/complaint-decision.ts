@@ -46,7 +46,7 @@ async function hasStaffDecisionAccess(interaction: ButtonInteraction): Promise<b
   if (!member) return false;
 
   const allowedRoleIds = new Set(
-    [IDS.CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
+    [IDS.CHEF_FAMILLE_ROLE_ID, IDS.SOUS_CHEF_FAMILLE_ROLE_ID, IDS.ETAT_MAJOR_ROLE_ID, IDS.RECRUTEUR_ROLE_ID].filter(
       (roleId): roleId is string => Boolean(roleId)
     )
   );

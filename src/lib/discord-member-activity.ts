@@ -6,8 +6,7 @@
  * 2. Possession of required role (family role OR grade role)
  */
 
-import { getDiscordRolesForUserWithStatus } from "@/lib/discord-roles";
-import { CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
+import { getDiscordRolesForUserWithStatus, CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
 import { debug } from "@/lib/logger";
 
 // Grade role IDs from grade-colors system
@@ -36,6 +35,7 @@ const FAMILY_ROLE_ID = process.env.DISCORD_FAMILY_ROLE_ID ?? ""; // Los Esperado
 const VALID_ACTIVE_ROLES = [
   ...(FAMILY_ROLE_ID ? [FAMILY_ROLE_ID] : []),
   ...(CHEF_FAMILLE_ROLE_ID ? [CHEF_FAMILLE_ROLE_ID] : []),
+  ...(SOUS_CHEF_FAMILLE_ROLE_ID ? [SOUS_CHEF_FAMILLE_ROLE_ID] : []),
   ...GRADE_ROLE_IDS.filter(Boolean),
 ];
 

@@ -33,21 +33,45 @@ function extractActorUserId(type: string, meta: unknown): string | null {
   if (!meta || typeof meta !== "object") return null;
   const m = meta as Record<string, unknown>;
   // Ping batch → lancé par un staff
-  if (type === "BANK_DEBT_PING_BATCH") return typeof m.createdByUserId === "string" ? m.createdByUserId : null;
+  if (type === "BANK_DEBT_PING_BATCH")   return typeof m.createdByUserId  === "string" ? m.createdByUserId  : null;
   // Décision de recrutement → recruiter qui a clos le ticket
-  if (type === "RECRUITMENT_DECISION") return typeof m.claimedByUserId === "string" ? m.claimedByUserId : null;
+  if (type === "RECRUITMENT_DECISION")   return typeof m.claimedByUserId  === "string" ? m.claimedByUserId  : null;
+  // Décision de plainte → staff qui a tranché
+  if (type === "COMPLAINT_DECISION")     return typeof m.decidedByUserId  === "string" ? m.decidedByUserId  : null;
+  // Sanction appliquée → staff qui a créé la sanction
+  if (type === "SANCTION_APPLY")         return typeof m.appliedByUserId  === "string" ? m.appliedByUserId  : null;
+  // Assign/Remove role → acteur générique passé via meta, ou requestedByUserId (sanctions clear)
+  if (type === "ASSIGN_ROLE" || type === "REMOVE_ROLE") {
+    return typeof m.actorUserId === "string"       ? m.actorUserId :
+           typeof m.requestedByUserId === "string" ? m.requestedByUserId : null;
+  }
+  // Champ générique pour tous les autres types
+  const generic = typeof m.actorUserId === "string" ? m.actorUserId : null;
+  if (generic) return generic;
   return null;
+}
+
+/** Extrait un discordId acteur depuis le champ meta (lookup Member direct) */
+function extractActorDiscordId(type: string, meta: unknown): string | null {
+  if (!meta || typeof meta !== "object") return null;
+  const m = meta as Record<string, unknown>;
+  // Action activité → staff qui a posé l'action
+  if (type === "ACTIVITY_ACTION_NOTIFY") return typeof m.byDiscordId === "string" ? m.byDiscordId : null;
+  // Champ générique passé via meta
+  return typeof m.actorDiscordId === "string" ? m.actorDiscordId : null;
 }
 
 /** Extrait un nom acteur direct depuis le champ meta (sans passer par la DB) */
 function extractActorName(type: string, meta: unknown): string | null {
   if (!meta || typeof meta !== "object") return null;
   const m = meta as Record<string, unknown>;
-  // Sanction notify/apply → staffName enregistré au moment de l'action
-  if (type === "SANCTION_NOTIFY" || type === "SANCTION_APPLY") {
+  // Sanction notify → staffName enregistré au moment de l'action
+  // (SANCTION_APPLY utilise désormais appliedByUserId pour résolution via DB)
+  if (type === "SANCTION_NOTIFY") {
     return typeof m.staffName === "string" && m.staffName ? m.staffName : null;
   }
-  return null;
+  // Champ générique
+  return typeof m.actorName === "string" && m.actorName ? m.actorName : null;
 }
 
 function parsePageParams(searchParams: URLSearchParams) {
@@ -108,10 +132,13 @@ export async function GET(req: Request) {
 
   // Collecter tous les discordIds nécessaires (acteurs + cibles)
   const actorUserIds = new Set<string>();
+  const actorDiscordIds = new Set<string>(); // acteurs identifiés par discordId
   const targetDiscordIds = new Set<string>();
   for (const job of data) {
     const uid = extractActorUserId(job.type, job.meta);
     if (uid) actorUserIds.add(uid);
+    const did = extractActorDiscordId(job.type, job.meta);
+    if (did) actorDiscordIds.add(did);
     if (job.userDiscordId) targetDiscordIds.add(job.userDiscordId);
   }
 
@@ -141,6 +168,8 @@ export async function GET(req: Request) {
   // --- Résolution bulk des Members par discordId (acteurs + cibles) ---
   type MemberLabel = { rpName: string | null; discordDisplayName: string | null; discordUsername: string | null };
   const memberByDiscordId = new Map<string, MemberLabel>();
+  // Fusionner cibles + acteurs identifiés par discordId
+  for (const did of actorDiscordIds) targetDiscordIds.add(did);
   const allDiscordIds = Array.from(targetDiscordIds);
   if (allDiscordIds.length > 0) {
     const members = await prisma.member.findMany({
@@ -173,11 +202,14 @@ export async function GET(req: Request) {
 
   // Enrichir chaque job avec actorLabel + targetLabel
   const enriched = data.map((job) => {
-    // actorLabel
+    // actorLabel — priorité : userId DB → discordId Member → staffName → Système
     const uid = extractActorUserId(job.type, job.meta);
+    const did = extractActorDiscordId(job.type, job.meta);
     let actor: string;
     if (uid && userLabelMap.has(uid)) {
       actor = userLabelMap.get(uid)!;
+    } else if (did && memberByDiscordId.has(did)) {
+      actor = bestMemberLabel(memberByDiscordId.get(did)) ?? did;
     } else {
       actor = extractActorName(job.type, job.meta) ?? "Système";
     }

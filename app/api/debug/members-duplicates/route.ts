@@ -54,7 +54,7 @@ export async function GET() {
         id: true,
         discordId: true,
         rpName: true,
-        // source: true, // TODO: Uncomment after prisma generate
+        source: true,
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },
@@ -93,7 +93,7 @@ export async function GET() {
           steamId: true,
           discordId: true,
           rpName: true,
-          // source: true, // TODO: Uncomment after prisma generate
+          source: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -140,7 +140,7 @@ export async function GET() {
           steamId: true,
           discordId: true,
           rpName: true,
-          // source: true, // TODO: Uncomment after prisma generate
+          source: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -155,50 +155,47 @@ export async function GET() {
     }
 
     // 5. Ghost members (from BANKLOG)
-    // TODO: Re-enable after prisma generate
-    const ghostMembers: any[] = []; // await prisma.member.findMany({
-    //   where: {
-    //     familyId: family.id,
-    //     isActive: true,
-    //     source: "BANKLOG_GHOST",
-    //   },
-    //   select: {
-    //     id: true,
-    //     steamId: true,
-    //     discordId: true,
-    //     rpName: true,
-    //     source: true,
-    //     createdAt: true,
-    //   },
-    //   orderBy: { createdAt: "desc" },
-    //   take: 100,
-    // });
+    const ghostMembers = await prisma.member.findMany({
+      where: {
+        familyId: family.id,
+        isActive: true,
+        source: "BANKLOG_GHOST",
+      },
+      select: {
+        id: true,
+        steamId: true,
+        discordId: true,
+        rpName: true,
+        source: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
 
     // 6. Count by source
-    // TODO: Re-enable after prisma generate
-    const sourceBreakdown: any[] = []; // await prisma.member.groupBy({
-    //   by: ["source"],
-    //   where: {
-    //     familyId: family.id,
-    //     isActive: true,
-    //   },
-    //   _count: {
-    //     source: true,
-    //   },
-    //   orderBy: {
-    //     _count: {
-    //       source: "desc",
-    //     },
-    //   },
-    // });
+    const sourceBreakdown = await prisma.member.groupBy({
+      by: ["source"],
+      where: {
+        familyId: family.id,
+        isActive: true,
+      },
+      _count: {
+        source: true,
+      },
+      orderBy: {
+        _count: {
+          source: "desc",
+        },
+      },
+    });
 
     // 7. Total excluding ghosts
-    // TODO: Re-enable source filter after prisma generate
     const realMembersCount = await prisma.member.count({
       where: {
         familyId: family.id,
         isActive: true,
-        // source: { not: "BANKLOG_GHOST" },
+        source: { not: "BANKLOG_GHOST" },
       },
     });
 
@@ -249,7 +246,7 @@ export async function GET() {
         duplicateSteamIdsCount: duplicateSteamIds.length,
         duplicateDiscordIdsCount: duplicateDiscordIds.length,
       },
-      sourceBreakdown, // TODO: Fix after prisma generate
+      sourceBreakdown,
       details: {
         nullSteamIdMembers,
         duplicateSteamIds,

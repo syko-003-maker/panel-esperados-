@@ -1081,11 +1081,11 @@ async function isChefOrStaff(userId: string, guild: any): Promise<boolean> {
     const member = await guild.members.fetch(userId);
     if (!member) return false;
 
-    const chefRoleId = IDS.CHEF_FAMILLE_ROLE_ID;
+    const chefRoleIds = [IDS.CHEF_FAMILLE_ROLE_ID, IDS.SOUS_CHEF_FAMILLE_ROLE_ID].filter(Boolean) as string[];
     const staffRoleIds = (IDS.STAFF_ROLE_IDS as string[]) || [];
 
-    // Check if has chef or any staff role
-    const hasChefRole = chefRoleId ? member.roles.cache.has(chefRoleId) : false;
+    // Check if has chef/sous-chef or any staff role
+    const hasChefRole = chefRoleIds.some((id) => member.roles.cache.has(id));
     const hasStaffRole = staffRoleIds.some((id) => member.roles.cache.has(id));
 
     return hasChefRole || hasStaffRole;
