@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
+import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
 
 export async function GET() {
   const guard = await requireChefOrEtatMajor();
@@ -44,6 +45,21 @@ export async function GET() {
     },
   });
 
+  // Fetch avatar hashes from Discord OAuth accounts
+  const discordIds = members.map((m) => m.discordId).filter((id): id is string => !!id);
+  const avatarHashByDiscordId = new Map<string, string | null>();
+
+  if (discordIds.length > 0) {
+    const accounts = await prisma.account.findMany({
+      where: { provider: "discord", providerAccountId: { in: discordIds } },
+      select: { providerAccountId: true, user: { select: { image: true } } },
+    });
+    for (const account of accounts) {
+      const hash = extractDiscordAvatarHash(account.user?.image);
+      if (hash) avatarHashByDiscordId.set(account.providerAccountId, hash);
+    }
+  }
+
   const data = members
     .map((m) => {
       const warns = m.lygWarns;
@@ -52,6 +68,7 @@ export async function GET() {
       return {
         memberId: m.id,
         discordId: m.discordId,
+        discordAvatarHash: m.discordId ? (avatarHashByDiscordId.get(m.discordId) ?? null) : null,
         rpName: m.rpName,
         grade: m.grade,
         steamId: m.steamId,

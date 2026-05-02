@@ -19,6 +19,7 @@ type WarnEntry = {
 type MemberWarnSummary = {
   memberId: string;
   discordId: string | null;
+  discordAvatarHash: string | null;
   rpName: string | null;
   grade: string | null;
   steamId: string;
@@ -49,9 +50,9 @@ function WarnTypeBadge({ type }: { type: string }) {
   );
 }
 
-function MemberAvatar({ discordId, rpName }: { discordId: string | null; rpName: string | null }) {
+function MemberAvatar({ discordId, avatarHash, rpName }: { discordId: string | null; avatarHash: string | null; rpName: string | null }) {
   const [failed, setFailed] = useState(false);
-  const url = getDiscordAvatarUrl(discordId, null);
+  const url = getDiscordAvatarUrl(discordId, avatarHash);
   const fallback = (rpName ?? "?").trim().charAt(0).toUpperCase();
   if (url && !failed) {
     return (
@@ -131,7 +132,7 @@ export default function WarnsClient() {
                     onClick={() => setExpanded(isOpen ? null : member.memberId)}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left"
                   >
-                    <MemberAvatar discordId={member.discordId} rpName={member.rpName} />
+                    <MemberAvatar discordId={member.discordId} avatarHash={member.discordAvatarHash} rpName={member.rpName} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-sm text-foreground">{member.rpName ?? "—"}</span>
