@@ -229,7 +229,7 @@ export default function MeetingsClient() {
               placeholder="Titre (optionnel)"
               value={createTitle}
               onChange={(event) => setCreateTitle(event.target.value)}
-              className="min-w-[240px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+              className="min-w-[240px] rounded-lg border border-white/10 bg-card/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-white/25"
             />
           </label>
 
@@ -239,18 +239,18 @@ export default function MeetingsClient() {
               <button
                 type="button"
                 onClick={() => setPickerOpen((current) => !current)}
-                className="w-full min-w-[280px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800 sm:min-w-[320px]"
+                className="w-full min-w-[280px] rounded-lg border border-white/10 bg-card/60 px-3 py-2 text-left text-sm text-slate-100 hover:bg-white/[0.06] sm:min-w-[320px] transition-colors"
               >
                 {getCreateDateLabel()}
               </button>
 
               {pickerOpen ? (
-                <div className="absolute left-0 top-full z-[90] mt-2 w-[min(92vw,22rem)] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
+                <div className="absolute left-0 top-full z-[90] mt-2 w-[min(92vw,22rem)] rounded-xl border border-white/12 bg-[rgba(14,5,7,0.96)] p-3 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.9)] backdrop-blur-xl">
                   <div className="mb-2 flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => setPickerMonth((prev) => subMonths(prev, 1))}
-                      className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+                      className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/[0.06]"
                     >
                       {"<"}
                     </button>
@@ -258,7 +258,7 @@ export default function MeetingsClient() {
                     <button
                       type="button"
                       onClick={() => setPickerMonth((prev) => addMonths(prev, 1))}
-                      className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+                      className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/[0.06]"
                     >
                       {">"}
                     </button>
@@ -286,10 +286,10 @@ export default function MeetingsClient() {
                             setCreateDate(next);
                           }}
                           className={`rounded-md px-2 py-1 text-xs transition-colors ${selected
-                            ? "bg-slate-100 text-slate-950"
+                            ? "bg-[#7a1f2b] text-white"
                             : inMonth
-                              ? "text-slate-200 hover:bg-slate-800"
-                              : "text-slate-600 hover:bg-slate-800/60"
+                              ? "text-slate-200 hover:bg-white/[0.06]"
+                              : "text-slate-600 hover:bg-white/[0.04]"
                           }`}
                         >
                           {format(day, "d")}
@@ -302,7 +302,7 @@ export default function MeetingsClient() {
                     <select
                       value={createDate ? createDate.getHours() : 21}
                       onChange={(event) => setHour(Number(event.target.value))}
-                      className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
+                      className="rounded-md border border-slate-700 bg-card/60 px-2 py-1 text-sm text-slate-100"
                     >
                       {Array.from({ length: 24 }, (_, hour) => (
                         <option key={hour} value={hour}>{String(hour).padStart(2, "0")}</option>
@@ -312,7 +312,7 @@ export default function MeetingsClient() {
                     <select
                       value={createDate ? createDate.getMinutes() : 0}
                       onChange={(event) => setMinute(Number(event.target.value))}
-                      className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
+                      className="rounded-md border border-slate-700 bg-card/60 px-2 py-1 text-sm text-slate-100"
                     >
                       {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((minute) => (
                         <option key={minute} value={minute}>{String(minute).padStart(2, "0")}</option>
@@ -336,7 +336,7 @@ export default function MeetingsClient() {
               type="button"
               onClick={onCreate}
               disabled={saving}
-              className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-white disabled:opacity-50"
+              className="rounded-xl bg-gradient-to-r from-[#7a1f2b] to-[#9b2335] px-5 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(155,35,53,0.55)] transition-all hover:-translate-y-px hover:shadow-[0_10px_24px_-8px_rgba(155,35,53,0.75)] disabled:opacity-50"
             >
               {saving ? "Création..." : "Créer réunion"}
             </button>
@@ -347,9 +347,9 @@ export default function MeetingsClient() {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-50 transition-colors"
             >
-              {loading ? "Chargement..." : "Actualiser"}
+              {loading ? "…" : "↻ Actualiser"}
             </button>
           </MotionButtonFrame>
         </div>
@@ -393,7 +393,7 @@ export default function MeetingsClient() {
                     <MotionButtonFrame>
                       <Link
                         href={`/staff/meetings/${item.id}`}
-                        className="rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800"
+                        className="rounded-md border border-white/10 bg-card/60 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-white/[0.06]"
                       >
                         Ouvrir
                       </Link>

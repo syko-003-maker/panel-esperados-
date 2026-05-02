@@ -97,7 +97,7 @@ function MemberPicker({
           onChange={handleInput}
           onFocus={() => { if (suggestions.length > 0) setOpen(true); }}
           placeholder="Rechercher par nom RP ou Discord ID…"
-          className={`bg-slate-900/40 border-slate-800 pr-8 ${value ? "border-emerald-500/40 bg-emerald-500/5" : ""}`}
+          className={`bg-card/60 border-white/10 pr-8 ${value ? "border-emerald-500/40 bg-emerald-500/5" : ""}`}
           autoComplete="off"
         />
         {fetching && (
@@ -136,13 +136,13 @@ function MemberPicker({
 
       {/* Dropdown suggestions */}
       {open && suggestions.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
+        <ul className="absolute z-50 mt-1 w-full rounded-xl border border-white/12 bg-card/80 shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
           {suggestions.map((m) => (
             <li key={m.id}>
               <button
                 type="button"
                 onMouseDown={() => select(m)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.06] transition-colors"
               >
                 <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-slate-300 uppercase">
                   {(m.rpName ?? "?").charAt(0)}
@@ -163,7 +163,7 @@ function MemberPicker({
       )}
 
       {open && !fetching && suggestions.length === 0 && query.trim().length > 0 && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-500 shadow-2xl">
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/12 bg-card/80 px-3 py-3 text-sm text-slate-500 shadow-2xl">
           Aucun membre actif trouvé pour «&nbsp;{query}&nbsp;»
         </div>
       )}
@@ -455,7 +455,7 @@ export default function AbsencesClient() {
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             placeholder="Motif du refus..."
-            className="h-7 text-xs bg-slate-900/60 border-slate-700"
+            className="h-7 text-xs bg-card/70 border-white/12"
             autoFocus
             disabled={isBusy}
           />
@@ -595,7 +595,7 @@ export default function AbsencesClient() {
                       value={formData.startAt}
                       onChange={(e) => setFormData({ ...formData, startAt: e.target.value })}
                       required
-                      className="bg-slate-900/40 border-slate-800"
+                      className="bg-card/60 border-white/10"
                     />
                   </div>
                   <div>
@@ -610,7 +610,7 @@ export default function AbsencesClient() {
                       value={formData.endAt}
                       onChange={(e) => setFormData({ ...formData, endAt: e.target.value })}
                       required
-                      className="bg-slate-900/40 border-slate-800"
+                      className="bg-card/60 border-white/10"
                     />
                   </div>
                 </div>
@@ -629,7 +629,7 @@ export default function AbsencesClient() {
                     value={formData.meetingDate}
                     onChange={(e) => setFormData({ ...formData, meetingDate: e.target.value })}
                     required
-                    className="bg-slate-900/40 border-slate-800"
+                    className="bg-card/60 border-white/10"
                   />
                 </div>
                 <p className="mt-2 text-xs text-amber-400/70">
@@ -651,7 +651,7 @@ export default function AbsencesClient() {
                     value={formData.reason}
                     onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                     placeholder="Ex: Vacances, Maladie, Déplacement..."
-                    className="bg-slate-900/40 border-slate-800"
+                    className="bg-card/60 border-white/10"
                   />
                 </div>
                 <div>
@@ -663,7 +663,7 @@ export default function AbsencesClient() {
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="Informations supplémentaires..."
                     rows={2}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-800 text-foreground placeholder-gray-500 text-sm focus:outline-none focus:border-slate-600 resize-none"
+                    className="w-full px-3 py-2 rounded-lg bg-card/50 border border-white/10 text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:border-white/25 resize-none"
                   />
                 </div>
               </div>
@@ -700,7 +700,7 @@ export default function AbsencesClient() {
                     setPendingFilters({ ...pendingFilters, status: e.target.value });
                     setPage(1);
                   }}
-                  className="px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-800 text-foreground text-sm focus:outline-none"
+                  className="px-3 py-2 rounded-lg bg-card/50 border border-white/10 text-foreground text-sm focus:outline-none"
                 >
                   <option value="">Tous les statuts</option>
                   {STATUSES.map((s) => (
@@ -716,7 +716,7 @@ export default function AbsencesClient() {
                   type="date"
                   value={pendingFilters.dateFrom}
                   onChange={(e) => setPendingFilters({ ...pendingFilters, dateFrom: e.target.value })}
-                  className="bg-slate-900/40 border-slate-800"
+                  className="bg-card/60 border-white/10"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -725,7 +725,7 @@ export default function AbsencesClient() {
                   type="date"
                   value={pendingFilters.dateTo}
                   onChange={(e) => setPendingFilters({ ...pendingFilters, dateTo: e.target.value })}
-                  className="bg-slate-900/40 border-slate-800"
+                  className="bg-card/60 border-white/10"
                 />
               </div>
               <div className="flex gap-2">
@@ -775,7 +775,7 @@ export default function AbsencesClient() {
               {/* ── Vue cartes mobile ── */}
               <div className="flex flex-col gap-2 md:hidden">
                 {items.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-900/30 px-4 py-3">
+                  <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-semibold text-sm text-foreground truncate">{item.member?.rpName ?? "—"}</p>
@@ -803,10 +803,10 @@ export default function AbsencesClient() {
               </div>
 
               {/* ── Vue tableau desktop ── */}
-              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-800">
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-white/10">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900/40">
+                    <tr className="border-b border-white/10 bg-card/50">
                       {[
                         { label: "Membre", hide: "" },
                         { label: "Type", hide: "hidden sm:table-cell" },
@@ -830,8 +830,8 @@ export default function AbsencesClient() {
                     {items.map((item, idx) => (
                       <tr
                         key={item.id}
-                        className={`border-b border-slate-800/40 hover:bg-slate-900/30 transition-colors ${
-                          idx % 2 === 0 ? "bg-slate-900/10" : ""
+                        className={`border-b border-white/8 hover:bg-white/[0.02] transition-colors ${
+                          idx % 2 === 0 ? "bg-card/80/10" : ""
                         }`}
                       >
                         {/* Membre */}

@@ -138,7 +138,7 @@ export function Sidebar({
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start rounded-2xl text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="w-full justify-start rounded-xl text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
             asChild
           >
             <a href="/auth/signout">

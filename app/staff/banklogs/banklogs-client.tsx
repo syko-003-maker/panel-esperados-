@@ -483,9 +483,9 @@ export default function BanklogsClient() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                  <th className="px-4 py-3 font-semibold">Date</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 text-right font-semibold">Montant</th>
+                  <th className="px-4 py-3 font-semibold w-[160px]">Date</th>
+                  <th className="px-4 py-3 font-semibold w-[100px]">Type</th>
+                  <th className="px-4 py-3 text-right font-semibold w-[140px]">Montant</th>
                   <th className="px-4 py-3 font-semibold">Membre</th>
                 </tr>
               </thead>

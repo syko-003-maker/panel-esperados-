@@ -97,10 +97,10 @@ export default function WarnsClient() {
     <div className="space-y-5">
       {/* Stats bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Membres avec warns" value={members.length} color="amber" icon={Users} />
-        <StatCard label="Warns actifs" value={activeOnlyMembers.length} color="rose" icon={AlertTriangle} />
-        <StatCard label="Warns expirés" value={expiredOnlyMembers.length} color="default" icon={Clock} />
-        <StatCard label="Total warns" value={members.reduce((s, m) => s + m.totalWarns, 0)} color="default" icon={BarChart3} />
+        <StatCard label="Membres avec warns" value={members.length}                                     color="amber"   icon={Users} />
+        <StatCard label="Warns actifs"        value={activeOnlyMembers.length}                         color="rose"    icon={AlertTriangle} />
+        <StatCard label="Warns expirés"       value={expiredOnlyMembers.length}                        color="slate"   icon={Clock} />
+        <StatCard label="Total warns"         value={members.reduce((s, m) => s + m.totalWarns, 0)}   color="default" icon={BarChart3} />
       </div>
 
       <SectionCard
@@ -201,26 +201,26 @@ export default function WarnsClient() {
   );
 }
 
-function StatCard({ label, value, color, icon: Icon }: { label: string; value: number; color: "amber" | "rose" | "default"; icon?: LucideIcon }) {
-  const colorClass =
-    color === "amber" ? "text-amber-300" :
-    color === "rose"  ? "text-rose-300"  :
-    "text-foreground";
-  const iconBg =
-    color === "amber" ? "border-amber-500/25 bg-amber-500/10" :
-    color === "rose"  ? "border-rose-500/25 bg-rose-500/10"  :
-    "border-white/10 bg-white/[0.06]";
+const STAT_V = {
+  amber:   { num: "text-amber-300",  ring: "border-amber-500/25 bg-amber-500/10",  ic: "text-amber-300"  },
+  rose:    { num: "text-rose-300",   ring: "border-rose-500/25 bg-rose-500/10",    ic: "text-rose-300"   },
+  slate:   { num: "text-slate-300",  ring: "border-white/10 bg-white/[0.05]",      ic: "text-slate-400"  },
+  default: { num: "text-slate-400",  ring: "border-white/8 bg-white/[0.03]",       ic: "text-slate-500"  },
+} as const;
+
+function StatCard({ label, value, color, icon: Icon }: { label: string; value: number; color: keyof typeof STAT_V; icon?: LucideIcon }) {
+  const v = STAT_V[color];
   return (
     <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]">
       <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
         {Icon && (
-          <div className={`flex h-7 w-7 items-center justify-center rounded-lg border ${iconBg}`}>
-            <Icon className={`h-3.5 w-3.5 ${colorClass}`} />
+          <div className={`flex h-7 w-7 items-center justify-center rounded-lg border ${v.ring}`}>
+            <Icon className={`h-3.5 w-3.5 ${v.ic}`} />
           </div>
         )}
       </div>
-      <p className={`text-2xl font-bold ${colorClass}`}>{value}</p>
+      <p className={`text-2xl font-bold ${v.num}`}>{value}</p>
     </div>
   );
 }
