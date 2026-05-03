@@ -154,10 +154,11 @@ export function warmAvatarCache(discordIds: string[]): void {
 
   if (!toFetch.length) return;
 
-  // Lancer en arrière-plan (pas de await)
+  // Lancer en arrière-plan — concurrence 5 + 100 ms entre lots
+  // Le retry sur 429 gère les rate-limits, pas besoin d'un gros délai préventif
   void (async () => {
-    const CONCURRENCY       = 3;
-    const INTER_BATCH_DELAY = 300;
+    const CONCURRENCY       = 5;
+    const INTER_BATCH_DELAY = 100;
 
     for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
       const batch = toFetch.slice(i, i + CONCURRENCY);
