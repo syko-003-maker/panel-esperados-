@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +26,7 @@ import { getSanctionLabel } from "@/lib/sanctions";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
 import { formatAppDate } from "@/lib/app-date-formatter";
 import { useDashboardData } from "@/lib/hooks/useDashboardData";
+import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
 
 type Complaint = {
   id: string;
@@ -208,6 +210,26 @@ function SectionEmpty({ label }: { label: string }) {
   );
 }
 
+function DebtorAvatar({ url, name }: { url?: string | null; name?: string | null }) {
+  const [failed, setFailed] = React.useState(false);
+  const initials = (name ?? "?").trim().charAt(0).toUpperCase();
+  if (url && !failed) {
+    return (
+      <img
+        src={url}
+        alt={name ?? ""}
+        onError={() => setFailed(true)}
+        className="h-7 w-7 shrink-0 rounded-lg object-cover border border-white/10"
+      />
+    );
+  }
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[11px] font-bold text-slate-400">
+      {initials}
+    </span>
+  );
+}
+
 function SectionSkeleton() {
   return (
     <div className="space-y-3 p-4">
@@ -257,6 +279,7 @@ export default function StaffDashboardClient() {
   const sanctionsArr   = Array.isArray(sanctions)       ? sanctions       : [];
   const pendingArr     = Array.isArray(pendingAbsences) ? pendingAbsences : [];
   const debtorsArr     = Array.isArray(debtors)         ? debtors         : [];
+  const debtorAvatars  = useDiscordAvatars(debtorsArr.map((d: any) => d.discordId));
 
   const openComplaints   = complaintsArr.filter(c => c.status === "OPEN").length;
   const openRecruitments = recruitmentsArr.filter(r => r.status === "OPEN").length;
@@ -424,11 +447,9 @@ export default function StaffDashboardClient() {
           {loading ? <SectionSkeleton /> : debtorsArr.length === 0 ? (
             <SectionEmpty label="Aucun membre en déficit" />
           ) : (
-            debtorsArr.map((d, i) => (
+            debtorsArr.map((d: any) => (
               <ListRow key={d.steamId} href={`/staff/banklogs?steamId=${d.steamId}`}>
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[11px] font-bold text-slate-500 tabular-nums">
-                  {i + 1}
-                </span>
+                <DebtorAvatar url={d.discordId ? debtorAvatars.get(d.discordId) : null} name={d.rpName} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">{d.rpName ?? "Non lié"}</span>
                 <span className="shrink-0 font-bold tabular-nums text-sm text-red-400">{formatMoney(d.debt)}</span>
               </ListRow>
