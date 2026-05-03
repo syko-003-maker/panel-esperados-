@@ -267,6 +267,11 @@ function AlertStrip({
   );
 }
 
+// Statuts DB considérés comme "en attente" (OPEN ou PENDING selon la version du schema)
+function isRecruitmentPending(status: string): boolean {
+  return status === "OPEN" || status === "PENDING" || status === "NEW" || status === "CREATED";
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function StaffDashboardClient() {
@@ -282,7 +287,7 @@ export default function StaffDashboardClient() {
   const debtorAvatars  = useDiscordAvatars(debtorsArr.map((d: any) => d.discordId));
 
   const openComplaints   = complaintsArr.filter(c => c.status === "OPEN").length;
-  const openRecruitments = recruitmentsArr.filter(r => r.status === "OPEN").length;
+  const openRecruitments = recruitmentsArr.filter(r => isRecruitmentPending(r.status)).length;
   const urgentCount      = openComplaints + openRecruitments + sanctionsArr.length + pendingArr.length;
 
   return (
@@ -385,8 +390,8 @@ export default function StaffDashboardClient() {
                   <p className="truncate text-sm font-medium text-slate-200">{rec.rpName ?? rec.ticketKey}</p>
                   <p className="text-[11px] text-slate-600">{fmtDate(rec.createdAt)}</p>
                 </div>
-                <StatusBadge tone={rec.status === "OPEN" ? "warning" : "neutral"} className="shrink-0 text-[11px]">
-                  {rec.status === "OPEN" ? "En attente" : "Clôturé"}
+                <StatusBadge tone={isRecruitmentPending(rec.status) ? "warning" : "neutral"} className="shrink-0 text-[11px]">
+                  {isRecruitmentPending(rec.status) ? "En attente" : "Clôturé"}
                 </StatusBadge>
               </ListRow>
             ))
