@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Hook pour charger les avatars Discord d'un ensemble de membres côté client.
- * Appelle /api/staff/avatars?ids=... et retourne une Map discordId → avatarUrl.
  *
- * - Chargement non-bloquant (les avatars arrivent après le premier rendu)
- * - Déduplication automatique des IDs
- * - Ne re-fetch pas si les IDs n'ont pas changé
+ * Fonctionnement deux passes :
+ *  1. Appel immédiat → retourne ce qui est en cache serveur (Account table, cache mémoire)
+ *  2. Appel après 4 s → le serveur a eu le temps de finir le fetch Discord API en arrière-plan
+ *
+ * Fusionne les deux résultats : les avatars apparaissent progressivement.
  */
-export function useDiscordAvatars(discordIds: (string | null | undefined)[]): Map<string, string | null> {
+export function useDiscordAvatars(
+  discordIds: (string | null | undefined)[]
+): Map<string, string | null> {
   const [avatars, setAvatars] = useState<Map<string, string | null>>(new Map());
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sérialiser pour détecter les changements sans référence instable
+  // Clé stable : IDs triés et dédupliqués
   const ids = discordIds.filter((id): id is string => Boolean(id));
   const key = [...new Set(ids)].sort().join(",");
 
@@ -21,15 +25,35 @@ export function useDiscordAvatars(discordIds: (string | null | undefined)[]): Ma
     const uniqueIds = key.split(",");
     let cancelled = false;
 
-    fetch(`/api/staff/avatars?ids=${encodeURIComponent(uniqueIds.join(","))}`)
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data: Record<string, string | null>) => {
-        if (cancelled) return;
-        setAvatars(new Map(Object.entries(data)));
-      })
-      .catch(() => {/* silencieux — les avatars restent vides */});
+    async function fetchAvatars() {
+      try {
+        const res  = await fetch(`/api/staff/avatars?ids=${encodeURIComponent(uniqueIds.join(","))}`);
+        const data = res.ok ? (await res.json() as Record<string, string | null>) : {};
+        if (!cancelled) {
+          setAvatars((prev) => {
+            const next = new Map(prev);
+            for (const [id, url] of Object.entries(data)) {
+              // Ne remplacer une URL existante que si on reçoit quelque chose de mieux
+              if (url !== null || !prev.has(id)) next.set(id, url);
+            }
+            return next;
+          });
+        }
+      } catch { /* silencieux */ }
+    }
 
-    return () => { cancelled = true; };
+    // Passe 1 : immédiate
+    void fetchAvatars();
+
+    // Passe 2 : après 4 s (le cache Discord API a eu le temps de se remplir)
+    retryRef.current = setTimeout(() => {
+      if (!cancelled) void fetchAvatars();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
