@@ -26,8 +26,9 @@ type Recruitment = {
 type Sanction = {
   id: string;
   memberId: string;
+  memberName?: string | null;
   type: string;
-  status: "ACTIVE" | "EXPIRED" | "CLOSED";
+  status: string;
   reason: string | null;
   createdAt: string;
 };
@@ -39,6 +40,12 @@ type PendingAbsence = {
   startAt: string;
   endAt: string;
   type: string;
+};
+
+type Debtor = {
+  steamId: string;
+  rpName: string | null;
+  debt: number;
 };
 
 type MembersCountResp = {
@@ -61,6 +68,8 @@ export type DashboardData = {
   membersCount: number;
   membersSource: "lyg" | "db_stale" | null;
   membersError: string | null;
+  familyBankBalance: number | null;
+  debtors: Debtor[];
 };
 
 type CacheEntry<T> = { at: number; value: T };
@@ -85,6 +94,8 @@ const DEFAULT_DATA: DashboardData = {
   membersCount: 0,
   membersSource: null,
   membersError: null,
+  familyBankBalance: null,
+  debtors: [],
 };
 
 // ============================================================================
@@ -168,6 +179,7 @@ export function useDashboardData() {
       source: "lyg" | "db_stale" | null;
       err: string | null;
     }>;
+    bank?: CacheEntry<{ familyBankBalance: number | null; debtors: Debtor[] }>;
   }>({});
 
   // In-flight guard + abort
@@ -285,7 +297,13 @@ export function useDashboardData() {
             controller,
             REQUEST_TIMEOUT_MS
           );
-          const arr = toArray<Sanction>(json);
+          const EXCLUDED_TYPES = ["DEMOTE", "RESERVISTE", "BLACKLIST", "AVERT_ORAL_REUNION"];
+          const arr = toArray<Sanction>(json).filter((s) => {
+            if (EXCLUDED_TYPES.includes(s.type)) return false;
+            // Exclure les sanctions liées aux réunions (peu importe le type)
+            if (s.reason && /r[ée]union/i.test(s.reason)) return false;
+            return true;
+          });
           cacheRef.current.sanctions = { at: Date.now(), value: arr };
           return arr;
         } catch (e) {
@@ -312,6 +330,27 @@ export function useDashboardData() {
           if (isDev())
             console.error("[DASHBOARD] pendingAbsences fetch failed:", String(e));
           return [];
+        }
+      })();
+
+      const bankPromise = (async () => {
+        const cached = readCache(cacheRef.current.bank, TTL_MEMBERS_MS, force);
+        if (cached !== null) return cached;
+        try {
+          const json = await fetchWithTimeout<any>(
+            "/api/staff/dashboard/bank-summary",
+            controller,
+            REQUEST_TIMEOUT_MS
+          );
+          const packed = {
+            familyBankBalance: json?.familyBankBalance ?? null,
+            debtors: Array.isArray(json?.debtors) ? json.debtors : [],
+          };
+          cacheRef.current.bank = { at: Date.now(), value: packed };
+          return packed;
+        } catch (e) {
+          if (isDev()) console.error("[DASHBOARD] bank fetch failed:", String(e));
+          return { familyBankBalance: null, debtors: [] };
         }
       })();
 
@@ -357,6 +396,7 @@ export function useDashboardData() {
         sanctionsPromise,
         pendingAbsencesPromise,
         membersPromise,
+        bankPromise,
       ]);
 
       // Vérifier si on a été aborté
@@ -365,7 +405,7 @@ export function useDashboardData() {
         return;
       }
 
-      const [complaintsResult, recruitmentsResult, sanctionsResult, pendingAbsencesResult, membersResult] =
+      const [complaintsResult, recruitmentsResult, sanctionsResult, pendingAbsencesResult, membersResult, bankResult] =
         results;
 
       // ========================================================================
@@ -405,6 +445,11 @@ export function useDashboardData() {
               err: "Promise rejected",
             };
 
+      const bankData =
+        bankResult.status === "fulfilled"
+          ? bankResult.value ?? { familyBankBalance: null, debtors: [] }
+          : { familyBankBalance: null, debtors: [] };
+
       // ========================================================================
       // BUILD NEXT STATE - GARANTIE: aucune propriété n'est undefined
       // ========================================================================
@@ -417,6 +462,8 @@ export function useDashboardData() {
         membersCount: Number(membersData?.count ?? 0),
         membersSource: membersData?.source ?? null,
         membersError: membersData?.err ?? null,
+        familyBankBalance: bankData.familyBankBalance,
+        debtors: Array.isArray(bankData.debtors) ? bankData.debtors : [],
       };
 
       // Log de débogage pour vérifier les types
@@ -453,6 +500,8 @@ export function useDashboardData() {
         membersCount: nextData.membersCount,
         membersSource: nextData.membersSource,
         membersError: nextData.membersError,
+        familyBankBalance: nextData.familyBankBalance,
+        debtors: nextData.debtors,
       }));
       setError(null);
 

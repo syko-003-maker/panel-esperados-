@@ -13,6 +13,7 @@ import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { getGradeBadgeProps } from "@/lib/grade-colors";
 import { getMemberDisplayName, getNeutralRankBadge, resolveStableRank } from "@/lib/member-display";
+import { getSanctionLabel } from "@/lib/sanctions";
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -32,6 +33,7 @@ type GradeHistoryEntry = {
 	newGrade: string;
 	changedAt: string;
 	changedBy: string | null;
+	changedByName: string | null;
 	source: string;
 	notes: string | null;
 };
@@ -109,6 +111,17 @@ function fmtDate(iso: string | null) {
 		hour: "2-digit",
 		minute: "2-digit",
 	});
+}
+
+const GRADE_SOURCE_LABELS: Record<string, string> = {
+	MIGRATION: "Migration",
+	MEETING:   "Réunion",
+	MANUAL:    "Manuel",
+	SYNC:      "Synchronisation",
+};
+
+function getGradeSourceLabel(source: string): string {
+	return GRADE_SOURCE_LABELS[source] ?? source;
 }
 
 function getStatusMeta(status: string, type: "sanction" | "complaint" | "recruitment") {
@@ -358,7 +371,7 @@ export function MemberDetailClient({
 											{warn.expired ? "Expiré" : "Actif"}
 										</StatusBadge>
 									</td>
-									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{warn.type}</td>
+									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{getSanctionLabel(warn.type)}</td>
 									<td className="px-4 py-3 text-sm text-slate-400">{warn.reason}</td>
 									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(warn.date)}</td>
 								</tr>
@@ -384,7 +397,7 @@ export function MemberDetailClient({
 									<td className="px-4 py-3">
 										<StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
 									</td>
-									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{sanction.type}</td>
+									<td className="px-4 py-3 text-sm font-semibold text-slate-100">{getSanctionLabel(sanction.type)}</td>
 									<td className="px-4 py-3 text-sm text-slate-400">{sanction.reason || "-"}</td>
 									<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(sanction.createdAt)}</td>
 								</tr>
@@ -408,9 +421,9 @@ export function MemberDetailClient({
 								<td className="px-4 py-3 text-sm whitespace-nowrap text-slate-400">{fmtDate(historyEntry.changedAt)}</td>
 								<td className="px-4 py-3 text-sm font-semibold text-slate-400">{historyEntry.oldGrade || "-"}</td>
 								<td className="px-4 py-3 text-sm font-semibold text-slate-100">{historyEntry.newGrade}</td>
-								<td className="px-4 py-3 text-sm text-slate-400">{historyEntry.changedBy || "-"}</td>
+								<td className="px-4 py-3 text-sm text-slate-400">{historyEntry.changedByName || historyEntry.changedBy || "-"}</td>
 								<td className="px-4 py-3 text-sm">
-									<StatusBadge>{historyEntry.source}</StatusBadge>
+									<StatusBadge>{getGradeSourceLabel(historyEntry.source)}</StatusBadge>
 								</td>
 							</tr>
 						))}

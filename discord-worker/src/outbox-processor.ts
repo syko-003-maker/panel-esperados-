@@ -154,6 +154,7 @@ async function sendSanctionAppliedNotification(
     staffDisplayName: string;
     memberRpName: string;
     sanctionId: string;
+    startAt?: Date | null;
   }
 ) {
   let channel = null;
@@ -194,7 +195,8 @@ async function sendSanctionAppliedNotification(
   const embed = new EmbedBuilder()
     .setTitle("⚖️ DECLARATION DE SANCTION ⚖️")
     .setColor(0xf59e0b)
-    .setDescription(description);
+    .setDescription(description)
+    .setTimestamp(payload.startAt ?? new Date());
 
   await (channel as TextChannel).send({ embeds: [embed] });
 }
@@ -822,6 +824,7 @@ async function handleSanctionApply(
       type: true,
       reason: true,
       expiresAt: true,
+      startAt: true,
       discordStatus: true,
       discordId: true,
       member: { select: { discordId: true, rpName: true } },
@@ -986,6 +989,7 @@ async function handleSanctionApply(
         staffDisplayName,
         memberRpName: memberName,
         sanctionId: sanction.id,
+        startAt: sanction.startAt ?? null,
       });
       log("sanction_apply_notification_sent", {
         sanctionId: sanction.id,
@@ -1099,6 +1103,7 @@ async function handleSanctionApply(
       staffDisplayName,
       memberRpName: memberName,
       sanctionId: sanction.id,
+      startAt: sanction.startAt ?? null,
     });
     log("sanction_apply_notification_sent", {
       sanctionId: sanction.id,
@@ -1125,7 +1130,12 @@ async function handleSanctionApply(
 }
 
 async function handleSanctionNotify(job: OutboxJob, channel: TextChannel): Promise<void> {
-  const { action, type, memberName, reason } = job.meta;
+  const { action, type, memberName, reason, startAt } = job.meta;
+
+  // Use the actual sanction startAt time so the embed timestamp reflects when the
+  // sanction was created, not when this background job was processed.
+  const sanctionDate = startAt ? new Date(String(startAt)) : new Date();
+  const timestamp = !Number.isNaN(sanctionDate.getTime()) ? sanctionDate : new Date();
 
   const embed = new EmbedBuilder()
     .setTitle(`⚖️ Sanction ${action}`)
@@ -1135,7 +1145,7 @@ async function handleSanctionNotify(job: OutboxJob, channel: TextChannel): Promi
       { name: "Type", value: type, inline: true },
       { name: "Raison", value: reason || "-", inline: false }
     )
-    .setTimestamp();
+    .setTimestamp(timestamp);
 
   await channel.send({ embeds: [embed] });
 }

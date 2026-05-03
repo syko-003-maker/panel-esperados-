@@ -38,7 +38,7 @@ export function MotionCard({ children, className, delay = 0, ...props }: MotionS
   return (
     <motion.div
       className={className}
-      whileHover={{ y: -2, scale: 1.002 }}
+      whileHover={{ y: -2 }}
       transition={{ duration: 0.26, ease: STAFF_EASE, delay }}
       {...props}
     >
@@ -64,8 +64,8 @@ export function MotionButtonFrame({ children, className }: { children: ReactNode
   return (
     <motion.div
       className={cn("inline-flex", className)}
-      whileHover={{ scale: 1.015, y: -1 }}
-      whileTap={{ scale: 0.985 }}
+      whileHover={{ y: -1 }}
+      whileTap={{ y: 0 }}
       transition={{ duration: 0.18, ease: STAFF_EASE }}
     >
       {children}

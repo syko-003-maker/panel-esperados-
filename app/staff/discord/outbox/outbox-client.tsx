@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge-new";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/staff/ui/PageShell";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 type Job = {
   id: string;
@@ -201,27 +202,25 @@ export default function DiscordOutboxClient() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex flex-col gap-1 min-w-[160px]">
               <label className="text-xs font-medium text-muted-foreground">Statut</label>
-              <select
+              <StyledSelect
                 value={statusFilter}
                 onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-foreground focus:outline-none focus:border-slate-600"
               >
                 {STATUS_FILTER_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
-              </select>
+              </StyledSelect>
             </div>
             <div className="flex flex-col gap-1 min-w-[200px]">
               <label className="text-xs font-medium text-muted-foreground">Type d'action</label>
-              <select
+              <StyledSelect
                 value={typeFilter}
                 onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-                className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-foreground focus:outline-none focus:border-slate-600"
               >
                 {TYPE_FILTER_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
-              </select>
+              </StyledSelect>
             </div>
             <div className="flex flex-col gap-1 mt-auto">
               <label className="text-xs font-medium text-muted-foreground invisible">.</label>

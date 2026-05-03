@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
 
@@ -12,9 +12,10 @@ const VALID_TYPES = ["WARNING", "LIGHT", "HEAVY", "TEMP_BAN", "STRIKE", "SUSPENS
  * Worker-only endpoint to create a sanction from Discord command
  */
 export async function POST(req: NextRequest) {
-  // Validate worker secret
+  // Validate worker secret — accept either Authorization: Bearer or x-ingest-secret
   const authHeader = req.headers.get("authorization");
-  const providedSecret = authHeader?.replace("Bearer ", "");
+  const ingestHeader = req.headers.get("x-ingest-secret");
+  const providedSecret = ingestHeader ?? authHeader?.replace("Bearer ", "");
 
   if (!WORKER_SECRET || providedSecret !== WORKER_SECRET) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
       reason,
       durationHours,
       staffDiscordId,
-      familyId = DEFAULT_FAMILY_ID,
+      familyId: familySlug = DEFAULT_FAMILY_ID,
     } = body;
 
     // Validation
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
     if (!reason || reason.trim().length < 3) {
       return NextResponse.json({ ok: false, error: "reason required (min 3 chars)" }, { status: 400 });
     }
+
+    const familyId = await resolveFamilyId(familySlug);
 
     // Get member
     const member = await prisma.member.findFirst({

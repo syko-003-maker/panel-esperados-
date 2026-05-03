@@ -213,19 +213,19 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
         </div>
         <div className="p-4 border rounded">
           <div className="text-xs text-gray-500">Créée le</div>
-          <div className="font-semibold">{new Date(sanction.createdAt).toLocaleString("fr-FR")}</div>
+          <div className="font-semibold">{new Date(sanction.createdAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}</div>
         </div>
         {sanction.expiresAt ? (
           <div className="p-4 border rounded">
             <div className="text-xs text-gray-500">Expire le</div>
-            <div className="font-semibold">{new Date(sanction.expiresAt).toLocaleString("fr-FR")}</div>
+            <div className="font-semibold">{new Date(sanction.expiresAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}</div>
           </div>
         ) : null}
         {sanction.clearedAt || sanction.clearedStatus || sanction.clearedError ? (
           <div className="p-4 border rounded">
             <div className="text-xs text-gray-500">Levée le</div>
             <div className="font-semibold">
-              {sanction.clearedAt ? new Date(sanction.clearedAt).toLocaleString("fr-FR") : "En cours"}
+              {sanction.clearedAt ? new Date(sanction.clearedAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" }) : "En cours"}
             </div>
             {sanction.clearedStatus ? (
               <div className="text-xs text-gray-600 mt-1">
@@ -337,7 +337,7 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
               <li key={log.id} className="border-b pb-2">
                 <div className="font-semibold">{log.action}</div>
                 <div className="text-xs text-gray-500">
-                  {new Date(log.createdAt).toLocaleString("fr-FR")}
+                  {new Date(log.createdAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}
                 </div>
               </li>
             ))

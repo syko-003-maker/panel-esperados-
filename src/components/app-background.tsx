@@ -36,8 +36,8 @@ function ParticleCanvas() {
     resize();
     window.addEventListener("resize", resize);
 
-    // 55 particules flottantes
-    const particles = Array.from({ length: 55 }, () => ({
+    // 1200 particules flottantes
+    const particles = Array.from({ length: 1200 }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
       r: Math.random() * 1.4 + 0.4,

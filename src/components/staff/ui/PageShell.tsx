@@ -23,7 +23,6 @@ export function PageShell({ title, description, icon: Icon, actions, children }:
                 </div>
               )}
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Espace staff</div>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                   <h1 className="text-xl font-bold tracking-tight text-slate-50 sm:text-2xl">{title}</h1>
                   {description && (

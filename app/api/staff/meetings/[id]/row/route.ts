@@ -81,6 +81,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "WEEK_VALID_3",
     "WEEK_INVALID",
     "EXCLUDE",
+    "REMOVE_TEST_RANK",
     "",
     "NONE",
     "MAINTIEN",
@@ -100,6 +101,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "WEEK_VALID_2",
     "WEEK_VALID_3",
     "WEEK_INVALID",
+    "REMOVE_TEST_RANK",
   ];
   const allowedDecisionTypes: MeetingRowDecisionType[] = [
     "NONE",

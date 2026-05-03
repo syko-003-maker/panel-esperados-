@@ -57,6 +57,41 @@ export default async function MemberDetailPage({
     notFound();
   }
 
+  // Resolve changedBy Discord IDs to display names for grade history
+  // changedBy can be a Member discordId OR a StaffUser discordId
+  const changedByIds = [
+    ...new Set(
+      member.gradeHistory
+        .map((h) => h.changedBy)
+        .filter((id): id is string => !!id)
+    ),
+  ];
+
+  const changedByMap = new Map<string | null, string | null>();
+
+  if (changedByIds.length > 0) {
+    // 1) Look up in Member table (rpName)
+    const memberRows = await prisma.member.findMany({
+      where: { discordId: { in: changedByIds } },
+      select: { discordId: true, rpName: true },
+    });
+    for (const m of memberRows) {
+      if (m.discordId) changedByMap.set(m.discordId, m.rpName);
+    }
+
+    // 2) For IDs not found in Member, look up in StaffUser → User.name
+    const missingIds = changedByIds.filter((id) => !changedByMap.has(id));
+    if (missingIds.length > 0) {
+      const staffRows = await prisma.staffUser.findMany({
+        where: { discordId: { in: missingIds } },
+        select: { discordId: true, user: { select: { name: true } } },
+      });
+      for (const s of staffRows) {
+        changedByMap.set(s.discordId, s.user?.name ?? null);
+      }
+    }
+  }
+
   const data = {
     id: member.id,
     discordId: member.discordId ?? "",
@@ -83,6 +118,7 @@ export default async function MemberDetailPage({
       newGrade: h.newGrade,
       changedAt: h.changedAt.toISOString(),
       changedBy: h.changedBy,
+      changedByName: h.changedBy ? (changedByMap.get(h.changedBy) ?? null) : null,
       source: h.source,
       notes: h.notes,
     })),

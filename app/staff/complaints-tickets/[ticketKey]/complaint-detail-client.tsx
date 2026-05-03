@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 function CopyLinkButton({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -233,17 +234,17 @@ export function ComplaintDetailClient({
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Status</label>
-            <select
+            <StyledSelect
               value={newStatus}
               onChange={(e) => setNewStatus(e.target.value)}
-              className="border rounded px-3 py-2 w-full max-w-xs"
+              className="w-full max-w-xs"
             >
               {STATUS_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </div>
 
           <div>

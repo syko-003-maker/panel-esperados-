@@ -23,6 +23,7 @@ import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame, MotionSection } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { getDiscordGradeMappings } from "@/lib/discord-grade";
 
@@ -42,6 +43,7 @@ type MeetingDecisionType =
   | "MAINTAIN"
   | "DEMOTE"
   | "EXCLUDE"
+  | "REMOVE_TEST_RANK"
   | "WARN_LIGHT"
   | "WARN_HEAVY"
   | "BLACKLIST"
@@ -165,6 +167,7 @@ const DECISION_OPTIONS: Array<{ value: MeetingDecisionType; label: string; color
   { value: "WARN_LIGHT",    label: "Avertissement léger", color: "#92400e", bg: "#fef3c7" },
   { value: "WARN_HEAVY",    label: "Avertissement lourd", color: "#b45309", bg: "#fde68a" },
   { value: "DEMOTE",        label: "Démote",              color: "#b91c1c", bg: "#fee2e2" },
+  { value: "REMOVE_TEST_RANK", label: "Retirer rang En test", color: "#0369a1", bg: "#e0f2fe" },
   { value: "BLACKLIST",     label: "Blacklist",           color: "#7f1d1d", bg: "#fecaca" },
   { value: "RESERVIST",     label: "Réserviste",          color: "#166534", bg: "#dcfce7" },
   { value: "PLAYTIME_WARN", label: "Averto playtime",     color: "#c2410c", bg: "#ffedd5" },
@@ -215,6 +218,7 @@ function getDefaultPromotionTargetGrade(
 
 const PROGRESSION_VALUES = new Set<MeetingDecisionType>([
   "MAINTAIN", "UP", "DOUBLE_UP", "WEEK_VALID_1", "WEEK_VALID_2", "WEEK_VALID_3", "WEEK_INVALID",
+  "REMOVE_TEST_RANK",
 ]);
 
 const SANCTION_VALUES = new Set<MeetingDecisionType>([
@@ -335,6 +339,8 @@ export function MeetingDecisionsClient({
   const [localRows, setLocalRows] = useState<
     Map<string, { decisionType: MeetingDecisionType; sanctionReason: string; targetGrade: string }>
   >(new Map());
+  // Ref mirror so the polling interval can check without closing over stale state
+  const localRowsSizeRef = useRef(0);
 
   // Pending status/playtime/note changes (debounced auto-save)
   const pendingRowRef = useRef<
@@ -400,6 +406,11 @@ export function MeetingDecisionsClient({
     setCurrentMeetingStatus(meetingStatus);
   }, [meetingStatus]);
 
+  // Keep ref in sync so the polling interval always sees the latest size
+  useEffect(() => {
+    localRowsSizeRef.current = localRows.size;
+  }, [localRows]);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -419,14 +430,15 @@ export function MeetingDecisionsClient({
     load();
   }, [meetingId]);
 
-  // Polling every 3 s (best-effort, skip if pending saves)
+  // Polling every 3 s (best-effort, skip if pending saves or unsaved local decision changes)
   useEffect(() => {
     const timer = window.setInterval(async () => {
       if (
         saving ||
         savingRows ||
         savingNote ||
-        Object.keys(pendingRowRef.current).length > 0
+        Object.keys(pendingRowRef.current).length > 0 ||
+        localRowsSizeRef.current > 0
       )
         return;
       try {
@@ -709,12 +721,15 @@ export function MeetingDecisionsClient({
         }
       }
       setSuccess(`${toSave.length} décision(s) enregistrée(s)`);
-      setLocalRows(new Map());
+      // Refresh from server first, then clear local state so the UI immediately
+      // shows saved values without a flash of "old" server data.
       const refreshRes = await fetch(`/api/staff/meetings/${meetingId}`, { cache: "no-store" });
       const refreshData = (await refreshRes.json()) as MeetingDetailResponse;
       if (refreshRes.ok && refreshData?.ok && refreshData.meeting) {
         applyResponse(refreshData.meeting);
       }
+      // Clear local overrides only after server data has been applied
+      setLocalRows(new Map());
     } catch (err: any) {
       setError(err.message ?? "Erreur réseau");
     } finally {
@@ -948,10 +963,9 @@ export function MeetingDecisionsClient({
             />
           </div>
 
-          <select
+          <StyledSelect
             value={filterAction}
             onChange={(e) => setFilterAction(e.target.value)}
-            className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none"
           >
             <option value="ALL" className="bg-slate-950">Toutes les décisions</option>
             {DECISION_OPTIONS.map((opt) => (
@@ -959,7 +973,7 @@ export function MeetingDecisionsClient({
                 {opt.label}
               </option>
             ))}
-          </select>
+          </StyledSelect>
 
           <StatusBadge>{filteredRows.length} / {mergedRows.length} visible(s)</StatusBadge>
         </div>
@@ -1025,9 +1039,9 @@ export function MeetingDecisionsClient({
                         {isLocked ? (
                           <StatusBadge tone={getAttendanceTone(row.status)}>{getAttendanceLabel(row.status)}</StatusBadge>
                         ) : (
-                          <select value={row.status} onChange={(e) => updateRowLocal(row.discordId, { status: e.target.value as AttendanceStatus })} className={`w-full rounded-xl border px-3 py-2 text-sm font-medium focus:outline-none ${getSelectClass(getAttendanceTone(row.status))}`}>
+                          <StyledSelect value={row.status} onChange={(e) => updateRowLocal(row.discordId, { status: e.target.value as AttendanceStatus })} className={`w-full rounded-xl border px-3 py-2 text-sm font-medium focus:outline-none ${getSelectClass(getAttendanceTone(row.status))}`}>
                             {STATUS_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
-                          </select>
+                          </StyledSelect>
                         )}
                       </div>
 
@@ -1062,15 +1076,15 @@ export function MeetingDecisionsClient({
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          <select value={progressionValue} onChange={(e) => { if (!row.id) return; handleDecisionChange(row.id, "decisionType", e.target.value); }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(progressionValue))}`}>
+                          <StyledSelect value={progressionValue} onChange={(e) => { if (!row.id) return; handleDecisionChange(row.id, "decisionType", e.target.value); }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(progressionValue))}`}>
                             {PROGRESSION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
-                          </select>
+                          </StyledSelect>
                           {showTargetGrade && (
                             targetOptions.length > 0 ? (
-                              <select value={selectedTargetGrade} onChange={(e) => row.id && handleDecisionChange(row.id, "targetGrade", e.target.value)} className="w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 focus:outline-none">
+                              <StyledSelect value={selectedTargetGrade} onChange={(e) => row.id && handleDecisionChange(row.id, "targetGrade", e.target.value)} className="w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 focus:outline-none">
                                 <option value="" className="bg-slate-950 text-slate-100">Rang cible</option>
                                 {targetOptions.map((option) => <option key={option.value} value={option.value} className="bg-slate-950 text-slate-100">{option.label}</option>)}
-                              </select>
+                              </StyledSelect>
                             ) : (
                               <div className="rounded-lg border border-amber-700/40 bg-amber-950/30 px-2.5 py-2 text-xs text-amber-300">Aucun rang supérieur disponible.</div>
                             )
@@ -1085,10 +1099,10 @@ export function MeetingDecisionsClient({
                       {isReadOnly || !canEditDecisions ? (
                         sanctMeta ? <StatusBadge tone={getDecisionTone(sanctionValue)}>{sanctMeta.label}</StatusBadge> : <StatusBadge>Aucune sanction</StatusBadge>
                       ) : (
-                        <select value={sanctionValue} onChange={(e) => { if (!row.id) return; const val = e.target.value as MeetingDecisionType | "NONE"; if (val === "NONE") { handleDecisionChange(row.id, "decisionType", progressionValue); } else { handleDecisionChange(row.id, "decisionType", val); } }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(sanctionValue))}`}>
+                        <StyledSelect value={sanctionValue} onChange={(e) => { if (!row.id) return; const val = e.target.value as MeetingDecisionType | "NONE"; if (val === "NONE") { handleDecisionChange(row.id, "decisionType", progressionValue); } else { handleDecisionChange(row.id, "decisionType", val); } }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(sanctionValue))}`}>
                           <option value="NONE" className="bg-slate-950 text-slate-100">Aucune sanction</option>
                           {SANCTION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
-                        </select>
+                        </StyledSelect>
                       )}
                     </div>
 
@@ -1177,7 +1191,7 @@ export function MeetingDecisionsClient({
                       {isLocked ? (
                         <StatusBadge tone={getAttendanceTone(row.status)}>{getAttendanceLabel(row.status)}</StatusBadge>
                       ) : (
-                        <select
+                        <StyledSelect
                           value={row.status}
                           onChange={(e) =>
                             updateRowLocal(row.discordId, {
@@ -1191,7 +1205,7 @@ export function MeetingDecisionsClient({
                               {opt.label}
                             </option>
                           ))}
-                        </select>
+                        </StyledSelect>
                       )}
                     </td>
 
@@ -1255,7 +1269,7 @@ export function MeetingDecisionsClient({
 
                         return (
                           <div className="space-y-2">
-                            <select
+                            <StyledSelect
                               value={progressionValue}
                               onChange={(e) => {
                                 if (!row.id) return;
@@ -1268,14 +1282,14 @@ export function MeetingDecisionsClient({
                                   {opt.label}
                                 </option>
                               ))}
-                            </select>
+                            </StyledSelect>
                             {showTargetGrade ? (
                               targetOptions.length > 0 ? (
                                 <div className="space-y-1">
                                   <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-slate-400">
                                     Rang cible
                                   </label>
-                                  <select
+                                  <StyledSelect
                                     value={selectedTargetGrade}
                                     onChange={(e) => row.id && handleDecisionChange(row.id, "targetGrade", e.target.value)}
                                     className="w-[190px] rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 focus:outline-none"
@@ -1286,7 +1300,7 @@ export function MeetingDecisionsClient({
                                         {option.label}
                                       </option>
                                     ))}
-                                  </select>
+                                  </StyledSelect>
                                 </div>
                               ) : (
                                 <div className="rounded-lg border border-amber-700/40 bg-amber-950/30 px-2.5 py-2 text-xs text-amber-300">
@@ -1308,7 +1322,7 @@ export function MeetingDecisionsClient({
                           <StatusBadge>Aucune sanction</StatusBadge>
                         )
                       ) : (
-                        <select
+                        <StyledSelect
                           value={sanctionValue}
                           onChange={(e) => {
                             if (!row.id) return;
@@ -1329,7 +1343,7 @@ export function MeetingDecisionsClient({
                               {opt.label}
                             </option>
                           ))}
-                        </select>
+                        </StyledSelect>
                       )}
                     </td>
 

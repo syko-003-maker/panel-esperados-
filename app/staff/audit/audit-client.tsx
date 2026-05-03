@@ -24,6 +24,8 @@ type Filters = {
   actorTypes: FilterOption[];
 };
 
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
+
 export function AuditLogsClient() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,13 +132,12 @@ export function AuditLogsClient() {
         <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Entity</label>
-            <select
+            <StyledSelect
               value={entity}
               onChange={(e) => {
                 setEntity(e.target.value);
                 setPage(1);
               }}
-              className="border rounded px-3 py-1.5 text-sm"
             >
               <option value="">Tous</option>
               {filters?.entities.map((e) => (
@@ -144,18 +145,17 @@ export function AuditLogsClient() {
                   {e.value} ({e.count})
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </div>
 
           <div>
             <label className="block text-xs text-gray-500 mb-1">Action</label>
-            <select
+            <StyledSelect
               value={action}
               onChange={(e) => {
                 setAction(e.target.value);
                 setPage(1);
               }}
-              className="border rounded px-3 py-1.5 text-sm"
             >
               <option value="">Toutes</option>
               {filters?.actions.map((a) => (
@@ -163,18 +163,17 @@ export function AuditLogsClient() {
                   {a.value} ({a.count})
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </div>
 
           <div>
             <label className="block text-xs text-gray-500 mb-1">Actor Type</label>
-            <select
+            <StyledSelect
               value={actorType}
               onChange={(e) => {
                 setActorType(e.target.value);
                 setPage(1);
               }}
-              className="border rounded px-3 py-1.5 text-sm"
             >
               <option value="">Tous</option>
               {filters?.actorTypes.map((a) => (
@@ -182,7 +181,7 @@ export function AuditLogsClient() {
                   {a.value} ({a.count})
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </div>
 
           <div>

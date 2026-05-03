@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 type Complaint = {
   id: string;
@@ -51,15 +52,14 @@ export function ComplaintsListClient({
       <h1 className="text-2xl font-bold mb-4">Plaintes (Tickets Discord)</h1>
 
       <div className="flex gap-4 mb-4 items-center">
-        <select
+        <StyledSelect
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="border rounded px-3 py-2"
         >
           <option value="ALL">Tous</option>
           <option value="OPEN">OPEN</option>
           <option value="CLOSED">Fermés</option>
-        </select>
+        </StyledSelect>
 
         <input
           type="text"

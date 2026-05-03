@@ -71,6 +71,7 @@ const MEETING_DECISION_LABELS: Record<string, string | null> = {
   WEEK_VALID_2: "Semaine Validé 2",
   WEEK_VALID_3: "Semaine Validé 3",
   WEEK_INVALID: "Semaine Non Validé",
+  REMOVE_TEST_RANK: "Test validé (rang En test retiré)",
   OTHER: null,
   AUTRE: null,
   WARNING_ORAL: null,
@@ -323,6 +324,26 @@ export async function POST(
       const rawDecision = resolveMeetingDecisionCode(row);
       const memberDiscordId = String(row.discordIdSnapshot ?? "").trim();
 
+      // ─── Retirer rang En test ─────────────────────────────────
+      if (rawDecision === "REMOVE_TEST_RANK") {
+        const EN_TEST_ROLE_ID = "1312845999340781643";
+
+        if (GUILD_ID && memberDiscordId) {
+          await enqueueRemoveRole({
+            familyId: familyDbId,
+            guildId: GUILD_ID,
+            userDiscordId: memberDiscordId,
+            roleId: EN_TEST_ROLE_ID,
+            entity: "Meeting",
+            entityId: meetingId,
+            meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
+          });
+        }
+
+        results.kept++;
+        continue;
+      }
+
       if (rawDecision === "UP" || rawDecision === "DOUBLE_UP") {
         const promotionDecision = memberDiscordId ? promotionDecisionByDiscordId.get(memberDiscordId) : null;
         const targetGrade = normalizeMeetingTargetGrade(promotionDecision?.newGrade ?? null);
@@ -426,6 +447,22 @@ export async function POST(
               guildId: GUILD_ID,
               userDiscordId: member.discordId,
               roleId: rid,
+              entity: "Meeting",
+              entityId: meetingId,
+              meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
+            });
+          }
+
+          // Si le membre avait le rôle "En test", le retirer automatiquement lors d'un UP
+          const EN_TEST_ROLE_ID = "1312845999340781643";
+          const hasTestRole =
+            Array.isArray(member.discordRoleIds) && member.discordRoleIds.includes(EN_TEST_ROLE_ID);
+          if (hasTestRole) {
+            await enqueueRemoveRole({
+              familyId: familyDbId,
+              guildId: GUILD_ID,
+              userDiscordId: member.discordId,
+              roleId: EN_TEST_ROLE_ID,
               entity: "Meeting",
               entityId: meetingId,
               meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },

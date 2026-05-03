@@ -390,6 +390,15 @@ export async function openRecruitmentModal(interaction: ButtonInteraction) {
     .setMinLength(1)
     .setMaxLength(100);
 
+  const age = new TextInputBuilder()
+    .setCustomId("age")
+    .setLabel("Âge")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Exemple : 22")
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(3);
+
   const motivation = new TextInputBuilder()
     .setCustomId("motivation")
     .setLabel("Motivation")
@@ -411,6 +420,7 @@ export async function openRecruitmentModal(interaction: ButtonInteraction) {
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(steamId),
     new ActionRowBuilder<TextInputBuilder>().addComponents(rpName),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(age),
     new ActionRowBuilder<TextInputBuilder>().addComponents(motivation),
     new ActionRowBuilder<TextInputBuilder>().addComponents(dispo)
   );
@@ -469,6 +479,7 @@ export async function handleRecruitmentSubmit(
 
   const steamId = interaction.fields.getTextInputValue("steamId").trim();
   const rpName = interaction.fields.getTextInputValue("rpName").trim();
+  const ageRaw = interaction.fields.getTextInputValue("age").trim();
   const motivation = interaction.fields.getTextInputValue("motivation").trim();
   const dispo = interaction.fields.getTextInputValue("dispo").trim();
 
@@ -476,6 +487,14 @@ export async function handleRecruitmentSubmit(
   if (!isValidSteamId64(steamId)) {
     return interaction.reply({
       content: "❌ Le Steam ID fourni est invalide. Merci d’entrer un SteamID64 valide (format : 76561198XXXXXXXXX).",
+      ephemeral: true,
+    });
+  }
+
+  const ageParsed = parseInt(ageRaw, 10);
+  if (isNaN(ageParsed) || ageParsed < 13 || ageParsed > 99) {
+    return interaction.reply({
+      content: "❌ L’âge fourni est invalide. Merci d’entrer un âge entre 13 et 99.",
       ephemeral: true,
     });
   }
@@ -530,6 +549,7 @@ export async function handleRecruitmentSubmit(
     payload: {
       steamId,
       rpName,
+      age: ageParsed,
       motivation,
       dispo,
       discordUsername: interaction.user.username,
@@ -597,6 +617,7 @@ export async function handleRecruitmentSubmit(
       { name: "Auteur", value: `${interaction.user.tag} (<@${interaction.user.id}>)`, inline: false },
       { name: "Nom RP", value: rpName || "-", inline: true },
       { name: "Steam ID", value: steamId || "-", inline: true },
+      { name: "Âge", value: String(ageParsed), inline: true },
       { name: "Motivation", value: motivation.slice(0, 1024), inline: false },
       { name: "Disponibilités", value: dispo.slice(0, 1024), inline: false }
     )

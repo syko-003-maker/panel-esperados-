@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
 
@@ -10,22 +10,25 @@ const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SE
  * Can be called by worker for /activity command
  */
 export async function GET(req: NextRequest) {
-  // Validate worker secret
+  // Validate worker secret — accept either Authorization: Bearer or x-ingest-secret
   const authHeader = req.headers.get("authorization");
-  const providedSecret = authHeader?.replace("Bearer ", "");
+  const ingestHeader = req.headers.get("x-ingest-secret");
+  const providedSecret = ingestHeader ?? authHeader?.replace("Bearer ", "");
 
   if (!WORKER_SECRET || providedSecret !== WORKER_SECRET) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const discordId = req.nextUrl.searchParams.get("discordId");
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  const familySlug = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
 
   if (!discordId) {
     return NextResponse.json({ ok: false, error: "discordId required" }, { status: 400 });
   }
 
   try {
+    const familyId = await resolveFamilyId(familySlug);
+
     // Get member
     const member = await prisma.member.findFirst({
       where: { familyId, discordId },

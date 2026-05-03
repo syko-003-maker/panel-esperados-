@@ -1,6 +1,8 @@
 export const DEFAULT_MEETING_FAMILY_ID = "esperados";
 export const MEETING_PLAYTIME_THRESHOLD_MINUTES = 100;
 
+import { GRADE_LABEL_BY_ROLE_ID } from "@/lib/grade-colors";
+
 type Nullable<T> = T | null | undefined;
 
 export type MeetingMemberSnapshotSource = {
@@ -11,6 +13,7 @@ export type MeetingMemberSnapshotSource = {
   steamId?: string | null;
   discordId?: string | null;
   playtime7d?: number | null;
+  discordRoleIds?: unknown;
 };
 
 export type MeetingRowLike = {
@@ -208,11 +211,24 @@ function businessDecisionLabel(decision: string) {
   }
 }
 
+function resolveGradeFromRoles(discordRoleIds: unknown): string | null {
+  const roles = Array.isArray(discordRoleIds)
+    ? discordRoleIds.map((r) => String(r ?? "").trim()).filter(Boolean)
+    : [];
+  for (const roleId of roles) {
+    const label = GRADE_LABEL_BY_ROLE_ID[roleId];
+    if (label) return label;
+  }
+  return null;
+}
+
 export function buildMeetingRowSnapshot(member: MeetingMemberSnapshotSource) {
+  const gradeFromDb = normalizeText(member.rankLabel ?? member.grade);
+  const gradeFromRoles = gradeFromDb ? null : resolveGradeFromRoles(member.discordRoleIds);
   return {
     memberId: member.id ?? null,
     rpNameSnapshot: normalizeText(member.rpName) ?? "Membre inconnu",
-    gradeSnapshot: normalizeText(member.rankLabel ?? member.grade),
+    gradeSnapshot: gradeFromDb ?? gradeFromRoles,
     steamIdSnapshot: normalizeText(member.steamId),
     discordIdSnapshot: normalizeText(member.discordId),
     playtimeMinutes: normalizeMinutes(member.playtime7d),
@@ -306,7 +322,8 @@ export function mapBusinessDecisionToStoredValue(value: Nullable<string>): Store
     normalized === "WEEK_VALID_1" ||
     normalized === "WEEK_VALID_2" ||
     normalized === "WEEK_VALID_3" ||
-    normalized === "WEEK_INVALID"
+    normalized === "WEEK_INVALID" ||
+    normalized === "REMOVE_TEST_RANK"
   ) {
     return { decisionType: "OTHER", sanctionType: normalized };
   }
@@ -340,6 +357,7 @@ export function mapStoredMeetingDecisionToBusinessDecision(
   }
   if (normalizedSanctionType === "DEMOTE") return "DEMOTE";
   if (normalizedSanctionType === "EXCLUDE") return "EXCLUDE";
+  if (normalizedSanctionType === "REMOVE_TEST_RANK") return "REMOVE_TEST_RANK";
 
   if (normalizedDecisionType === "NONE") return "MAINTAIN";
   if (normalizedDecisionType === "DEMOTE") return "DEMOTE";

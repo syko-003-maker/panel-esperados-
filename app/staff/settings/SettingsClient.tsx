@@ -15,7 +15,7 @@ export default function SettingsClient() {
         <SectionCard title="Pages Discord" description="Accès aux différentes sections de gestion Discord">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link href="/staff/settings/config" className="block group">
-              <div className="p-6 rounded-lg border border-slate-800 bg-slate-900/20 hover:bg-slate-900/40 transition-colors">
+              <div className="p-6 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/16 transition-all duration-200">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 rounded-lg bg-primary/10">
                     <Bot className="w-5 h-5 text-primary" />
@@ -29,7 +29,7 @@ export default function SettingsClient() {
             </Link>
 
             <Link href="/staff/settings/templates" className="block group">
-              <div className="p-6 rounded-lg border border-slate-800 bg-slate-900/20 hover:bg-slate-900/40 transition-colors">
+              <div className="p-6 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/16 transition-all duration-200">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 rounded-lg bg-primary/10">
                     <FileText className="w-5 h-5 text-primary" />
@@ -43,7 +43,7 @@ export default function SettingsClient() {
             </Link>
 
             <Link href="/staff/settings/outbox" className="block group">
-              <div className="p-6 rounded-lg border border-slate-800 bg-slate-900/20 hover:bg-slate-900/40 transition-colors">
+              <div className="p-6 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/16 transition-all duration-200">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 rounded-lg bg-primary/10">
                     <Send className="w-5 h-5 text-primary" />
@@ -61,7 +61,7 @@ export default function SettingsClient() {
         <SectionCard title="Système" description="Monitoring du VPS, des services et de l'API LYG">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link href="/staff/system" className="block group">
-              <div className="p-6 rounded-lg border border-slate-800 bg-slate-900/20 hover:bg-slate-900/40 transition-colors">
+              <div className="p-6 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/16 transition-all duration-200">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 rounded-lg bg-primary/10">
                     <Server className="w-5 h-5 text-primary" />

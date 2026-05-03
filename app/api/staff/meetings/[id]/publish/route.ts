@@ -5,7 +5,7 @@ import {
   enqueueEmbedMessage,
   type DiscordEmbedPayload,
 } from "@/lib/discord/discord";
-import { computeMeetingSummary, DEFAULT_MEETING_FAMILY_ID } from "@/lib/meetings";
+import { computeMeetingSummary, DEFAULT_MEETING_FAMILY_ID, mapStoredMeetingDecisionToBusinessDecision } from "@/lib/meetings";
 import { resolveFamilyId } from "@/lib/family";
 
 const MAX_EMBED_FIELD_LENGTH = 1000;
@@ -25,8 +25,10 @@ const SANCTION_CODES = new Set([
   "WARNING",
   "PLAYTIME_WARN",
   "AVERT_ORAL_PLAYTIME",
-  "WARNING_ORAL",
   "AVERT_ORAL_REUNION",
+  "AVERT_LEGER",
+  "AVERT_LOURD",
+  "WARNING_ORAL",
   "DEMOTE",
   "BLACKLIST",
   "RESERVE",
@@ -34,6 +36,7 @@ const SANCTION_CODES = new Set([
   "RESERVISTE",
   "EXCLUSION",
   "EXCLUDE",
+  "REMOVE_TEST_RANK",
 ]);
 
 const MEETING_DECISION_LABELS: Record<string, string | null> = {
@@ -49,6 +52,9 @@ const MEETING_DECISION_LABELS: Record<string, string | null> = {
   WARNING: "Avertissement",
   PLAYTIME_WARN: "Averto playtime",
   AVERT_ORAL_PLAYTIME: "Averto playtime",
+  AVERT_ORAL_REUNION: "Averto réunion",
+  AVERT_LEGER: "Avertissement léger",
+  AVERT_LOURD: "Avertissement lourd",
   RESERVE: "Réserviste",
   RESERVIST: "Réserviste",
   RESERVISTE: "Réserviste",
@@ -59,10 +65,10 @@ const MEETING_DECISION_LABELS: Record<string, string | null> = {
   WEEK_VALID_2: "Semaine Validé 2",
   WEEK_VALID_3: "Semaine Validé 3",
   WEEK_INVALID: "Semaine Non Validé",
+  REMOVE_TEST_RANK: "Test validé (rang retiré)",
   OTHER: null,
   AUTRE: null,
   WARNING_ORAL: "Averto réunion",
-  AVERT_ORAL_REUNION: "Averto réunion",
 };
 
 function formatMeetingDate(value: Date | string | null | undefined) {
@@ -115,14 +121,11 @@ function resolveDecisionCode(row: {
   sanctionType?: string | null;
   decisionType?: string | null;
 }) {
-  const sanctionCode = String(row.sanctionType ?? "").trim().toUpperCase();
-  if (sanctionCode) return sanctionCode;
-
-  const decisionCode = String(row.decisionType ?? "NONE").trim().toUpperCase();
-  if (decisionCode === "NONE") return "MAINTAIN";
-  if (decisionCode === "EXCLUDE") return "EXCLUSION";
-  if (decisionCode === "WARNING") return "WARN";
-  return decisionCode;
+  // Use the shared lib function so all aliases (AVERT_LOURD→WARN_HEAVY, etc.) are normalised
+  return mapStoredMeetingDecisionToBusinessDecision(
+    row.decisionType ?? null,
+    row.sanctionType ?? null
+  );
 }
 
 function translateDecision(code: string | null | undefined) {

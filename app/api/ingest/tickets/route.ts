@@ -170,6 +170,10 @@ const handlers: Record<string, EventHandler> = {
     const steamId = (payload as any)?.steamId || null;
     const discordUsername = (payload as any)?.discordUsername || authorTag || null;
     const discordDisplayName = (payload as any)?.discordDisplayName || discordUsername || null;
+    const ageRaw = (payload as any)?.age;
+    const age = (ageRaw !== undefined && ageRaw !== null && !isNaN(Number(ageRaw)))
+      ? Math.floor(Number(ageRaw))
+      : null;
     const existingRecruitment = await ctx.prisma.recruitment.findUnique({
       where: { ticketKey },
       select: { notes: true },
@@ -197,6 +201,7 @@ const handlers: Record<string, EventHandler> = {
         notes: nextNotes,
         rpName: rpName || null,
         steamId: steamId || null,
+        age: age,
         motivation: (payload as any)?.motivation || null,
         availabilities: (payload as any)?.dispo || null,
         status: "PENDING",
@@ -210,6 +215,7 @@ const handlers: Record<string, EventHandler> = {
         notes: nextNotes,
         rpName: rpName || null,
         steamId: steamId || null,
+        ...(age !== null ? { age } : {}),
         motivation: (payload as any)?.motivation || null,
         availabilities: (payload as any)?.dispo || null,
       },
@@ -227,7 +233,7 @@ const handlers: Record<string, EventHandler> = {
               discordId: authorId,
             },
           },
-          select: { rpName: true },
+          select: { rpName: true, age: true },
         });
 
         // Build update data (for both create and update)
@@ -237,6 +243,8 @@ const handlers: Record<string, EventHandler> = {
           // Always update Discord info for tracking
           discordUsername: discordUsername || null,
           discordDisplayName: discordDisplayName || null,
+          // Only set age if provided and member doesn't already have one
+          ...(age !== null && !existingMember?.age ? { age } : {}),
         };
 
         // Filter out undefined values
@@ -261,6 +269,7 @@ const handlers: Record<string, EventHandler> = {
             discordUsername: discordUsername || null,
             discordDisplayName: discordDisplayName || null,
             steamId: validatedSteamId,
+            age: age,
             isActive: false, // ✅ Only LYG sync sets isActive=true
             source: "RECRUITMENT" as const, // ✅ Provenance: Ticket recrutement
           },

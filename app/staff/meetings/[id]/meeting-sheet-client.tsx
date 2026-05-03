@@ -17,6 +17,7 @@ import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame, MotionSection } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 type AttendanceStatus =
   | "UNKNOWN"
@@ -645,7 +646,7 @@ export default function MeetingSheetClient({ meetingId }: { meetingId: string })
                         {meeting?.locked ? (
                           <StatusBadge tone={attendanceTone}>{getAttendanceLabel(row.status)}</StatusBadge>
                         ) : (
-                          <select
+                          <StyledSelect
                             value={row.status}
                             onChange={(event) => {
                               const value = event.target.value as AttendanceStatus;
@@ -660,7 +661,7 @@ export default function MeetingSheetClient({ meetingId }: { meetingId: string })
                                 {option.label}
                               </option>
                             ))}
-                          </select>
+                          </StyledSelect>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -682,7 +683,7 @@ export default function MeetingSheetClient({ meetingId }: { meetingId: string })
                         {meeting?.locked ? (
                           <StatusBadge tone={decisionTone}>{decisionLabel(row.decisionType)}</StatusBadge>
                         ) : (
-                          <select
+                          <StyledSelect
                             value={row.decisionType || "MAINTAIN"}
                             onChange={(event) => {
                               const value = event.target.value;
@@ -697,7 +698,7 @@ export default function MeetingSheetClient({ meetingId }: { meetingId: string })
                                 {option.label}
                               </option>
                             ))}
-                          </select>
+                          </StyledSelect>
                         )}
                       </td>
                       <td className="px-4 py-3">

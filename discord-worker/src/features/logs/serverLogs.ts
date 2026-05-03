@@ -14,9 +14,13 @@ import {
   type User,
   type Role,
 } from "discord.js";
+import { PrismaClient } from "@prisma/client";
 
 const LOGS_CHANNEL_ID  = "1312846003627622522";
 const CITOYEN_ROLE_ID  = "1337795596739940372";
+const BLACKLIST_ROLE_ID = "1338901141873758288";
+
+const prisma = new PrismaClient();
 
 // ─── Mini-cache messages ──────────────────────────────────────────────────────
 
@@ -90,18 +94,48 @@ export async function onScreeningComplete(
 
 // ─── Membre rejoint ───────────────────────────────────────────────────────────
 
-export function onMemberJoin(member: GuildMember): void {
+export async function onMemberJoin(member: GuildMember): Promise<void> {
   const createdTs  = Math.floor(member.user.createdTimestamp / 1000);
   const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000);
+
+  // ── Vérification blacklist ────────────────────────────────────────────────
+  let isBlacklisted = false;
+  try {
+    const blacklistSanction = await prisma.sanction.findFirst({
+      where: {
+        discordId: member.id,
+        type: "BLACKLIST",
+        status: "ACTIVE",
+        clearedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (blacklistSanction) {
+      isBlacklisted = true;
+      // Appliquer le rôle blacklist immédiatement
+      await member.roles.add(BLACKLIST_ROLE_ID, "Blacklist active — rôle réappliqué au rejoint");
+
+      // Mettre à jour le statut Discord de la sanction
+      await prisma.sanction.update({
+        where: { id: blacklistSanction.id },
+        data: { discordStatus: "APPLIED", discordAppliedAt: new Date(), discordError: null } as any,
+      });
+
+      console.log(`[Blacklist] Rôle blacklist réappliqué à ${member.user.tag} (${member.id}) au rejoint`);
+    }
+  } catch (err) {
+    console.error("[Blacklist] Erreur vérification blacklist au rejoint:", err);
+  }
 
   const embed = new EmbedBuilder()
     .setAuthor({
       name:    `${member.user.tag} a rejoint le serveur`,
       iconURL: member.user.displayAvatarURL({ size: 64 }),
     })
-    .setColor(0x22c55e)
+    .setColor(isBlacklisted ? 0xef4444 : 0x22c55e)
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-    .setDescription(`<@${member.id}>`)
+    .setDescription(isBlacklisted ? `⛔ <@${member.id}> — **BLACKLISTÉ** — Rôle réappliqué automatiquement` : `<@${member.id}>`)
     .addFields(
       { name: "🆔 Discord ID",   value: `\`${member.id}\``,                                                                              inline: true },
       { name: "📅 Compte créé",  value: `<t:${createdTs}:D>\n<t:${createdTs}:R>`,                                                        inline: true },
@@ -468,7 +502,7 @@ export async function preCacheGuildMessages(guild: Guild): Promise<void> {
 export function setupServerLogs(client: Client): void {
   logsClient = client;
   // Logs
-  client.on("guildMemberAdd",    (m)     => onMemberJoin(m as GuildMember));
+  client.on("guildMemberAdd",    (m)     => { onMemberJoin(m as GuildMember).catch((e) => console.error("[Logs] guildMemberAdd error:", e)); });
   client.on("guildMemberRemove", (m)     => { onMemberLeave(m as GuildMember).catch(() => {}); });
   client.on("messageDelete",     (msg)   => { onMessageDelete(msg).catch((e) => console.error("[Logs] messageDelete error:", e)); });
   client.on("messageUpdate",     (o, n)  => onMessageUpdate(o, n));

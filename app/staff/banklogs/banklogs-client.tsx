@@ -7,6 +7,7 @@ import { PageShell } from "@/components/staff/ui/PageShell";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { SkeletonTable } from "@/components/staff/ui/Skeletons";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Database, Filter } from "lucide-react";
 import { formatBanklogTime } from "@/lib/banklogs-formatter";
@@ -346,12 +347,12 @@ export default function BanklogsClient() {
         title="Filtres"
         description="Affinez la période, le type ou le membre ciblé sans quitter la vue consolidée."
         icon={Filter}
-        actions={<StatusBadge>{data?.total ?? 0} ligne{(data?.total ?? 0) > 1 ? "s" : ""}</StatusBadge>}
+        actions={<StatusBadge>{loading && !data ? "—" : (data?.total ?? 0)} ligne{(data?.total ?? 0) > 1 ? "s" : ""}</StatusBadge>}
       >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="flex flex-col gap-2">
             <label className="text-sm text-muted-foreground">Type</label>
-            <select
+            <StyledSelect
               value={filterType}
               onChange={(e) => {
                 const v = e.target.value;
@@ -359,12 +360,11 @@ export default function BanklogsClient() {
                 setFilterType(v);
                 syncUrl({ page: 1, type: v });
               }}
-              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none"
             >
               <option value="">Tous</option>
               <option value="1">Retrait</option>
               <option value="2">Dépôt</option>
-            </select>
+            </StyledSelect>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -378,7 +378,7 @@ export default function BanklogsClient() {
                 syncUrl({ page: 1, steamId: v });
               }}
               placeholder="ex: 7656119..."
-              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/40 focus:outline-none"
+              className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
@@ -393,13 +393,13 @@ export default function BanklogsClient() {
                 syncUrl({ page: 1, member: v });
               }}
               placeholder="rpName / pseudo"
-              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/40 focus:outline-none"
+              className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
           <div className="flex flex-col gap-2">
             <label className="text-sm text-muted-foreground">Par page</label>
-            <select
+            <StyledSelect
               value={String(limit)}
               onChange={(e) => {
                 const v = Number(e.target.value);
@@ -407,13 +407,12 @@ export default function BanklogsClient() {
                 setLimit(v);
                 syncUrl({ page: 1, limit: v });
               }}
-              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none"
             >
               <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
               <option value="200">200</option>
-            </select>
+            </StyledSelect>
           </div>
         </div>
 
@@ -464,13 +463,13 @@ export default function BanklogsClient() {
               const m = signedMoney(it.type, it.money);
               const isWithdraw = m < 0;
               return (
-                <div key={`${it.at}-${it.steamId}-${idx}`} className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 flex items-center justify-between gap-3">
+                <div key={`${it.at}-${it.steamId}-${idx}`} className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-sm text-foreground">{it.rpName || "Non lié"}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{formatBrussels(it.at)}</p>
-                    <TypeBadge type={it.type} />
+                    <p className="font-semibold text-base text-foreground">{it.rpName || "Non lié"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{formatBrussels(it.at)}</p>
+                    <div className="mt-1.5"><TypeBadge type={it.type} /></div>
                   </div>
-                  <span className={`shrink-0 font-bold text-base ${isWithdraw ? "text-red-400" : "text-green-400"}`}>
+                  <span className={`shrink-0 font-bold text-lg ${isWithdraw ? "text-red-400" : "text-emerald-400"}`}>
                     {isWithdraw ? "-" : "+"}{fmtMoney(Math.abs(m))}
                   </span>
                 </div>
@@ -480,13 +479,19 @@ export default function BanklogsClient() {
 
           {/* ── Vue tableau desktop ── */}
           <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/8 bg-white/[0.03]">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col className="w-[22%]" />
+                <col className="w-[16%]" />
+                <col className="w-[20%]" />
+                <col className="w-[42%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-white/8 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                  <th className="px-4 py-3 font-semibold w-[160px]">Date</th>
-                  <th className="px-4 py-3 font-semibold w-[100px]">Type</th>
-                  <th className="px-4 py-3 text-right font-semibold w-[140px]">Montant</th>
-                  <th className="px-4 py-3 font-semibold">Membre</th>
+                  <th className="px-5 py-3 font-semibold">Date</th>
+                  <th className="px-5 py-3 font-semibold">Type</th>
+                  <th className="px-5 py-3 text-right font-semibold">Montant</th>
+                  <th className="px-5 py-3 font-semibold">Membre</th>
                 </tr>
               </thead>
               <tbody>
@@ -495,14 +500,14 @@ export default function BanklogsClient() {
                   const isWithdraw = m < 0;
                   return (
                     <tr key={`${it.at}-${it.steamId}-${it.type}-${it.money}-${idx}`} className="border-b border-white/6 hover:bg-white/[0.04]">
-                      <td className="px-4 py-3 text-sm">{formatBrussels(it.at)}</td>
-                      <td className="px-4 py-3"><TypeBadge type={it.type} /></td>
-                      <td className={`px-4 py-3 text-right font-bold text-sm ${isWithdraw ? "text-red-400" : "text-green-400"}`}>
-                        {isWithdraw ? "-" : "+"}{fmtMoney(Math.abs(m))}
+                      <td className="px-5 py-3 text-sm text-slate-300 whitespace-nowrap">{formatBrussels(it.at)}</td>
+                      <td className="px-5 py-3"><TypeBadge type={it.type} /></td>
+                      <td className={`px-5 py-3 text-right font-bold text-sm whitespace-nowrap ${isWithdraw ? "text-red-400" : "text-emerald-400"}`}>
+                        {isWithdraw ? "−" : "+"}{fmtMoney(Math.abs(m))}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-sm">{it.rpName || "Non lié"}</div>
-                        <div className="text-xs text-muted-foreground font-mono">{it.steamId}</div>
+                      <td className="px-5 py-3">
+                        <div className="font-semibold text-sm text-foreground truncate">{it.rpName || "Non lié"}</div>
+                        <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{it.steamId}</div>
                       </td>
                     </tr>
                   );
@@ -541,9 +546,6 @@ export default function BanklogsClient() {
         </div>
       </SectionCard>
 
-      <div className="text-xs text-muted-foreground">
-        Type 1 = <span className="font-bold">Retrait</span> • Type 2 = <span className="font-bold">Dépôt</span>
-      </div>
     </PageShell>
   );
 }

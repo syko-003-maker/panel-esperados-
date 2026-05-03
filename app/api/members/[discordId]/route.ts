@@ -43,7 +43,50 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ ok: true, member });
+    // Resolve changedBy Discord IDs to display names for grade history
+    // changedBy can be a Member discordId OR a StaffUser discordId
+    const changedByIds = [
+      ...new Set(
+        member.gradeHistory
+          .map((h) => h.changedBy)
+          .filter((id): id is string => !!id)
+      ),
+    ];
+
+    const changedByMap = new Map<string | null, string | null>();
+
+    if (changedByIds.length > 0) {
+      // 1) Look up in Member table (rpName)
+      const memberRows = await prisma.member.findMany({
+        where: { discordId: { in: changedByIds } },
+        select: { discordId: true, rpName: true },
+      });
+      for (const m of memberRows) {
+        if (m.discordId) changedByMap.set(m.discordId, m.rpName);
+      }
+
+      // 2) For IDs not found in Member, look up in StaffUser → User.name
+      const missingIds = changedByIds.filter((id) => !changedByMap.has(id));
+      if (missingIds.length > 0) {
+        const staffRows = await prisma.staffUser.findMany({
+          where: { discordId: { in: missingIds } },
+          select: { discordId: true, user: { select: { name: true } } },
+        });
+        for (const s of staffRows) {
+          changedByMap.set(s.discordId, s.user?.name ?? null);
+        }
+      }
+    }
+
+    const enrichedGradeHistory = member.gradeHistory.map((h) => ({
+      ...h,
+      changedByName: h.changedBy ? (changedByMap.get(h.changedBy) ?? null) : null,
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      member: { ...member, gradeHistory: enrichedGradeHistory },
+    });
   } catch (err) {
     console.error("[GET /api/members/:discordId] Error:", err);
     return NextResponse.json(
