@@ -7,7 +7,8 @@ import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
-import { AlertCircle, RefreshCw, Bell, CheckCircle2, DollarSign, User } from "lucide-react";
+import { AlertCircle, RefreshCw, Bell, CheckCircle2, DollarSign } from "lucide-react";
+import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
 import { GRADE_LABEL_BY_ROLE_ID, GRADE_BADGE_STYLE_BY_ROLE_ID } from "@/lib/grade-colors";
 
 type DebtRow = {
@@ -55,6 +56,26 @@ function fmtDate(value: string | null) {
   });
 }
 
+function MemberAvatar({ url, name }: { url?: string | null; name?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const initials = (name ?? "?").trim().charAt(0).toUpperCase();
+  if (url && !failed) {
+    return (
+      <img
+        src={url}
+        alt={name ?? ""}
+        onError={() => setFailed(true)}
+        className="h-10 w-10 shrink-0 rounded-xl object-cover border border-white/10"
+      />
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm font-semibold text-slate-300">
+      {initials}
+    </div>
+  );
+}
+
 export default function DebtsClient() {
   const [items, setItems] = useState<DebtRow[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
@@ -64,6 +85,8 @@ export default function DebtsClient() {
   const [batchPinging, setBatchPinging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const avatars = useDiscordAvatars(items.map((i) => i.discordId));
 
   async function load() {
     setLoading(true);
@@ -239,9 +262,10 @@ export default function DebtsClient() {
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
-                      <User className="h-4 w-4 text-slate-300" />
-                    </div>
+                    <MemberAvatar
+                      url={item.discordId ? avatars.get(item.discordId) : null}
+                      name={item.rpName}
+                    />
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-foreground">{item.rpName || item.steamId}</div>
                       <div className="flex items-center gap-2 mt-0.5">
