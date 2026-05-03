@@ -10,7 +10,6 @@ import { PageShell } from "@/components/staff/ui/PageShell";
 import { FAMILY_SLUG } from "@/lib/family";
 import { getMemberDisplayName } from "@/lib/member-display";
 import { isDisplayableStaffMember } from "@/lib/staff/member-scope";
-import { buildAvatarUrlBySteam } from "@/lib/discord/avatar-cache";
 import {
   BarChart3,
   TrendingUp,
@@ -40,7 +39,7 @@ type NormalizedRow = {
   net: number;
   count: number;
   rpName: string | null;
-  avatarUrl?: string | null;
+  discordId?: string | null;
 };
 
 type FamilyBankBalanceInput = {
@@ -240,13 +239,12 @@ export default async function StaffStatsPage() {
       .map((m) => [String(m.steamId).trim(), getMemberDisplayName(m)])
   );
 
-  // Avatars Discord — cache partagé (mémoire + DB + API Discord)
+  // Map steamId → discordId (transmis au client pour chargement asynchrone des avatars)
   const discordIdBySteam = new Map(
     membersBySteam
       .filter((m) => m.steamId && m.discordId)
       .map((m) => [String(m.steamId).trim(), String(m.discordId).trim()])
   );
-  const avatarUrlBySteam = await buildAvatarUrlBySteam(discordIdBySteam).catch(() => new Map<string, string | null>());
 
   // ========================================================================
   // Enrichir les données de la période + construire les listes
@@ -254,13 +252,13 @@ export default async function StaffStatsPage() {
   const enrichedMembers: NormalizedRow[] = norm.map((r) => ({
     ...r,
     rpName: rpBySteam.get(r.steamId) ?? null,
-    avatarUrl: avatarUrlBySteam.get(r.steamId) ?? null,
+    discordId: discordIdBySteam.get(r.steamId) ?? null,
   })).filter((member) => activeSteamIds.has(member.steamId));
 
   const allTimeMembers: NormalizedRow[] = allTimeNorm.map((r) => ({
     ...r,
     rpName: rpBySteam.get(r.steamId) ?? null,
-    avatarUrl: avatarUrlBySteam.get(r.steamId) ?? null,
+    discordId: discordIdBySteam.get(r.steamId) ?? null,
   })).filter((member) => activeSteamIds.has(member.steamId));
 
   const activeMembersCount = new Set(enrichedMembers.map((member) => member.steamId)).size;
@@ -311,7 +309,7 @@ export default async function StaffStatsPage() {
       steamId: member.steamId,
       rpName: member.rpName,
       amount: member.deposit,
-      avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
+      discordId: member.discordId ?? null,
     }));
 
   // Top Retraits (consolidé)
@@ -322,7 +320,7 @@ export default async function StaffStatsPage() {
       steamId: member.steamId,
       rpName: member.rpName,
       amount: member.withdraw,
-      avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
+      discordId: member.discordId ?? null,
     }));
 
   // Top Net POSITIF (consolidé)
@@ -334,7 +332,7 @@ export default async function StaffStatsPage() {
       steamId: member.steamId,
       rpName: member.rpName,
       amount: member.net,
-      avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
+      discordId: member.discordId ?? null,
     }));
 
   // Débiteurs globaux (lifetime) - top 15
@@ -345,7 +343,7 @@ export default async function StaffStatsPage() {
         steamId: member.steamId,
         rpName: member.rpName,
         debt,
-        avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
+        discordId: member.discordId ?? null,
       };
     })
     .filter((x) => x.debt > 0)

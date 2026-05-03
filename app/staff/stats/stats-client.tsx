@@ -8,6 +8,11 @@ import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { MotionListItem } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type MemberRow = {
   steamId: string;
@@ -15,22 +20,21 @@ type MemberRow = {
   deposit: number;
   withdraw: number;
   net: number;
-  avatarUrl?: string | null;
+  discordId?: string | null;
 };
 
 type MiniListRow = {
   steamId: string;
   rpName: string | null;
   amount: number;
-  tag?: "debt" | "ok" | null;
-  avatarUrl?: string | null;
+  discordId?: string | null;
 };
 
 type DebtorRow = {
   steamId: string;
   rpName: string | null;
   debt: number;
-  avatarUrl?: string | null;
+  discordId?: string | null;
 };
 
 export type StatsClientProps = {
@@ -50,6 +54,10 @@ export type StatsClientProps = {
   globalDebtors: DebtorRow[];
   maxDebt: number;
 };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("fr-FR", {
@@ -93,22 +101,41 @@ function getNetBgColor(net: number): string {
   return "bg-white/5";
 }
 
+// ---------------------------------------------------------------------------
+// Root component — collecte tous les discordIds et charge les avatars en un seul fetch
+// ---------------------------------------------------------------------------
+
 export default function StatsClient(props: StatsClientProps) {
+  // Collecter tous les discordIds présents dans les données
+  const allDiscordIds = [
+    ...props.rows.map((r) => r.discordId),
+    ...props.topDeposits.map((r) => r.discordId),
+    ...props.topWithdraws.map((r) => r.discordId),
+    ...props.topNet.map((r) => r.discordId),
+    ...props.globalDebtors.map((r) => r.discordId),
+  ].filter((id): id is string => Boolean(id));
+
+  const avatars = useDiscordAvatars(allDiscordIds);
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
-        <RankedMiniList title="Top entrants" icon={TrendingUp} rows={props.topDeposits} color="text-emerald-300" />
-        <RankedMiniList title="Top sortants" icon={TrendingDown} rows={props.topWithdraws} color="text-blue-300" />
-        <RankedMiniList title="Top positif" icon={DollarSign} rows={props.topNet} color="text-green-300" />
-        <DebtorsGlobalSection debtors={props.globalDebtors} maxDebt={props.maxDebt} />
+        <RankedMiniList title="Top entrants"  icon={TrendingUp}  rows={props.topDeposits}  color="text-emerald-300" avatars={avatars} />
+        <RankedMiniList title="Top sortants"  icon={TrendingDown} rows={props.topWithdraws} color="text-blue-300"   avatars={avatars} />
+        <RankedMiniList title="Top positif"   icon={DollarSign}  rows={props.topNet}        color="text-green-300"  avatars={avatars} />
+        <DebtorsGlobalSection debtors={props.globalDebtors} maxDebt={props.maxDebt} avatars={avatars} />
       </div>
 
-      <MembersTableClient members={props.rows} />
+      <MembersTableClient members={props.rows} avatars={avatars} />
     </div>
   );
 }
 
-function MembersTableClient({ members }: { members: MemberRow[] }) {
+// ---------------------------------------------------------------------------
+// Tableau consolidé
+// ---------------------------------------------------------------------------
+
+function MembersTableClient({ members, avatars }: { members: MemberRow[]; avatars: Map<string, string | null> }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"net" | "deposit" | "withdraw">("net");
 
@@ -177,7 +204,7 @@ function MembersTableClient({ members }: { members: MemberRow[] }) {
                 <tr key={member.steamId} className="border-b border-white/6 last:border-b-0 hover:bg-white/[0.04]">
                   <td className="px-4 py-3">
                     <Link href={`/staff/banklogs?steamId=${member.steamId}`} className="flex items-center gap-2 text-slate-100 transition-colors hover:text-amber-200">
-                      <Avatar url={member.avatarUrl} name={member.rpName} />
+                      <Avatar url={member.discordId ? avatars.get(member.discordId) : null} name={member.rpName} />
                       <span className="truncate font-semibold">{member.rpName ?? "Non lié"}</span>
                       {member.net < 0 ? <StatusBadge tone="danger">Débiteur</StatusBadge> : null}
                     </Link>
@@ -200,13 +227,21 @@ function MembersTableClient({ members }: { members: MemberRow[] }) {
   );
 }
 
-function DebtorsGlobalSection({ debtors, maxDebt }: { debtors: DebtorRow[]; maxDebt: number }) {
+// ---------------------------------------------------------------------------
+// Débiteurs globaux
+// ---------------------------------------------------------------------------
+
+function DebtorsGlobalSection({
+  debtors,
+  maxDebt,
+  avatars,
+}: {
+  debtors: DebtorRow[];
+  maxDebt: number;
+  avatars: Map<string, string | null>;
+}) {
   return (
-    <SectionCard
-      title="Débiteurs"
-      icon={AlertCircle}
-      className="h-full"
-    >
+    <SectionCard title="Débiteurs" icon={AlertCircle} className="h-full">
       {debtors.length === 0 ? (
         <EmptyState
           icon={<BadgeEuro className="h-12 w-12" />}
@@ -225,7 +260,7 @@ function DebtorsGlobalSection({ debtors, maxDebt }: { debtors: DebtorRow[]; maxD
                 >
                   <div className="absolute inset-y-0 right-0 bg-red-500/10" style={{ width: `${debtPercent}%` }} />
                   <div className="relative flex items-center gap-2 min-w-0 flex-1">
-                    <Avatar url={debtor.avatarUrl} name={debtor.rpName} />
+                    <Avatar url={debtor.discordId ? avatars.get(debtor.discordId) : null} name={debtor.rpName} />
                     <p className="truncate font-medium text-slate-100">{debtor.rpName ?? "Non lié"}</p>
                   </div>
                   <p className="relative shrink-0 font-bold text-red-300 tabular-nums">{formatMoney(debtor.debt)}</p>
@@ -239,16 +274,22 @@ function DebtorsGlobalSection({ debtors, maxDebt }: { debtors: DebtorRow[]; maxD
   );
 }
 
+// ---------------------------------------------------------------------------
+// Top listes
+// ---------------------------------------------------------------------------
+
 function RankedMiniList({
   title,
   icon: Icon,
   rows,
   color,
+  avatars,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
   rows: MiniListRow[];
   color: string;
+  avatars: Map<string, string | null>;
 }) {
   return (
     <SectionCard title={title} icon={Icon} actions={<StatusBadge>Top 15</StatusBadge>} className="h-full">
@@ -267,7 +308,7 @@ function RankedMiniList({
                 className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 transition-colors hover:border-white/15 hover:bg-white/[0.05]"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Avatar url={row.avatarUrl} name={row.rpName} />
+                  <Avatar url={row.discordId ? avatars.get(row.discordId) : null} name={row.rpName} />
                   <span className="truncate text-sm font-semibold text-slate-100">{row.rpName ?? "Non lié"}</span>
                 </div>
                 <span className={`text-sm font-bold tabular-nums shrink-0 ${color}`}>{formatMoney(row.amount)}</span>
@@ -279,4 +320,3 @@ function RankedMiniList({
     </SectionCard>
   );
 }
-

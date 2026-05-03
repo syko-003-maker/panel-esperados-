@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
+import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
 import { Users, AlertTriangle, Clock, BarChart3, type LucideIcon } from "lucide-react";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type WarnEntry = {
   reason: string;
@@ -19,7 +23,6 @@ type WarnEntry = {
 type MemberWarnSummary = {
   memberId: string;
   discordId: string | null;
-  discordAvatarHash: string | null;
   rpName: string | null;
   grade: string | null;
   steamId: string;
@@ -30,6 +33,10 @@ type MemberWarnSummary = {
   lastWarnType: string | null;
   recentWarns: WarnEntry[];
 };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -50,22 +57,33 @@ function WarnTypeBadge({ type }: { type: string }) {
   );
 }
 
-function MemberAvatar({ discordId, avatarHash, rpName }: { discordId: string | null; avatarHash: string | null; rpName: string | null }) {
+function MemberAvatar({ url, rpName }: { url?: string | null; rpName: string | null }) {
   const [failed, setFailed] = useState(false);
-  const url = getDiscordAvatarUrl(discordId, avatarHash);
   const fallback = (rpName ?? "?").trim().charAt(0).toUpperCase();
+
   if (url && !failed) {
     return (
-      <img src={url} alt={rpName ?? ""} onError={() => setFailed(true)}
-        className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover" loading="lazy" referrerPolicy="no-referrer" />
+      <img
+        src={url}
+        alt={rpName ?? ""}
+        onError={() => setFailed(true)}
+        className="h-10 w-10 shrink-0 rounded-full border border-white/10 object-cover"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
     );
   }
+
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-card/80 text-sm font-semibold text-foreground/80">
       {fallback}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export default function WarnsClient() {
   const [members, setMembers] = useState<MemberWarnSummary[]>([]);
@@ -87,21 +105,25 @@ export default function WarnsClient() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Charger les avatars Discord en parallèle, non-bloquant
+  const discordIds = members.map((m) => m.discordId);
+  const avatars = useDiscordAvatars(discordIds);
+
   if (loading) {
     return <LoadingState title="Chargement des warns" description="Lecture depuis la base de données…" />;
   }
 
-  const activeOnlyMembers = members.filter((m) => m.activeWarns > 0);
+  const activeOnlyMembers  = members.filter((m) => m.activeWarns > 0);
   const expiredOnlyMembers = members.filter((m) => m.activeWarns === 0 && m.totalWarns > 0);
 
   return (
     <div className="space-y-5">
       {/* Stats bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Membres avec warns" value={members.length}                                     color="amber"   icon={Users} />
-        <StatCard label="Warns actifs"        value={activeOnlyMembers.length}                         color="rose"    icon={AlertTriangle} />
-        <StatCard label="Warns expirés"       value={expiredOnlyMembers.length}                        color="slate"   icon={Clock} />
-        <StatCard label="Total warns"         value={members.reduce((s, m) => s + m.totalWarns, 0)}   color="default" icon={BarChart3} />
+        <StatCard label="Membres avec warns" value={members.length}                                   color="amber"   icon={Users} />
+        <StatCard label="Warns actifs"        value={activeOnlyMembers.length}                        color="rose"    icon={AlertTriangle} />
+        <StatCard label="Warns expirés"       value={expiredOnlyMembers.length}                       color="slate"   icon={Clock} />
+        <StatCard label="Total warns"         value={members.reduce((s, m) => s + m.totalWarns, 0)}  color="default" icon={BarChart3} />
       </div>
 
       <SectionCard
@@ -109,8 +131,11 @@ export default function WarnsClient() {
         description="Membres du staff ayant reçu au moins un warn in-game, triés par warn le plus récent."
         actions={
           <MotionButtonFrame>
-            <button onClick={() => void load(true)} disabled={refreshing}
-              className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-foreground/70 transition-colors hover:bg-white/[0.10] disabled:opacity-50">
+            <button
+              onClick={() => void load(true)}
+              disabled={refreshing}
+              className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-foreground/70 transition-colors hover:bg-white/[0.10] disabled:opacity-50"
+            >
               {refreshing ? "..." : "↻ Actualiser"}
             </button>
           </MotionButtonFrame>
@@ -121,18 +146,22 @@ export default function WarnsClient() {
         ) : (
           <div className="space-y-2">
             {members.map((member) => {
-              const isOpen = expanded === member.memberId;
+              const isOpen   = expanded === member.memberId;
               const hasActive = member.activeWarns > 0;
+              const avatarUrl = member.discordId ? avatars.get(member.discordId) : null;
+
               return (
-                <div key={member.memberId}
-                  className={`rounded-xl border transition-colors ${hasActive ? "border-amber-500/25 bg-amber-500/[0.04]" : "border-white/8 bg-white/[0.02]"}`}>
+                <div
+                  key={member.memberId}
+                  className={`rounded-xl border transition-colors ${hasActive ? "border-amber-500/25 bg-amber-500/[0.04]" : "border-white/8 bg-white/[0.02]"}`}
+                >
                   {/* Header row */}
                   <button
                     type="button"
                     onClick={() => setExpanded(isOpen ? null : member.memberId)}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left"
                   >
-                    <MemberAvatar discordId={member.discordId} avatarHash={member.discordAvatarHash} rpName={member.rpName} />
+                    <MemberAvatar url={avatarUrl} rpName={member.rpName} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-sm text-foreground">{member.rpName ?? "—"}</span>
@@ -177,16 +206,16 @@ export default function WarnsClient() {
                       </p>
                       <div className="space-y-2">
                         {member.recentWarns.map((warn, i) => (
-                          <div key={i}
-                            className={`flex flex-wrap items-start gap-2 rounded-lg border px-3 py-2 text-sm ${warn.expired ? "border-white/6 bg-white/[0.02] opacity-60" : "border-amber-500/20 bg-amber-500/[0.06]"}`}>
+                          <div
+                            key={i}
+                            className={`flex flex-wrap items-start gap-2 rounded-lg border px-3 py-2 text-sm ${warn.expired ? "border-white/6 bg-white/[0.02] opacity-60" : "border-amber-500/20 bg-amber-500/[0.06]"}`}
+                          >
                             <WarnTypeBadge type={warn.type} />
                             <span className={`flex-1 ${warn.expired ? "text-muted-foreground" : "text-foreground"}`}>
                               {warn.reason}
                             </span>
                             <span className="shrink-0 text-xs text-muted-foreground">{fmtDate(warn.date)}</span>
-                            {warn.expired && (
-                              <StatusBadge>Expiré</StatusBadge>
-                            )}
+                            {warn.expired && <StatusBadge>Expiré</StatusBadge>}
                           </div>
                         ))}
                       </div>
@@ -201,6 +230,10 @@ export default function WarnsClient() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Stat card
+// ---------------------------------------------------------------------------
 
 const STAT_V = {
   amber:   { num: "text-amber-300",  ring: "border-amber-500/25 bg-amber-500/10",  ic: "text-amber-300"  },
