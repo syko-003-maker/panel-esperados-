@@ -10,6 +10,7 @@ import { PageShell } from "@/components/staff/ui/PageShell";
 import { FAMILY_SLUG } from "@/lib/family";
 import { getMemberDisplayName } from "@/lib/member-display";
 import { isDisplayableStaffMember } from "@/lib/staff/member-scope";
+import { buildAvatarUrlBySteam } from "@/lib/discord/avatar-cache";
 import {
   BarChart3,
   TrendingUp,
@@ -39,6 +40,7 @@ type NormalizedRow = {
   net: number;
   count: number;
   rpName: string | null;
+  avatarUrl?: string | null;
 };
 
 type FamilyBankBalanceInput = {
@@ -89,17 +91,25 @@ function parseMoneyCandidate(value: unknown): number | null {
 }
 
 async function fetchFamilyBankBalance(input: FamilyBankBalanceInput): Promise<number | null> {
-  const syncKeys = Array.from(new Set([`infos:${input.familySlug}`, `infos:${FAMILY_SLUG}`]));
+  const slugs = Array.from(new Set([input.familySlug, FAMILY_SLUG]));
 
-  for (const key of syncKeys) {
-    const syncedInfos = await prisma.syncState.findUnique({
-      where: { key },
-      select: { meta: true },
-    });
+  for (const slug of slugs) {
+    const keys = [`lyg-sync:infos:${slug}`, `infos:${slug}`];
 
-    const parsedSynced = parseMoneyCandidate((syncedInfos?.meta as any)?.money);
-    if (parsedSynced != null) {
-      return parsedSynced;
+    for (const key of keys) {
+      const syncedInfos = await prisma.syncState.findUnique({
+        where: { key },
+        select: { meta: true },
+      });
+
+      const meta = syncedInfos?.meta as any;
+      const parsedSynced =
+        parseMoneyCandidate(meta?.metrics?.money) ??
+        parseMoneyCandidate(meta?.money);
+
+      if (parsedSynced != null) {
+        return parsedSynced;
+      }
     }
   }
 
@@ -230,17 +240,27 @@ export default async function StaffStatsPage() {
       .map((m) => [String(m.steamId).trim(), getMemberDisplayName(m)])
   );
 
+  // Avatars Discord — cache partagé (mémoire + DB + API Discord)
+  const discordIdBySteam = new Map(
+    membersBySteam
+      .filter((m) => m.steamId && m.discordId)
+      .map((m) => [String(m.steamId).trim(), String(m.discordId).trim()])
+  );
+  const avatarUrlBySteam = await buildAvatarUrlBySteam(discordIdBySteam).catch(() => new Map<string, string | null>());
+
   // ========================================================================
   // Enrichir les données de la période + construire les listes
   // ========================================================================
   const enrichedMembers: NormalizedRow[] = norm.map((r) => ({
     ...r,
     rpName: rpBySteam.get(r.steamId) ?? null,
+    avatarUrl: avatarUrlBySteam.get(r.steamId) ?? null,
   })).filter((member) => activeSteamIds.has(member.steamId));
 
   const allTimeMembers: NormalizedRow[] = allTimeNorm.map((r) => ({
     ...r,
     rpName: rpBySteam.get(r.steamId) ?? null,
+    avatarUrl: avatarUrlBySteam.get(r.steamId) ?? null,
   })).filter((member) => activeSteamIds.has(member.steamId));
 
   const activeMembersCount = new Set(enrichedMembers.map((member) => member.steamId)).size;
@@ -291,6 +311,7 @@ export default async function StaffStatsPage() {
       steamId: member.steamId,
       rpName: member.rpName,
       amount: member.deposit,
+      avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
     }));
 
   // Top Retraits (consolidé)
@@ -301,6 +322,7 @@ export default async function StaffStatsPage() {
       steamId: member.steamId,
       rpName: member.rpName,
       amount: member.withdraw,
+      avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
     }));
 
   // Top Net POSITIF (consolidé)
@@ -312,6 +334,7 @@ export default async function StaffStatsPage() {
       steamId: member.steamId,
       rpName: member.rpName,
       amount: member.net,
+      avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
     }));
 
   // Débiteurs globaux (lifetime) - top 15
@@ -322,6 +345,7 @@ export default async function StaffStatsPage() {
         steamId: member.steamId,
         rpName: member.rpName,
         debt,
+        avatarUrl: avatarUrlBySteam.get(member.steamId) ?? null,
       };
     })
     .filter((x) => x.debt > 0)
@@ -333,7 +357,7 @@ export default async function StaffStatsPage() {
   return (
     <PageShell
       title="Statistiques Banque"
-      description={`Vue consolidée temps réel • Membres actifs: ${activeMembersCount}`}
+      description="Vue consolidée des flux bancaires de la famille"
       icon={BarChart3}
     >
       {/* KPI Grid - 6 cards compactes et sobres */}

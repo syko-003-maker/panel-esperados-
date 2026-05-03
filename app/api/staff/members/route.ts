@@ -7,6 +7,7 @@ import { getPreviousPlaytimeWeekStart } from "@/lib/playtime-insights";
 import type { StaffMemberDto } from "@/types/staff";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
 import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
+import { getAvatarHashes } from "@/lib/discord/avatar-cache";
 import { getMemberDisplayName } from "@/lib/member-display";
 import {
   getMemberScopeFlags,
@@ -468,43 +469,10 @@ export async function GET(req: Request) {
       )
     ) as string[];
 
-    const avatarHashByDiscordId = new Map<string, string | null>();
-
-    if (discordIds.length > 0) {
-      // Source primaire: DB Account.user.image (membres ayant déjà connecté le panel)
-      const accounts = await prisma.account.findMany({
-        where: {
-          provider: "discord",
-          providerAccountId: { in: discordIds },
-        },
-        select: {
-          providerAccountId: true,
-          user: { select: { image: true } },
-        },
-      });
-
-      for (const account of accounts) {
-        const hash = extractDiscordAvatarHash(account.user?.image);
-        if (hash) {
-          avatarHashByDiscordId.set(account.providerAccountId, hash);
-        }
-      }
-
-      // Fallback: Discord API uniquement pour les membres sans entrée en DB
-      // (n'ont jamais connecté le panel) — batch limité pour éviter le rate limit
-      const discordIdsWithoutAvatar = discordIds.filter(
-        (id) => !avatarHashByDiscordId.get(id)
-      );
-
-      if (discordIdsWithoutAvatar.length > 0) {
-        const apiAvatars = await fetchDiscordAvatarHashBatch(discordIdsWithoutAvatar);
-        for (const [discordId, hash] of apiAvatars) {
-          if (hash) {
-            avatarHashByDiscordId.set(discordId, hash);
-          }
-        }
-      }
-    }
+    // Récupération des avatars via le cache partagé (mémoire + DB + API Discord)
+    const avatarHashByDiscordId = discordIds.length > 0
+      ? await getAvatarHashes(discordIds)
+      : new Map<string, string | null>();
 
     const rows: StaffMemberDto[] = normalizedMembers.map((member: any) => {
       const playtime = typeof member.playtime7d === "number" ? member.playtime7d : 0;
