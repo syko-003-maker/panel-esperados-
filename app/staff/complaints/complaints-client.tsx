@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AlertCircle, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { DataTile } from "@/components/staff/ui/DataTile";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { SkeletonTable } from "@/components/staff/ui/Skeletons";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 type Complaint = {
   id: string;
@@ -42,10 +42,26 @@ const STATUS_LABELS: Record<Complaint["status"], string> = {
 
 const STATUS_TONES: Record<Complaint["status"], "danger" | "info" | "success" | "warning" | "neutral"> = {
   OPEN: "danger",
-  IN_REVIEW: "info",
+  IN_REVIEW: "warning",
   RESOLVED: "success",
-  REJECTED: "warning",
+  REJECTED: "neutral",
   CLOSED: "neutral",
+};
+
+const STATUS_ACCENT: Record<Complaint["status"], string> = {
+  OPEN: "border-l-red-500/60",
+  IN_REVIEW: "border-l-amber-500/60",
+  RESOLVED: "border-l-emerald-500/50",
+  REJECTED: "border-l-white/20",
+  CLOSED: "border-l-white/20",
+};
+
+const STATUS_DOT: Record<Complaint["status"], string> = {
+  OPEN: "bg-red-400",
+  IN_REVIEW: "bg-amber-400",
+  RESOLVED: "bg-emerald-400",
+  REJECTED: "bg-slate-500",
+  CLOSED: "bg-slate-600",
 };
 
 function fmtDate(iso: string | null) {
@@ -132,47 +148,43 @@ export default function ComplaintsClient() {
           actions={statusFilter || q ? <StatusBadge tone="info">Filtres actifs</StatusBadge> : <StatusBadge>{pageSize} / page</StatusBadge>}
         >
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3 items-end">
-              <div className="flex-1 flex gap-2">
-                <Input
+            <div className="flex flex-col sm:flex-row gap-3 items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <input
                   type="text"
                   value={pendingQ}
                   onChange={(e) => setPendingQ(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { setQ(pendingQ); setPage(1); }
-                  }}
-                  placeholder="Rechercher ticket, auteur, cible..."
-                  className="bg-card/70 border-white/8"
+                  onKeyDown={(e) => { if (e.key === "Enter") { setQ(pendingQ); setPage(1); } }}
+                  placeholder="Ticket, auteur, cible..."
+                  className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
                 />
-                <MotionButtonFrame>
-                  <Button
-                    variant="outline"
-                    onClick={() => { setQ(pendingQ); setPage(1); }}
-                    className="rounded-2xl border-white/10 bg-white/[0.04]"
-                  >
-                    Chercher
-                  </Button>
-                </MotionButtonFrame>
               </div>
-              <select
+              <StyledSelect
                 value={statusFilter}
                 onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
-                className="px-3 py-2 rounded-lg bg-card/70 border border-white/8 text-foreground text-sm focus:outline-none"
+                className="w-full sm:w-auto min-w-[160px]"
               >
                 <option value="">Tous les statuts</option>
                 {VALID_STATUSES.map((s) => (
                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                 ))}
-              </select>
+              </StyledSelect>
               {(statusFilter || q) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
                   onClick={() => { setStatusFilter(""); setQ(""); setPendingQ(""); setPage(1); }}
-                  className="rounded-2xl"
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-300 hover:bg-white/[0.08] transition-colors"
                 >
                   Réinitialiser
-                </Button>
+                </button>
+              )}
+              {(pendingQ !== q) && (
+                <button
+                  onClick={() => { setQ(pendingQ); setPage(1); }}
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 hover:bg-amber-500/20 transition-colors"
+                >
+                  Chercher
+                </button>
               )}
             </div>
 
@@ -192,99 +204,46 @@ export default function ComplaintsClient() {
                 icon="⚠️"
               />
             ) : (
-              <>
-                {/* Mobile cards */}
-                <div className="md:hidden flex flex-col gap-3">
-                  {items.map((c) => (
-                    <div key={c.id} className="rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs text-amber-400">{c.ticketKey ?? c.id.slice(0, 8)}</span>
-                        <StatusBadge tone={STATUS_TONES[c.status]}>{STATUS_LABELS[c.status]}</StatusBadge>
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium text-foreground">{c.authorRpName ?? c.authorTag ?? "—"}</span>
-                        {c.authorRpName && c.authorTag && (
-                          <span className="text-[11px] text-muted-foreground">{c.authorTag}</span>
-                        )}
-                        {c.targetName && (
-                          <span className="text-xs text-muted-foreground">→ {c.targetName}</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground line-clamp-2">{c.reason ?? c.title ?? "—"}</div>
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[11px] text-muted-foreground">{fmtDate(c.createdAt)}</span>
-                        <Link href={`/staff/complaints/${c.id}`} className="text-xs font-medium text-amber-300 hover:text-amber-200 hover:underline transition-colors">
-                          Voir →
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="mt-4 flex flex-col gap-1.5">
+                {items.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/staff/complaints/${c.id}`}
+                    className={`group flex items-center gap-3 rounded-xl border border-white/8 border-l-2 ${STATUS_ACCENT[c.status]} bg-white/[0.02] pl-3 pr-4 py-3 transition-all hover:border-white/15 hover:bg-white/[0.05]`}
+                  >
+                    {/* Status dot */}
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[c.status]}`} />
 
-                {/* Desktop table */}
-                <div className="hidden md:block overflow-x-auto rounded-xl border border-white/8">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/8 bg-card/40">
-                        {["Ticket", "Auteur", "Cible", "Raison", "Statut", "Créée le", ""].map((h, i) => (
-                          <th
-                            key={h || i}
-                            className={`px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap ${
-                              h === "Cible" ? "hidden sm:table-cell" : h === "Créée le" ? "hidden lg:table-cell" : ""
-                            }`}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((c, idx) => (
-                        <tr
-                          key={c.id}
-                          className={`border-b border-white/5 hover:bg-white/[0.03] transition-colors ${idx % 2 === 0 ? "bg-white/[0.015]" : ""}`}
-                        >
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-xs text-amber-400">
-                              {c.ticketKey ?? c.id.slice(0, 8)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-foreground text-sm">{c.authorRpName ?? c.authorTag ?? "—"}</div>
-                            {c.authorRpName && c.authorTag && (
-                              <div className="text-[11px] text-muted-foreground">{c.authorTag}</div>
-                            )}
-                          </td>
-                          <td className="hidden sm:table-cell px-3 md:px-4 py-3 text-sm text-muted-foreground">
-                            {c.targetName ?? "—"}
-                          </td>
-                          <td className="px-3 md:px-4 py-3 max-w-[140px] md:max-w-[220px]">
-                            <div className="text-xs text-foreground truncate" title={c.reason ?? undefined}>
-                              {c.reason ?? c.title ?? "—"}
-                            </div>
-                          </td>
-                          <td className="px-3 md:px-4 py-3">
-                            <StatusBadge tone={STATUS_TONES[c.status]}>
-                              {STATUS_LABELS[c.status]}
-                            </StatusBadge>
-                          </td>
-                          <td className="hidden lg:table-cell px-3 md:px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                            {fmtDate(c.createdAt)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Link
-                              href={`/staff/complaints/${c.id}`}
-                              className="text-xs font-medium text-amber-300 hover:text-amber-200 hover:underline whitespace-nowrap transition-colors"
-                            >
-                              Voir →
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+                    {/* Author + target + reason */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-100">
+                          {c.authorRpName ?? c.authorTag ?? "—"}
+                        </span>
+                        {c.targetName && (
+                          <>
+                            <span className="text-slate-600 text-[11px]">contre</span>
+                            <span className="text-xs font-medium text-rose-300/80">{c.targetName}</span>
+                          </>
+                        )}
+                      </div>
+                      {(c.reason || c.title) && (
+                        <p className="mt-0.5 text-xs text-slate-500 truncate">
+                          {c.reason ?? c.title}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Status badge + date */}
+                    <div className="shrink-0 flex flex-col items-end gap-1.5">
+                      <StatusBadge tone={STATUS_TONES[c.status]} className="text-[11px] px-2 py-0.5">
+                        {STATUS_LABELS[c.status]}
+                      </StatusBadge>
+                      <span className="text-[10px] text-slate-600 tabular-nums">{fmtDate(c.createdAt)}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             )}
 
             {total > 0 && (

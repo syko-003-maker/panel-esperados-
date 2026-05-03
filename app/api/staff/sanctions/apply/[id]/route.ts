@@ -65,22 +65,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const expiresAt = sanction.expiresAt ?? sanction.endAt;
 
-  // Queue the Discord action
-  await enqueueSanctionApply({
-    familyId: FAMILY_ID,
-    sanctionId: sanction.id,
-    discordId: memberDiscordId,
-    memberName: sanction.member?.rpName ?? "Unknown",
-    sanctionType: sanction.type,
-    reason: sanction.reason ?? "No reason provided",
-    durationHours: expiresAt
-      ? Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / (60 * 60 * 1000)))
-      : null,
-    staffName: sanction.createdBy?.name ?? "Unknown",
-    staffRpName: actorRpName,
-    appliedByUserId: userId,
-    actorMemberId,
+  // Reset any existing FAILED outbox job so it can be requeued.
+  // enqueueSanctionApply uses a dedupeKey (unique constraint), so if a FAILED job
+  // already exists with that key the INSERT would be silently dropped — leaving the
+  // sanction stuck in PENDING forever. Resetting it to PENDING first lets the worker
+  // pick it up again without needing to create a new row.
+  const dedupeKey = `SANCTION_APPLY:${sanction.id}`;
+  const resetCount = await prisma.discordOutbox.updateMany({
+    where: { dedupeKey, status: { in: ["FAILED", "SENT"] } },
+    data: { status: "PENDING", nextAttemptAt: new Date(), lastError: null, attempt: 0 },
   });
+
+  // Only enqueue a brand-new job when no existing job was reset
+  if (resetCount.count === 0) {
+    await enqueueSanctionApply({
+      familyId: FAMILY_ID,
+      sanctionId: sanction.id,
+      discordId: memberDiscordId,
+      memberName: sanction.member?.rpName ?? "Unknown",
+      sanctionType: sanction.type,
+      reason: sanction.reason ?? "No reason provided",
+      durationHours: expiresAt
+        ? Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / (60 * 60 * 1000)))
+        : null,
+      staffName: sanction.createdBy?.name ?? "Unknown",
+      staffRpName: actorRpName,
+      appliedByUserId: userId,
+      actorMemberId,
+    });
+  }
 
   // Mark as pending (worker will apply)
   await prisma.sanction.update({

@@ -109,7 +109,7 @@ function isMissingColumnError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as any).code === "P2022";
 }
 
-type MembersScope = "active" | "all" | "demoted" | "non_link" | "blacklisted" | "reservists";
+type MembersScope = "active" | "all" | "demoted" | "non_link" | "blacklisted" | "reservists" | "everything";
 
 type MembersSortBy = "name" | "grade" | "playtime7d" | "status";
 type MembersSortDir = "asc" | "desc";
@@ -121,7 +121,7 @@ const GRADE_LEVEL_BY_NAME = new Map(
 );
 
 function parseScope(raw: string | null): MembersScope {
-  if (raw === "all" || raw === "demoted" || raw === "non_link" || raw === "blacklisted" || raw === "reservists") return raw;
+  if (raw === "all" || raw === "demoted" || raw === "non_link" || raw === "blacklisted" || raw === "reservists" || raw === "everything") return raw;
   return "active";
 }
 
@@ -347,48 +347,29 @@ export async function GET(req: Request) {
         const isLinkedMember = isLinkedStaffMember(member);
         const isActiveMember = isActiveMembersScopeMember(member);
 
-        if (scope === "non_link") {
-          if (!isNonLinkedDisplayableStaffMember(member)) {
-            return null;
+        const isNonLink = isNonLinkedDisplayableStaffMember(member);
+
+        // scope=everything : inclure tout le monde (filtrages côté client)
+        if (scope !== "everything") {
+          if (scope === "non_link") {
+            if (!isNonLink) return null;
+          } else {
+            const includeByScope = scope === "demoted"
+              ? isDemoted
+              : scope === "blacklisted"
+                ? isBlacklisted
+              : scope === "reservists"
+                ? isReservist
+              : scope === "all"
+                ? (isDisplayableMember || isDemoted || isBlacklisted || isReservist)
+              : isActiveMember;
+
+            if (!includeByScope) return null;
           }
-
-          const resolvedGrade = isBlacklisted
-            ? "Blacklist"
-            : isDemoted
-              ? "Demote"
-              : isReservist
-                ? "Réserviste"
-                : gradeInfo.grade;
-          const resolvedRoleId = isBlacklisted
-            ? BLACKLIST_ROLE_ID
-            : isDemoted
-              ? DEMOTE_ROLE_ID
-              : isReservist
-                ? RESERVIST_ROLE_ID
-                : getDiscordGradeRoleId(discordRoleIds);
-          const resolvedLevel = isDemoted || isBlacklisted || isReservist ? null : getDiscordGradeLevel(discordRoleIds);
-
-          return {
-            ...member,
-            grade: resolvedGrade,
-            _discordGrade: resolvedGrade,
-            _discordGradeLevel: resolvedLevel,
-            _discordGradeRoleId: resolvedRoleId,
-          };
-        }
-
-        const includeByScope = scope === "demoted"
-          ? isDemoted
-          : scope === "blacklisted"
-            ? isBlacklisted
-          : scope === "reservists"
-            ? isReservist
-          : scope === "all"
-             ? (isDisplayableMember || isDemoted || isBlacklisted || isReservist)
-            : isActiveMember;
-
-        if (!includeByScope) {
-          return null;
+        } else {
+          // everything: exclure les membres qui ne sont dans aucune catégorie utile
+          const inAnyCat = isActiveMember || isDemoted || isBlacklisted || isReservist || isNonLink;
+          if (!inAnyCat) return null;
         }
 
         const resolvedGrade = isBlacklisted
@@ -414,6 +395,12 @@ export async function GET(req: Request) {
           _discordGrade: resolvedGrade,
           _discordGradeLevel: resolvedLevel,
           _discordGradeRoleId: resolvedRoleId,
+          // Flags pour filtrage client-side (scope=everything)
+          _isActive: isActiveMember,
+          _isDemoted: isDemoted,
+          _isBlacklisted: isBlacklisted,
+          _isReservist: isReservist,
+          _isNonLink: isNonLink,
         };
       })
       .filter((member): member is any => member !== null)

@@ -22,6 +22,7 @@ import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 type MeetingItem = {
   id: string;
@@ -299,25 +300,25 @@ export default function MeetingsClient() {
                   </div>
 
                   <div className="mt-3 flex items-center gap-2">
-                    <select
+                    <StyledSelect
                       value={createDate ? createDate.getHours() : 21}
                       onChange={(event) => setHour(Number(event.target.value))}
-                      className="rounded-md border border-slate-700 bg-card/60 px-2 py-1 text-sm text-slate-100"
+                      className="w-20"
                     >
                       {Array.from({ length: 24 }, (_, hour) => (
                         <option key={hour} value={hour}>{String(hour).padStart(2, "0")}</option>
                       ))}
-                    </select>
+                    </StyledSelect>
                     <span className="text-slate-400">:</span>
-                    <select
+                    <StyledSelect
                       value={createDate ? createDate.getMinutes() : 0}
                       onChange={(event) => setMinute(Number(event.target.value))}
-                      className="rounded-md border border-slate-700 bg-card/60 px-2 py-1 text-sm text-slate-100"
+                      className="w-20"
                     >
                       {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((minute) => (
                         <option key={minute} value={minute}>{String(minute).padStart(2, "0")}</option>
                       ))}
-                    </select>
+                    </StyledSelect>
                     <button
                       type="button"
                       onClick={() => setPickerOpen(false)}

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 type DbStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "ARCHIVED";
 
@@ -161,40 +162,43 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
         icon={Search}
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-            Statut :
-            <select
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-200 shrink-0">Statut :</span>
+            <StyledSelect
               value={filter}
               onChange={(e) => setFilter(e.target.value as FilterValue)}
-              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 focus:border-amber-500/40 focus:outline-none"
+              className="min-w-[140px]"
             >
               <option value="ALL">Tous</option>
-              <option value="PENDING">🟡 En attente</option>
-              <option value="ACCEPTED">✅ Accepté</option>
-              <option value="REJECTED">❌ Refusé</option>
-              <option value="ARCHIVED">📦 Archivé</option>
-            </select>
-          </label>
+              <option value="PENDING">En attente</option>
+              <option value="ACCEPTED">Accepté</option>
+              <option value="REJECTED">Refusé</option>
+              <option value="ARCHIVED">Archivé</option>
+            </StyledSelect>
+          </div>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-            Tri :
-            <select
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-200 shrink-0">Tri :</span>
+            <StyledSelect
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as "createdAt" | "name")}
-              className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 focus:border-amber-500/40 focus:outline-none"
+              className="min-w-[160px]"
             >
               <option value="createdAt">Date de création</option>
               <option value="name">Nom RP</option>
-            </select>
-          </label>
+            </StyledSelect>
+          </div>
 
-          <input
-            type="text"
-            placeholder="Ticket, Discord, RP, Steam..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
-          />
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Ticket, Discord, RP, Steam..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-8 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+            />
+          </div>
 
           <MotionButtonFrame>
             <button
@@ -244,7 +248,7 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                       <div className="text-sm text-slate-100">
                         {r.rpName ? (
                           r.authorDiscordId ? (
-                            <Link href={`/staff/members/by-discord/${r.authorDiscordId}`} prefetch={false} className="font-medium text-cyan-300 hover:underline">
+                            <Link href={`/staff/members/by-discord/${r.authorDiscordId}`} prefetch={false} className="font-medium text-amber-300 hover:underline">
                               {r.rpName}
                             </Link>
                           ) : (
@@ -299,7 +303,7 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                                 href={getDiscordThreadUrl(r.threadId)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-indigo-500/12 px-3 py-2 text-sm font-medium text-indigo-200 transition-colors hover:bg-indigo-500/20"
+                                className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.10]"
                               >
                                 <MessageSquare className="h-4 w-4" />
                                 Discord

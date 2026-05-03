@@ -10,6 +10,7 @@ import { SkeletonTable } from "@/components/staff/ui/Skeletons";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import {
   Dialog,
   DialogContent,
@@ -129,6 +130,8 @@ export default function SanctionsClient() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearingId, setClearingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [forcingAppliedId, setForcingAppliedId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
@@ -317,6 +320,41 @@ export default function SanctionsClient() {
       setError(String(err?.message ?? err));
     } finally {
       setClearingId(null);
+    }
+  }
+
+  async function forceApplied(item: Sanction) {
+    if (!confirm("Forcer la sanction comme appliquée ? À utiliser si le membre est banni ou a définitivement quitté le Discord.")) return;
+    setForcingAppliedId(item.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/staff/sanctions/${item.id}/force-applied`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Échec");
+      setItems((prev) =>
+        prev.map((s) => (s.id === item.id ? { ...s, discordStatus: "APPLIED" } : s))
+      );
+    } catch (err: any) {
+      setError("Erreur: " + (err?.message ?? String(err)));
+    } finally {
+      setForcingAppliedId(null);
+    }
+  }
+
+  async function retryDiscord(item: Sanction) {
+    setRetryingId(item.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/staff/sanctions/apply/${item.id}`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Échec");
+      setItems((prev) =>
+        prev.map((s) => (s.id === item.id ? { ...s, discordStatus: "PENDING" } : s))
+      );
+    } catch (err: any) {
+      setError("Erreur relance Discord: " + (err?.message ?? String(err)));
+    } finally {
+      setRetryingId(null);
     }
   }
 
@@ -522,10 +560,10 @@ export default function SanctionsClient() {
         <SectionCard title="Filtres" description="Affinage rapide des sanctions visibles par statut métier.">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground/70">Statut</label>
-            <select
+            <StyledSelect
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-card/70 px-3 py-2 text-sm text-foreground focus:border-amber-500/40 focus:outline-none"
+              className="w-full"
             >
               <option value="">Tous</option>
               {STATUSES.map((s) => (
@@ -533,7 +571,7 @@ export default function SanctionsClient() {
                   {getSanctionStatusLabel(s)}
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </div>
         </SectionCard>
 
@@ -610,6 +648,31 @@ export default function SanctionsClient() {
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>{fmtDate(item.startAt)}</span>
                     <div className="flex flex-wrap items-center gap-2">
+                      {(item.discordStatus === "FAILED" || item.discordStatus === "PENDING") ? (
+                        <>
+                          {item.discordStatus === "FAILED" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 text-xs px-2.5 h-7"
+                              onClick={() => retryDiscord(item)}
+                              disabled={retryingId === item.id || forcingAppliedId === item.id || deletingId === item.id || clearingId === item.id}
+                            >
+                              {retryingId === item.id ? "…" : "↺ Relancer"}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl border border-slate-500/30 bg-slate-500/10 text-slate-300 hover:bg-slate-500/20 text-xs px-2.5 h-7"
+                            onClick={() => forceApplied(item)}
+                            disabled={forcingAppliedId === item.id || retryingId === item.id || deletingId === item.id || clearingId === item.id}
+                            title="Membre banni ou parti définitivement"
+                          >
+                            {forcingAppliedId === item.id ? "…" : "✓ Forcer"}
+                          </Button>
+                        </>
+                      ) : null}
                       {canDeleteItem ? (
                         <Button
                           size="sm"

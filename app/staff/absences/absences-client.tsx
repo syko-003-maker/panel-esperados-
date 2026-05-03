@@ -1,11 +1,14 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { DatePicker } from "@/components/staff/ui/DatePicker";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { SkeletonTable } from "@/components/staff/ui/Skeletons";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -97,7 +100,7 @@ function MemberPicker({
           onChange={handleInput}
           onFocus={() => { if (suggestions.length > 0) setOpen(true); }}
           placeholder="Rechercher par nom RP ou Discord ID…"
-          className={`bg-card/60 border-white/10 pr-8 ${value ? "border-emerald-500/40 bg-emerald-500/5" : ""}`}
+          className={`bg-card/60 border-white/10 pr-8 ${value ? "border-amber-500/30 bg-amber-500/5" : ""}`}
           autoComplete="off"
         />
         {fetching && (
@@ -117,18 +120,18 @@ function MemberPicker({
 
       {/* Sélection confirmée */}
       {value && (
-        <div className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-500/25 bg-emerald-500/8 text-sm">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-xs font-semibold text-emerald-300 uppercase flex-shrink-0">
+        <div className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg border border-white/12 bg-white/[0.04] text-sm">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#9b2335]/30 bg-[#9b2335]/15 text-xs font-semibold text-rose-300 uppercase flex-shrink-0">
             {(value.rpName ?? "?").charAt(0)}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-emerald-200 truncate">{value.rpName ?? "—"}</p>
-            {value.grade && <p className="text-[11px] text-emerald-400/70 truncate">{value.grade}</p>}
+            <p className="font-semibold text-slate-100 truncate">{value.rpName ?? "—"}</p>
+            {value.grade && <p className="text-[11px] text-slate-400 truncate">{value.grade}</p>}
             {value.discordId && (
               <p className="text-[11px] font-mono text-slate-500 truncate">{value.discordId}</p>
             )}
           </div>
-          <span className="ml-auto text-[10px] font-semibold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded">
+          <span className="ml-auto text-[10px] font-semibold text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded">
             ✓ Sélectionné
           </span>
         </div>
@@ -255,6 +258,30 @@ function fmtDateShort(iso: string) {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function getNextSunday(): string {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? 7 : 7 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function getUpcomingSundays(count = 6): { value: string; label: string }[] {
+  const results = [];
+  const d = new Date();
+  // Start from today, find next Sunday
+  const daysUntilSunday = (7 - d.getDay()) % 7;
+  d.setDate(d.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday));
+  for (let i = 0; i < count; i++) {
+    const copy = new Date(d);
+    const value = copy.toISOString().slice(0, 10); // YYYY-MM-DD
+    const label = copy.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    results.push({ value, label });
+    d.setDate(d.getDate() + 7);
+  }
+  return results;
+}
+
 export default function AbsencesClient() {
   const [items, setItems] = useState<AbsenceItem[]>([]);
   const [filters, setFilters] = useState({ status: "", dateFrom: "", dateTo: "" });
@@ -352,12 +379,12 @@ export default function AbsencesClient() {
             : undefined,
         startAt:
           formData.type === "GENERAL"
-            ? new Date(formData.startAt).toISOString()
-            : new Date(formData.meetingDate).toISOString(),
+            ? new Date(formData.startAt + "T00:00:00.000Z").toISOString()
+            : new Date(formData.meetingDate + "T00:00:00.000Z").toISOString(),
         endAt:
           formData.type === "GENERAL"
-            ? new Date(formData.endAt).toISOString()
-            : new Date(formData.meetingDate).toISOString(),
+            ? new Date(formData.endAt + "T23:59:59.000Z").toISOString()
+            : new Date(formData.meetingDate + "T00:00:00.000Z").toISOString(),
         reason: formData.reason.trim() || null,
         notes: formData.notes.trim() || null,
       };
@@ -514,7 +541,7 @@ export default function AbsencesClient() {
           className="h-7 px-2 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
           title="Supprimer cette absence"
         >
-          {isBusy ? "…" : "🗑"}
+          {isBusy ? "…" : <Trash2 className="h-3.5 w-3.5" />}
         </Button>
       </div>
     );
@@ -590,12 +617,11 @@ export default function AbsencesClient() {
                     <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                       Date de début
                     </label>
-                    <Input
-                      type="datetime-local"
+                    <DatePicker
                       value={formData.startAt}
-                      onChange={(e) => setFormData({ ...formData, startAt: e.target.value })}
+                      onChange={(v) => setFormData({ ...formData, startAt: v })}
+                      placeholder="Choisir une date"
                       required
-                      className="bg-card/60 border-white/10"
                     />
                   </div>
                   <div>
@@ -605,12 +631,11 @@ export default function AbsencesClient() {
                         Max 2 mois
                       </span>
                     </label>
-                    <Input
-                      type="datetime-local"
+                    <DatePicker
                       value={formData.endAt}
-                      onChange={(e) => setFormData({ ...formData, endAt: e.target.value })}
+                      onChange={(v) => setFormData({ ...formData, endAt: v })}
+                      placeholder="Choisir une date"
                       required
-                      className="bg-card/60 border-white/10"
                     />
                   </div>
                 </div>
@@ -620,21 +645,27 @@ export default function AbsencesClient() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                   Réunion concernée
                 </p>
-                <div className="max-w-xs">
+                <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                     Date de la réunion
                   </label>
-                  <Input
-                    type="date"
-                    value={formData.meetingDate}
-                    onChange={(e) => setFormData({ ...formData, meetingDate: e.target.value })}
-                    required
-                    className="bg-card/60 border-white/10"
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    {getUpcomingSundays().map((sun) => (
+                      <button
+                        key={sun.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, meetingDate: sun.value })}
+                        className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                          formData.meetingDate === sun.value
+                            ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
+                            : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-white/20 hover:bg-white/[0.07]"
+                        }`}
+                      >
+                        {sun.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-amber-400/70">
-                  La réunion sera normalisée au dimanche de la semaine choisie à 21h00.
-                </p>
               </div>
             )}
 
@@ -693,14 +724,14 @@ export default function AbsencesClient() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Statut</label>
-                <select
+                <StyledSelect
                   value={filters.status}
                   onChange={(e) => {
                     setFilters({ ...filters, status: e.target.value });
                     setPendingFilters({ ...pendingFilters, status: e.target.value });
                     setPage(1);
                   }}
-                  className="px-3 py-2 rounded-lg bg-card/50 border border-white/10 text-foreground text-sm focus:outline-none"
+                  className="w-full"
                 >
                   <option value="">Tous les statuts</option>
                   {STATUSES.map((s) => (
@@ -708,24 +739,22 @@ export default function AbsencesClient() {
                       {STATUS_LABELS[s]}
                     </option>
                   ))}
-                </select>
+                </StyledSelect>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Du</label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={pendingFilters.dateFrom}
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, dateFrom: e.target.value })}
-                  className="bg-card/60 border-white/10"
+                  onChange={(v) => setPendingFilters({ ...pendingFilters, dateFrom: v })}
+                  placeholder="Date de début"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Au</label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={pendingFilters.dateTo}
-                  onChange={(e) => setPendingFilters({ ...pendingFilters, dateTo: e.target.value })}
-                  className="bg-card/60 border-white/10"
+                  onChange={(v) => setPendingFilters({ ...pendingFilters, dateTo: v })}
+                  placeholder="Date de fin"
                 />
               </div>
               <div className="flex gap-2">

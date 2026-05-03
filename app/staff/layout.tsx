@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { StaffLayout } from "@/components/staff-layout";
 import { redirect } from "next/navigation";
 import { canAccessStaffPanel } from "@/lib/rbac";
+import { prisma } from "@/lib/db";
 
 function AppBackground() {
   return (
@@ -26,7 +27,7 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  if (process.env.THEME_DEBUG_BYPASS === "1") {
+  if (process.env.THEME_DEBUG_BYPASS === "1" && process.env.NODE_ENV !== "production") {
     return (
       <div className="relative min-h-screen">
         <AppBackground />
@@ -240,13 +241,24 @@ export default async function Layout({
   // Determine access level from staffUser role or fallback to "full"
   const accessLevel = accessCheck.staffUser?.roleCode === "RECRUITER" ? "recruiter" : "full";
 
+  // Fetch RP name from member record
+  const discordId = (session as any).discordId as string | null;
+  let rpName: string | null = null;
+  if (discordId) {
+    const member = await prisma.member.findFirst({
+      where: { discordId },
+      select: { rpName: true },
+    }).catch(() => null);
+    rpName = member?.rpName ?? null;
+  }
+
   // Staff: render normal staff layout
   return (
     <div className="relative">
       <StaffLayout
         accessLevel={accessLevel}
         user={{
-          name: session.user?.name ?? null,
+          name: rpName ?? session.user?.name ?? null,
           image: session.user?.image ?? null,
         }}
       >

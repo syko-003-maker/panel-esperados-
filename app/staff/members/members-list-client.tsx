@@ -6,6 +6,7 @@ import type { StaffMemberDto } from "@/types/staff";
 import { formatPlaytime } from "@/lib/formatPlaytime";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { ChevronRight } from "lucide-react";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame } from "@/components/staff/ui/motion";
@@ -31,6 +32,12 @@ type MemberItem = StaffMemberDto & {
   playtimeDelta7d?: number | null;
   discordRolesUpdatedAt?: string | null;
   discordLastError?: string | null;
+  // Scope flags retournés par scope=everything
+  _isActive?: boolean;
+  _isDemoted?: boolean;
+  _isBlacklisted?: boolean;
+  _isReservist?: boolean;
+  _isNonLink?: boolean;
 };
 
 function getAbsenceTypeLabel(type: "MEETING" | "GENERAL") {
@@ -67,6 +74,7 @@ const QUICK_FILTER_OPTIONS: Array<{ value: ExtendedFilter; label: string; icon: 
 export default function MembersListClient() {
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scopeLoading, setScopeLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [analyticsAvailable, setAnalyticsAvailable] = useState(false);
   const [scope, setScope] = useState<MembersScope>("active");
@@ -77,21 +85,34 @@ export default function MembersListClient() {
   const [sortDir, setSortDir] = useState<MembersSortDir>("desc");
   const [onlineMap, setOnlineMap] = useState<Record<string, OnlineStatus>>({});
 
+  const abortRef = useRef<AbortController | null>(null);
+
   const loadMembers = useCallback(async (manual = false) => {
+    // Annuler la requête en cours si elle existe
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     if (manual) setRefreshing(true);
+    else setScopeLoading(true);
     try {
       const params = new URLSearchParams({ scope, sortBy, sortDir });
       if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`/api/staff/members?${params.toString()}`, {
         cache: "no-store",
+        signal: controller.signal,
       });
 
       const data = await res.json().catch(() => ({}));
       const rows = Array.isArray(data?.rows) ? data.rows : [];
       setMembers(rows);
       setAnalyticsAvailable(data?.meta?.analyticsAvailable === true);
+    } catch (err: unknown) {
+      // Ignorer les erreurs d'abort (changement de scope rapide)
+      if ((err as any)?.name === "AbortError") return;
     } finally {
       setLoading(false);
+      setScopeLoading(false);
       if (manual) setRefreshing(false);
     }
   }, [scope, search, sortBy, sortDir]);
@@ -165,6 +186,7 @@ export default function MembersListClient() {
   }, [members]);
 
   const displayedMembers = useMemo(() => {
+    // Les membres sont déjà filtrés par scope côté serveur — on applique uniquement le quickFilter
     let filtered = members.filter((member) =>
       matchesQuickFilter(member, quickFilter === "online" ? "all" : quickFilter, analyticsAvailable)
     );
@@ -209,110 +231,105 @@ export default function MembersListClient() {
   }
 
   return (
-    <div className="space-y-5">
-      <SectionCard
-        title="Effectif staff"
-        description="Scopes métier, filtres rapides et synchronisation de la liste staff visible."
-        actions={
+    <div className="space-y-4">
+
+      {/* ── Header card ── */}
+      <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.70)] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-sm overflow-hidden">
+
+        {/* Top bar: title + refresh + count */}
+        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#9b2335]/20 border border-[#9b2335]/30">
+              <span className="text-sm">👥</span>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-100">Membres Famille</h2>
+              <p className="text-[11px] text-slate-500">
+                {summary.total} membre{summary.total !== 1 ? "s" : ""} · moy. 7j {formatPlaytime(summary.avgPlaytime)}
+              </p>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
-            <MotionButtonFrame>
+            <button
+              onClick={() => void loadMembers(true)}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-white/[0.08] hover:text-slate-200 disabled:opacity-40"
+            >
+              <span className={refreshing ? "animate-spin inline-block" : ""}>↻</span>
+              Actualiser
+            </button>
+            <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-300 tabular-nums">
+              {displayedMembers.length} / {members.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Scope tabs */}
+        <div className="flex flex-wrap items-center gap-1 px-4 py-3 border-b border-white/6">
+          {SCOPE_OPTIONS.map((option) => {
+            const selected = scope === option.value;
+            return (
               <button
-                onClick={() => void loadMembers(true)}
-                disabled={refreshing}
-                aria-label="Rafraîchir la liste"
-                className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-foreground/70 transition-colors hover:bg-white/[0.10] disabled:cursor-not-allowed disabled:opacity-50"
+                key={option.value}
+                onClick={() => setScope(option.value)}
+                aria-pressed={selected}
+                className={[
+                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                  selected
+                    ? "bg-[#9b2335]/25 text-rose-200 border border-[#9b2335]/40 shadow-[0_0_12px_-4px_rgba(155,35,53,0.4)]"
+                    : "text-slate-500 border border-transparent hover:border-white/10 hover:bg-white/[0.05] hover:text-slate-300",
+                ].join(" ")}
               >
-                {refreshing ? "..." : "↻ Actualiser"}
+                {option.label}
               </button>
-            </MotionButtonFrame>
-            <UiStatusBadge>{displayedMembers.length} / {members.length}</UiStatusBadge>
-          </div>
-        }
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs text-muted-foreground">Scopes metier: actifs, tous, reservistes, blacklist, demote, non link. Filtres rapides: activite uniquement.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center rounded-lg border border-white/10 bg-card/70 p-1.5">
-              {SCOPE_OPTIONS.map((option) => {
-                const selected = scope === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => setScope(option.value)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${selected
-                      ? "bg-[#7a1f2b]/30 text-foreground shadow-[inset_0_0_0_1px_rgba(122,31,43,0.40)]"
-                      : "text-foreground/70 hover:bg-white/8"
-                      }`}
-                    aria-pressed={selected}
-                    aria-label={`Filtrer: ${option.label}`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="rounded-lg border border-white/10 bg-card/70 px-3 py-1 text-xs font-medium text-foreground/70">
-              {displayedMembers.length} / {members.length} membre{displayedMembers.length > 1 ? "s" : ""} {scopeLabel}{displayedMembers.length > 1 ? "s" : ""}
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-        <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
-          <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground" htmlFor="members-search">
-            Recherche
-          </label>
-          <input
-            id="members-search"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="RP name, SteamID, Discord ID"
-            className="mt-2 w-full rounded-lg border border-white/12 bg-card/70 px-3 py-2 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 focus:bg-white/[0.06]"
-          />
+            );
+          })}
         </div>
 
-        <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
-          <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground" htmlFor="members-sort-by">
-            Tri
-          </label>
-          <div className="mt-2 flex items-center gap-2">
-            <select
+        {/* Search + sort */}
+        <div className="flex flex-col sm:flex-row gap-3 px-4 py-3">
+          {/* Search */}
+          <div className="relative flex-1">
+            <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              id="members-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="RP name, SteamID, Discord ID…"
+              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
+            />
+          </div>
+
+          {/* Sort */}
+          <div className="flex items-center gap-2 shrink-0">
+            <StyledSelect
               id="members-sort-by"
               value={sortBy}
               onChange={(event) => setSortBy(event.target.value as MembersSortBy)}
-              className="rounded-lg border border-white/10 bg-card/70 px-3 py-2 text-sm font-medium text-foreground outline-none"
+              className="min-w-[150px]"
             >
               <option value="grade">Grade</option>
               <option value="name">Nom</option>
               <option value="playtime7d">Playtime 7j</option>
               <option value="status">Statut</option>
-            </select>
+            </StyledSelect>
             <button
               type="button"
               onClick={() => setSortDir((current) => current === "asc" ? "desc" : "asc")}
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${sortDir === "asc"
-                ? "border-amber-500/45 bg-amber-500/12 text-amber-200"
-                : "border-white/15 bg-white/6 text-foreground/70"
-                }`}
-              aria-label={sortDir === "asc" ? "Passer en ordre descendant" : "Passer en ordre croissant"}
+              className={[
+                "flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-bold transition-colors",
+                sortDir === "asc"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                  : "border-white/10 bg-white/[0.04] text-slate-400 hover:border-white/20 hover:text-slate-200",
+              ].join(" ")}
+              title={sortDir === "asc" ? "Ordre croissant" : "Ordre décroissant"}
             >
               {sortDir === "asc" ? "↑" : "↓"}
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Actif: <span className="font-semibold text-foreground/80">{sortBy}</span> ({sortDir})
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_20px_60px_-30px_rgba(2,0,1,0.70)] backdrop-blur-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Vue courante</p>
-          <p className="mt-2 text-sm text-foreground/80">{summary.total} membres</p>
-          <p className="mt-1 text-xs text-muted-foreground">Moyenne 7j: {formatPlaytime(summary.avgPlaytime)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Historique: {analyticsAvailable && summary.hasPreviousData ? "actif" : "limite"}</p>
         </div>
       </div>
 
@@ -337,43 +354,43 @@ export default function MembersListClient() {
 
           const styles = {
             default:  {
-              card: selected ? "border-white/20 bg-white/[0.08] shadow-[0_4px_20px_-4px_rgba(255,255,255,0.06)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-white/12 hover:bg-white/[0.04]",
+              card: selected ? "border-white/20 bg-white/[0.08] shadow-[0_4px_20px_-4px_rgba(255,255,255,0.06)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-white/12 hover:bg-white/[0.04]",
               count: selected ? "text-white" : "text-foreground/40",
               label: selected ? "text-foreground/80" : "text-foreground/35",
               bar: "bg-white/30",
             },
             green:    {
-              card: selected ? "border-emerald-500/40 bg-emerald-500/[0.08] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.2)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-emerald-500/20 hover:bg-emerald-500/[0.04]",
+              card: selected ? "border-emerald-500/40 bg-emerald-500/[0.08] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.2)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-emerald-500/20 hover:bg-emerald-500/[0.04]",
               count: selected ? "text-emerald-300" : "text-foreground/40",
               label: selected ? "text-emerald-200/70" : "text-foreground/35",
               bar: "bg-emerald-400/60",
             },
             emerald:  {
-              card: selected ? "border-emerald-600/35 bg-emerald-600/[0.07] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.15)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-emerald-600/18 hover:bg-emerald-600/[0.04]",
+              card: selected ? "border-emerald-600/35 bg-emerald-600/[0.07] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.15)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-emerald-600/18 hover:bg-emerald-600/[0.04]",
               count: selected ? "text-emerald-300" : "text-foreground/40",
               label: selected ? "text-emerald-200/70" : "text-foreground/35",
               bar: "bg-emerald-500/50",
             },
             rose:     {
-              card: selected ? "border-rose-500/40 bg-rose-500/[0.08] shadow-[0_4px_20px_-4px_rgba(244,63,94,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-rose-500/20 hover:bg-rose-500/[0.04]",
+              card: selected ? "border-rose-500/40 bg-rose-500/[0.08] shadow-[0_4px_20px_-4px_rgba(244,63,94,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-rose-500/20 hover:bg-rose-500/[0.04]",
               count: selected ? "text-rose-300" : "text-foreground/40",
               label: selected ? "text-rose-200/70" : "text-foreground/35",
               bar: "bg-rose-400/60",
             },
             amber:    {
-              card: selected ? "border-amber-500/40 bg-amber-500/[0.07] shadow-[0_4px_20px_-4px_rgba(245,158,11,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-amber-500/20 hover:bg-amber-500/[0.04]",
+              card: selected ? "border-amber-500/40 bg-amber-500/[0.07] shadow-[0_4px_20px_-4px_rgba(245,158,11,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-amber-500/20 hover:bg-amber-500/[0.04]",
               count: selected ? "text-amber-300" : "text-foreground/40",
               label: selected ? "text-amber-200/70" : "text-foreground/35",
               bar: "bg-amber-400/55",
             },
             cyan:     {
-              card: selected ? "border-cyan-500/40 bg-cyan-500/[0.07] shadow-[0_4px_20px_-4px_rgba(6,182,212,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-cyan-500/20 hover:bg-cyan-500/[0.04]",
+              card: selected ? "border-cyan-500/40 bg-cyan-500/[0.07] shadow-[0_4px_20px_-4px_rgba(6,182,212,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-cyan-500/20 hover:bg-cyan-500/[0.04]",
               count: selected ? "text-cyan-300" : "text-foreground/40",
               label: selected ? "text-cyan-200/70" : "text-foreground/35",
               bar: "bg-cyan-400/55",
             },
             orange:   {
-              card: selected ? "border-orange-500/40 bg-orange-500/[0.07] shadow-[0_4px_20px_-4px_rgba(249,115,22,0.18)]" : "border-white/6 bg-[rgba(14,5,7,0.5)] hover:border-orange-500/20 hover:bg-orange-500/[0.04]",
+              card: selected ? "border-orange-500/40 bg-orange-500/[0.07] shadow-[0_4px_20px_-4px_rgba(249,115,22,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-orange-500/20 hover:bg-orange-500/[0.04]",
               count: selected ? "text-orange-300" : "text-foreground/40",
               label: selected ? "text-orange-200/70" : "text-foreground/35",
               bar: "bg-orange-400/55",
@@ -401,13 +418,13 @@ export default function MembersListClient() {
         })}
       </div>
 
-      {displayedMembers.length === 0 ? (
+      {displayedMembers.length === 0 && !scopeLoading ? (
         <EmptyState
           title="Aucun membre visible"
           description={scope === "active" ? "Aucun membre actif ne correspond aux filtres courants." : "Aucun membre ne correspond aux filtres courants."}
         />
       ) : (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 transition-opacity duration-200 ${scopeLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
           {displayedMembers.map((member) => {
             const activity = getActivityBand(member.playtime7d);
             const exemptActivity = isActivityExempt(member);
@@ -549,7 +566,7 @@ export default function MembersListClient() {
                 </div>
 
                 {/* Voir le profil — hover indicator */}
-                <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-slate-400 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-slate-400 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   Profil <ChevronRight className="h-3 w-3" />
                 </div>
 

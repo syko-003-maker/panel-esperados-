@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Search, DollarSign, AlertCircle, Users, BadgeEuro } from "lucide-react";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { MotionListItem } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
@@ -70,17 +71,6 @@ function getNetBgColor(net: number): string {
 export default function StatsClient(props: StatsClientProps) {
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge>Membres actifs: {props.kpis.activeMembers}</StatusBadge>
-        {props.kpis.linkedRatio ? <StatusBadge>Comptes liés: {props.kpis.linkedRatio}</StatusBadge> : null}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone="success">Scope: membres actifs uniquement</StatusBadge>
-        <StatusBadge tone="info">Période: consolidée</StatusBadge>
-        <StatusBadge tone="warning">Devise: EUR</StatusBadge>
-      </div>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
         <RankedMiniList title="Top entrants" icon={TrendingUp} rows={props.topDeposits} color="text-emerald-300" />
         <RankedMiniList title="Top sortants" icon={TrendingDown} rows={props.topWithdraws} color="text-blue-300" />
@@ -126,15 +116,15 @@ function MembersTableClient({ members }: { members: MemberRow[] }) {
           />
         </div>
 
-        <select
+        <StyledSelect
           value={sortBy}
           onChange={(event) => setSortBy(event.target.value as "net" | "deposit" | "withdraw")}
-          className="rounded-xl border border-white/10 bg-card/70 px-3 py-2.5 text-sm text-slate-100 focus:border-amber-500/40 focus:outline-none"
+          className="w-auto min-w-[140px]"
         >
-          <option value="net" className="bg-slate-950">Trier: Net</option>
-          <option value="deposit" className="bg-slate-950">Trier: Dépôts</option>
-          <option value="withdraw" className="bg-slate-950">Trier: Retraits</option>
-        </select>
+          <option value="net">Trier: Net</option>
+          <option value="deposit">Trier: Dépôts</option>
+          <option value="withdraw">Trier: Retraits</option>
+        </StyledSelect>
       </div>
 
       {sorted.length === 0 ? (

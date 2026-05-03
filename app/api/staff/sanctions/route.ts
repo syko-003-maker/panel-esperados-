@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
+import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireStaffAccess } from "@/lib/rbac";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { auditStaffAction } from "@/lib/audit";
@@ -119,7 +120,7 @@ async function resolveActorStaffContext(params: {
 }
 
 export async function GET(req: Request) {
-  const guard = await requirePrivileged();
+  const guard = await requireStaffAccess();
   if (guard instanceof Response) return guard;
 
   const startTime = Date.now();
@@ -202,7 +203,12 @@ export async function GET(req: Request) {
     if (status) where.status = status;
     if (status === "ACTIVE") {
       where.clearedAt = null;
-      where.NOT = { clearedStatus: "APPLIED" };
+      // SQL NULL semantics: NOT { x: "APPLIED" } excludes NULL rows too.
+      // Use explicit OR to include NULL clearedStatus (= not yet cleared).
+      where.OR = [
+        { clearedStatus: null },
+        { clearedStatus: { not: "APPLIED" } },
+      ];
     }
     if (discordStatus) where.discordStatus = discordStatus;
     if (type) where.type = type;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { format, subDays } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -119,15 +120,15 @@ export function MetricsClient() {
       <div className="bg-slate-900/40 border border-slate-800 rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-foreground">Activité (derniers {days} jours)</h2>
-          <select
+          <StyledSelect
             value={days}
             onChange={(e) => setDays(parseInt(e.target.value, 10))}
-            className="border border-slate-800 rounded px-3 py-1 text-sm bg-slate-900/40 text-foreground"
+            className="w-auto min-w-[120px]"
           >
             <option value={7}>7 jours</option>
             <option value={14}>14 jours</option>
             <option value={30}>30 jours</option>
-          </select>
+          </StyledSelect>
         </div>
         <MetricsChart counts={data.counts} days={days} />
       </div>

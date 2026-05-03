@@ -29,13 +29,16 @@ type SanctionDetailProps = {
   }>;
 };
 
-export default function SanctionDetailClient({ sanction, audit }: SanctionDetailProps) {
+export default function SanctionDetailClient({ sanction: initialSanction, audit }: SanctionDetailProps) {
   const router = useRouter();
+  const [sanction, setSanction] = useState(initialSanction);
   const [retrying, setRetrying] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [applying, setApplying] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [forcingApplied, setForcingApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retrySuccess, setRetrySuccess] = useState(false);
 
   async function handleApply() {
     if (!confirm("Appliquer cette sanction sur Discord maintenant ?")) return;
@@ -58,23 +61,39 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
     }
   }
 
-  async function handleRetry() {
-    if (!confirm("Relancer l'application Discord de cette sanction ?")) return;
-
+  async function handleRetryDiscord() {
     setRetrying(true);
+    setError(null);
+    setRetrySuccess(false);
+
+    try {
+      const res = await fetch(`/api/staff/sanctions/apply/${sanction.id}`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Échec");
+      setSanction(prev => ({ ...prev, discordStatus: "PENDING" }));
+      setRetrySuccess(true);
+    } catch (e: any) {
+      setError("Erreur: " + (e?.message ?? String(e)));
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  async function handleForceApplied() {
+    if (!confirm("Forcer la sanction comme appliquée ? À utiliser uniquement si le membre est banni ou a définitivement quitté le serveur Discord.")) return;
+
+    setForcingApplied(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/staff/sanctions/${sanction.id}/retry`, {
-        method: "POST",
-      });
+      const res = await fetch(`/api/staff/sanctions/${sanction.id}/force-applied`, { method: "POST" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Retry failed");
-      router.refresh();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Échec");
+      setSanction(prev => ({ ...prev, discordStatus: "APPLIED", discordError: null }));
+    } catch (e: any) {
+      setError("Erreur: " + (e?.message ?? String(e)));
     } finally {
-      setRetrying(false);
+      setForcingApplied(false);
     }
   }
 
@@ -149,6 +168,7 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
     sanction.clearedStatus
   );
   const canRetry = sanction.discordStatus === "FAILED";
+  const canForce = sanction.discordStatus === "FAILED" || sanction.discordStatus === "PENDING";
   const canApply =
     sanction.discordStatus === "PENDING" &&
     effectiveStatus === "ACTIVE" &&
@@ -248,15 +268,32 @@ export default function SanctionDetailClient({ sanction, audit }: SanctionDetail
         </div>
       ) : null}
 
-      {canRetry ? (
-        <div className="flex gap-3">
-          <button
-            onClick={handleRetry}
-            disabled={retrying}
-            className="px-4 py-2 text-sm font-semibold rounded bg-amber-600 text-white hover:bg-amber-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-          >
-            {retrying ? "Relance..." : "Relancer Discord"}
-          </button>
+      {canForce ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-3">
+            {canRetry && (
+              <button
+                onClick={handleRetryDiscord}
+                disabled={retrying || forcingApplied}
+                className="inline-flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                {retrying ? "En cours..." : "↺ Relancer Discord"}
+              </button>
+            )}
+            <button
+              onClick={handleForceApplied}
+              disabled={forcingApplied || retrying}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500/20 disabled:opacity-50"
+              title="À utiliser si le membre est banni ou a définitivement quitté le Discord"
+            >
+              {forcingApplied ? "En cours..." : "✓ Forcer appliqué"}
+            </button>
+          </div>
+          {retrySuccess ? (
+            <div className="text-xs text-amber-400">
+              Mis en file d'attente — sera appliqué dès que le membre rejoint le serveur.
+            </div>
+          ) : null}
         </div>
       ) : null}
 

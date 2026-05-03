@@ -122,8 +122,7 @@ export function StaffLayout({
                 </button>
               </MotionButtonFrame>
               <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Navigation staff</div>
-                <h2 className="truncate text-lg font-semibold tracking-tight text-slate-50">{getPageTitle()}</h2>
+                <h2 className="truncate text-base font-semibold tracking-tight text-slate-50">{getPageTitle()}</h2>
               </div>
             </div>
 

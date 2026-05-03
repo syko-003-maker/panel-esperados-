@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge-new";
 import { RefreshCw, Search, Trash2, Users } from "lucide-react";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 
 type DbStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "ARCHIVED";
 
@@ -156,15 +157,15 @@ export default function RecruitmentClient() {
             />
           </div>
           <div className="flex gap-2">
-            <select
+            <StyledSelect
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-sm text-foreground"
+              className="min-w-[140px]"
             >
               {FILTER_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </select>
+            </StyledSelect>
             <Button variant="outline" size="sm" onClick={load} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>

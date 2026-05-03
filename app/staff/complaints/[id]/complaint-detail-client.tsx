@@ -57,8 +57,8 @@ const STATUS_LABELS: Record<ComplaintStatus, string> = {
 
 const STATUS_COLORS: Record<ComplaintStatus, string> = {
   OPEN: "bg-red-500/20 text-red-300 border border-red-500/30",
-  IN_REVIEW: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
-  RESOLVED: "bg-green-500/20 text-green-300 border border-green-500/30",
+  IN_REVIEW: "bg-[#7a1f2b]/20 text-rose-200 border border-[#7a1f2b]/40",
+  RESOLVED: "bg-amber-500/15 text-amber-200 border border-amber-500/25",
   REJECTED: "bg-orange-500/20 text-orange-300 border border-orange-500/30",
   CLOSED: "bg-slate-500/20 text-slate-300 border border-slate-500/30",
 };
@@ -71,8 +71,8 @@ const CLOSE_REASON_LABELS: Record<string, string> = {
 
 const STATUS_SURFACES: Record<ComplaintStatus, string> = {
   OPEN: "from-red-500/12 via-red-500/5 to-transparent",
-  IN_REVIEW: "from-blue-500/12 via-blue-500/5 to-transparent",
-  RESOLVED: "from-emerald-500/12 via-emerald-500/5 to-transparent",
+  IN_REVIEW: "from-[#7a1f2b]/15 via-[#7a1f2b]/5 to-transparent",
+  RESOLVED: "from-amber-500/8 via-amber-500/3 to-transparent",
   REJECTED: "from-orange-500/12 via-orange-500/5 to-transparent",
   CLOSED: "from-slate-500/12 via-slate-500/5 to-transparent",
 };
@@ -96,7 +96,7 @@ function renderArchivedMessage(content: string) {
 
 function DataTile({ label, value, accent = "text-foreground" }: { label: string; value: ReactNode; accent?: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.24)]">
+    <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.30)]">
       <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">{label}</div>
       <div className={`mt-2 text-sm leading-6 ${accent}`}>{value}</div>
     </div>
@@ -188,7 +188,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
     <div className="space-y-8 pb-8">
       {/* Back */}
       <div className="flex items-center gap-3">
-        <Link href="/staff/complaints" className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-950/70 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-slate-700 hover:text-foreground">
+        <Link href="/staff/complaints" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground">
           ← Retour aux plaintes
         </Link>
       </div>
@@ -207,15 +207,15 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
       {complaint && (
         <>
           {/* Header */}
-          <div className={`relative overflow-hidden rounded-[28px] border border-slate-800 bg-gradient-to-br ${STATUS_SURFACES[complaint.status]} shadow-[0_20px_70px_rgba(2,6,23,0.45)]`}>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.14),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(15,23,42,0.65),transparent_36%)]" />
+          <div className={`relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br ${STATUS_SURFACES[complaint.status]} shadow-[0_20px_70px_rgba(2,6,23,0.45)]`}>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(122,31,43,0.18),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(10,3,5,0.65),transparent_36%)]" />
             <div className="relative flex flex-col gap-6 px-6 py-6 sm:px-8 sm:py-7 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-slate-400">Dossier plainte</div>
                   <div className="flex flex-wrap items-center gap-3">
                     {complaint.ticketKey && (
-                      <span className="inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 font-mono text-xs text-cyan-200">
+                      <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-amber-200">
                         {complaint.ticketKey}
                       </span>
                     )}
@@ -232,11 +232,11 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                 </div>
 
                 <div className="flex flex-wrap gap-3">
-                  <div className="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-4 py-3">
+                  <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Créée le</div>
                     <div className="mt-1 text-sm font-medium text-slate-200">{fmtDate(complaint.createdAt)}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-4 py-3">
+                  <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Cible</div>
                     <div className="mt-1 text-sm font-medium text-slate-200">{complaint.targetFrom ?? complaint.targetName ?? "Non renseignée"}</div>
                   </div>
@@ -249,15 +249,15 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                     href={`https://discord.com/channels/${GUILD_ID}/${complaint.discordThreadId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-indigo-400/25 bg-indigo-500/10 px-4 py-2.5 text-sm font-medium text-indigo-200 transition-colors hover:bg-indigo-500/20"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/[0.10]"
                   >
                     Voir le thread Discord
                     <span aria-hidden="true">→</span>
                   </a>
                 )}
                 {isClosed && (
-                  <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-100/90">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-200/70">Statut final</div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100/90">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Statut final</div>
                     <div className="mt-1 font-medium">{getCloseReasonLabel(complaint.closeReason)}</div>
                   </div>
                 )}
@@ -268,33 +268,33 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
           {/* Details grid */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {/* Auteur */}
-            <SectionCard title="Auteur de la plainte" description="Identité et référence du plaignant" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
+            <SectionCard title="Auteur de la plainte" description="Identité et référence du plaignant" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="grid gap-3 sm:grid-cols-2">
                 <DataTile label="Nom RP" value={complaint.authorRpName ?? "Non renseigné"} />
                 <DataTile label="Discord" value={complaint.authorTag ?? "Non renseigné"} accent="text-slate-200" />
                 {!complaint.authorTag && complaint.authorDiscordId && (
-                  <DataTile label="ID Discord" value={<span className="font-mono text-xs text-cyan-200">{complaint.authorDiscordId}</span>} />
+                  <DataTile label="ID Discord" value={<span className="font-mono text-xs text-amber-200">{complaint.authorDiscordId}</span>} />
                 )}
               </div>
             </SectionCard>
 
             {/* Cible */}
-            <SectionCard title="Cible de la plainte" description="Personne ou identifiant visé par le signalement" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
+            <SectionCard title="Cible de la plainte" description="Personne ou identifiant visé par le signalement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="grid gap-3">
                 <DataTile label="Pseudo ou identifiant" value={complaint.targetFrom ?? complaint.targetName ?? "Non renseigné"} />
               </div>
             </SectionCard>
 
             {/* Raison */}
-            <SectionCard title="Raison" description="Motif principal déclaré dans la plainte" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-4 py-4">
+            <SectionCard title="Raison" description="Motif principal déclaré dans la plainte" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+              <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-4">
                 <p className="text-sm leading-7 text-slate-100">{complaint.reason ?? "Aucune raison n'a été renseignée."}</p>
               </div>
             </SectionCard>
 
             {/* Détails */}
-            <SectionCard title="Détails" description="Contexte archivé et précisions utiles" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-4 py-4">
+            <SectionCard title="Détails" description="Contexte archivé et précisions utiles" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+              <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-4">
                 <p className="text-sm leading-7 text-slate-100 whitespace-pre-wrap">{complaint.details ?? "Aucun détail complémentaire n'a été archivé."}</p>
               </div>
             </SectionCard>
@@ -302,7 +302,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
 
           {/* Résumé / décision existante */}
           {isClosed && (
-            <SectionCard title="Décision staff" description="Synthèse de clôture et identité du traitement" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
+            <SectionCard title="Décision staff" description="Synthèse de clôture et identité du traitement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-3">
                   <DataTile label="Décision" value={getCloseReasonLabel(complaint.closeReason)} accent="text-slate-50" />
@@ -310,7 +310,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                   <DataTile label="Traitée par" value={complaint.closedByDisplayName ?? complaint.closedByDiscordId ?? "—"} accent="text-slate-50" />
                 </div>
                 {complaint.summary && (
-                  <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
+                  <div className="rounded-2xl border border-white/10 bg-card/60 p-4">
                     <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">Résumé staff</div>
                     <p className="mt-3 text-sm leading-7 text-slate-100 whitespace-pre-wrap">{complaint.summary}</p>
                   </div>
@@ -321,12 +321,12 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
 
           {/* Historique messages */}
           {messages.length > 0 && (
-            <SectionCard title="Historique des messages archivés" description={messageCountLabel} className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
+            <SectionCard title="Historique des messages archivés" description={messageCountLabel} className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="space-y-4 max-h-[34rem] overflow-y-auto pr-1">
                 {messages.map((msg) => (
                   <div
                     key={msg.discordMessageId}
-                    className="rounded-2xl border border-slate-800/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.72),rgba(2,6,23,0.82))] p-4 shadow-[0_12px_30px_rgba(2,6,23,0.24)]"
+                    className="rounded-2xl border border-white/10 bg-[rgba(14,5,7,0.72)] p-4 shadow-[0_12px_30px_rgba(0,0,0,0.30)]"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -359,7 +359,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                         (Modifié le {new Date(msg.editedAtDiscord).toLocaleString("fr-FR")})
                       </div>
                     )}
-                    <div className="mt-3 rounded-2xl border border-slate-800/80 bg-slate-950/70 px-4 py-3">
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-card/60 px-4 py-3">
                       <p className="text-sm leading-7 text-slate-100 whitespace-pre-wrap break-words">{renderArchivedMessage(msg.content || "[Message vide]")}</p>
                     </div>
                   </div>
@@ -374,7 +374,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
 
           {/* Actions */}
           {!isClosed && !confirmDecision && (
-            <SectionCard title="Actions staff" description="Décision de traitement et escalade éventuelle" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
+            <SectionCard title="Actions staff" description="Décision de traitement et escalade éventuelle" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">Choisissez une décision pour clôturer cette plainte.</p>
                 <div className="flex flex-wrap gap-3">
@@ -382,7 +382,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                     <Link href={`/staff/sanctions/new?complaintId=${complaint.id}&targetMemberId=${complaint.targetId}`}>
                       <Button
                         variant="outline"
-                        className="border-purple-500/40 text-purple-300 hover:bg-purple-500/10"
+                        className="border-[#9b2335]/40 text-rose-300 hover:bg-[#9b2335]/15"
                       >
                         ⚖️ Créer une sanction
                       </Button>
@@ -391,13 +391,13 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                   <Button
                     onClick={() => setConfirmDecision("IN_REVIEW")}
                     variant="outline"
-                    className="border-blue-500/40 text-blue-300 hover:bg-blue-500/10"
+                    className="border-white/15 text-slate-300 hover:bg-white/[0.08]"
                   >
                     Marquer En cours
                   </Button>
                   <Button
                     onClick={() => setConfirmDecision("TRAITE")}
-                    className="bg-green-600 hover:bg-green-700 text-white border-0"
+                    className="bg-[#7a1f2b]/70 hover:bg-[#9b2335]/80 text-rose-100 border border-[#9b2335]/40"
                   >
                     Marquer Résolue
                   </Button>
@@ -420,7 +420,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
           )}
 
           {confirmDecision && !isClosed && (
-            <SectionCard title="Confirmer la décision" description="Validation finale avant enregistrement" className="border-slate-800/90 bg-slate-950/55 shadow-[0_18px_50px_rgba(2,6,23,0.32)]">
+            <SectionCard title="Confirmer la décision" description="Validation finale avant enregistrement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="space-y-4">
                 <p className="text-sm text-foreground">
                   Décision sélectionnée :{" "}
@@ -440,7 +440,7 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
                     onChange={(e) => setSummaryInput(e.target.value)}
                     placeholder="Explication de la décision..."
                     rows={3}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-800 text-foreground placeholder-gray-500 text-sm focus:outline-none focus:border-slate-600 resize-none"
+                    className="w-full px-3 py-2 rounded-lg bg-[rgba(10,4,6,0.85)] border border-white/10 text-foreground placeholder-gray-500 text-sm focus:outline-none focus:border-amber-500/30 resize-none"
                   />
                 </div>
                 <div className="flex gap-3">
