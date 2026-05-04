@@ -316,24 +316,33 @@
   transition-duration: 120ms;
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+ * Neon glow stacks — debug intensity (volontairement marqué pour voir).
+ * On stacke 4 shadows : ring serré, glow proche, halo lointain, profondeur.
+ * Le !important bat les `shadow-[...]` utilitaires Tailwind sur le même
+ * élément (sinon ça écrase le hover).
+ * ────────────────────────────────────────────────────────────────────── */
+
 /* Variante bordeaux famille (cartes "lambda") */
 .premium-card-bordeaux:hover {
   transform: translateY(-3px) scale(1.012);
-  border-color: rgba(155, 35, 53, 0.45) !important;
+  border-color: rgba(220, 60, 90, 0.85) !important;
   box-shadow:
-    0 22px 48px -22px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(155, 35, 53, 0.25),
-    0 0 32px -8px rgba(155, 35, 53, 0.40);
+    0 0 0 1px rgba(220, 60, 90, 0.65),
+    0 0 22px 2px rgba(220, 60, 90, 0.60),
+    0 0 60px 8px rgba(155, 35, 53, 0.45),
+    0 24px 50px -8px rgba(0, 0, 0, 0.7) !important;
 }
 
 /* Variante ambre (top grades : Chef famille, Général, Consejero, Comandante) */
 .premium-card-amber:hover {
   transform: translateY(-3px) scale(1.012);
-  border-color: rgba(251, 191, 36, 0.55) !important;
+  border-color: rgba(251, 191, 36, 0.85) !important;
   box-shadow:
-    0 22px 48px -22px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(251, 191, 36, 0.30),
-    0 0 36px -8px rgba(245, 158, 11, 0.45);
+    0 0 0 1px rgba(251, 191, 36, 0.70),
+    0 0 24px 2px rgba(251, 191, 36, 0.65),
+    0 0 64px 8px rgba(245, 158, 11, 0.50),
+    0 24px 50px -8px rgba(0, 0, 0, 0.7) !important;
 }
 
 /* Glow accent (rouge famille) — usage sur CTA primaires */
