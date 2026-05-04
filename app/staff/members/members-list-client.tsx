@@ -9,7 +9,28 @@ import { ChevronRight } from "lucide-react";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
-import { MotionButtonFrame } from "@/components/staff/ui/motion";
+import { MotionButtonFrame, STAFF_EASE_OUT } from "@/components/staff/ui/motion";
+import { motion, type Variants } from "motion/react";
+
+// ─── Variants d'entrée (stagger sur la grille membres) ─────────────────────
+// Le parent ne fait que cadencer ses enfants. Chaque enfant fait fade + translateY.
+// Re-keying sur `scope` (plus bas) rejoue la cascade au changement d'onglet.
+const membersGridVariants: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.035, delayChildren: 0.08 } },
+};
+const memberCardVariants: Variants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.28, ease: STAFF_EASE_OUT } },
+};
+const sectionFadeVariants: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: (delay: number = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.36, ease: STAFF_EASE_OUT, delay },
+  }),
+};
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge as UiStatusBadge } from "@/components/staff/ui/StatusBadge";
 import {
@@ -253,7 +274,13 @@ export default function MembersListClient() {
     <div className="space-y-4">
 
       {/* ── Header card ── */}
-      <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.70)] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-sm overflow-hidden">
+      <motion.div
+        className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.70)] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-sm overflow-hidden"
+        variants={sectionFadeVariants}
+        initial="hidden"
+        animate="visible"
+        custom={0}
+      >
 
         {/* Top bar: title + refresh + count */}
         <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/6">
@@ -350,9 +377,15 @@ export default function MembersListClient() {
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <motion.div
+        className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7"
+        variants={sectionFadeVariants}
+        initial="hidden"
+        animate="visible"
+        custom={0.06}
+      >
         {QUICK_FILTER_OPTIONS.map((option) => {
           const selected = quickFilter === option.value;
           const count = option.value === "all"
@@ -435,7 +468,7 @@ export default function MembersListClient() {
             </button>
           );
         })}
-      </div>
+      </motion.div>
 
       {displayedMembers.length === 0 && !loading ? (
         <EmptyState
@@ -443,7 +476,16 @@ export default function MembersListClient() {
           description={scope === "active" ? "Aucun membre actif ne correspond aux filtres courants." : "Aucun membre ne correspond aux filtres courants."}
         />
       ) : (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <motion.div
+          // Re-monter la grille au changement de scope rejoue le stagger d'entrée.
+          // Pas de re-key sur quickFilter ni search → l'utilisateur ne ressent pas
+          // d'animation à chaque frappe.
+          key={scope}
+          className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          variants={membersGridVariants}
+          initial="hidden"
+          animate="visible"
+        >
           {displayedMembers.map((member) => {
             const activity = getActivityBand(member.playtime7d);
             const exemptActivity = isActivityExempt(member);
@@ -474,14 +516,22 @@ export default function MembersListClient() {
               : null;
 
             return (
-              <Link
+              // Wrapper motion : porte l'entrée stagger (opacity/y), rendu en
+              // grid-item à la place du Link. Une fois l'entrée terminée motion
+              // fige `transform: none` sur ce wrapper, donc aucun conflit avec le
+              // hover CSS du Link à l'intérieur.
+              <motion.div
                 key={member.id}
+                variants={memberCardVariants}
+                className="flex"
+              >
+              <Link
                 href={cardHref ?? "#"}
                 tabIndex={cardHref ? 0 : -1}
                 className={[
                   // Hover (translate + scale + glow + border) géré par .premium-card-* en CSS
                   // pour éviter le conflit transform Tailwind/CSS et garder l'animation fluide.
-                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px]",
+                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] w-full",
                   isTopGrade
                     ? "premium-card-amber border-amber-500/30"
                     : "premium-card-bordeaux border-white/8",
@@ -597,9 +647,10 @@ export default function MembersListClient() {
                 </div>
 
               </Link>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       )}
     </div>
   );
