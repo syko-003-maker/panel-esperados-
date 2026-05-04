@@ -316,6 +316,26 @@
   transition-duration: 120ms;
 }
 
+/* Variante bordeaux famille (cartes "lambda") */
+.premium-card-bordeaux:hover {
+  transform: translateY(-3px) scale(1.012);
+  border-color: rgba(155, 35, 53, 0.45) !important;
+  box-shadow:
+    0 22px 48px -22px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(155, 35, 53, 0.25),
+    0 0 32px -8px rgba(155, 35, 53, 0.40);
+}
+
+/* Variante ambre (top grades : Chef famille, Général, Consejero, Comandante) */
+.premium-card-amber:hover {
+  transform: translateY(-3px) scale(1.012);
+  border-color: rgba(251, 191, 36, 0.55) !important;
+  box-shadow:
+    0 22px 48px -22px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(251, 191, 36, 0.30),
+    0 0 36px -8px rgba(245, 158, 11, 0.45);
+}
+
 /* Glow accent (rouge famille) — usage sur CTA primaires */
 .premium-glow {
   transition:

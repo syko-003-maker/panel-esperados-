@@ -479,10 +479,12 @@ export default function MembersListClient() {
                 href={cardHref ?? "#"}
                 tabIndex={cardHref ? 0 : -1}
                 className={[
-                  "group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] transition-all duration-200 hover:-translate-y-1",
+                  // Hover (translate + scale + glow + border) géré par .premium-card-* en CSS
+                  // pour éviter le conflit transform Tailwind/CSS et garder l'animation fluide.
+                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px]",
                   isTopGrade
-                    ? "border-amber-500/30 hover:border-amber-400/50 hover:shadow-[0_20px_50px_-8px_rgba(245,158,11,0.30)]"
-                    : "border-white/8 hover:border-white/18 hover:shadow-[0_20px_50px_-8px_rgba(122,31,43,0.35)]",
+                    ? "premium-card-amber border-amber-500/30"
+                    : "premium-card-bordeaux border-white/8",
                   getMemberRowClassName(member, analyticsAvailable),
                 ].filter(Boolean).join(" ")}
               >
