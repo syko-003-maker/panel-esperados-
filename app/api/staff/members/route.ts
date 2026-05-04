@@ -343,6 +343,7 @@ export async function GET(req: Request) {
           isDemoted,
           isBlacklisted,
           isReservist,
+          isOutOfDiscord,
         } = getMemberScopeFlags(member);
         const isDisplayableMember = isDisplayableStaffMember(member);
         const isLinkedMember = isLinkedStaffMember(member);
@@ -402,6 +403,7 @@ export async function GET(req: Request) {
           _isBlacklisted: isBlacklisted,
           _isReservist: isReservist,
           _isNonLink: isNonLink,
+          _isOutOfDiscord: isOutOfDiscord,
         };
       })
       .filter((member): member is any => member !== null)

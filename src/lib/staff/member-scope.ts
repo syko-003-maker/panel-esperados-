@@ -74,6 +74,8 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     statusHints.includes("chef");
 
   const hasDiscordGrade = Boolean(gradeInfo.grade);
+  // Member has a Discord ID but the bot confirmed they are no longer in the guild
+  const isOutOfDiscord = hasDiscordId && member.discordInGuild === false;
 
   return {
     discordRoleIds,
@@ -85,6 +87,7 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     isBlacklisted,
     isReservist,
     isChefExempt,
+    isOutOfDiscord,
   };
 }
 
@@ -96,13 +99,11 @@ export function isDisplayableStaffMember(member: MemberScopeInput): boolean {
   const flags = getMemberScopeFlags(member);
   const isActive = member.isActive === true;
   const isGhost = member.isGhost === true;
-  const hasDiscordId = flags.hasDiscordId;
-  const isOutOfDiscord = hasDiscordId && member.discordInGuild === false;
   const isMissingFromLyg = member.missingFromLygSince != null;
 
   if (!isActive) return false;
   if (isGhost) return false;
-  if (isOutOfDiscord) return false;
+  // Out-of-discord members are shown with a warning badge instead of being hidden
   if (isMissingFromLyg) return false;
   if (flags.isDemoted || flags.isBlacklisted || flags.isReservist) return false;
 

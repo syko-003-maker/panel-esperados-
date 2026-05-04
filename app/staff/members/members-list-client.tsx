@@ -38,6 +38,8 @@ type MemberItem = StaffMemberDto & {
   _isBlacklisted?: boolean;
   _isReservist?: boolean;
   _isNonLink?: boolean;
+  _isOutOfDiscord?: boolean;
+  discordInGuild?: boolean | null;
 };
 
 function getAbsenceTypeLabel(type: "MEETING" | "GENERAL") {
@@ -509,6 +511,11 @@ export default function MembersListClient() {
                   {/* Status + absence */}
                   <div className="flex flex-wrap items-center gap-1.5 min-h-[22px]">
                     <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
+                    {member._isOutOfDiscord && (
+                      <span className="rounded-full border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-400 truncate">
+                        Hors Discord
+                      </span>
+                    )}
                     {member.rankLabel && (
                       <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-foreground/60 truncate max-w-[120px]">
                         {member.rankLabel}
