@@ -393,6 +393,66 @@
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35));
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+ * Boutons premium : .btn-press = translateY hover + scale press cohérents
+ * + variantes tonales (.btn-press-bordeaux / -amber / -neutral) qui ajoutent
+ * un soft glow par-tone sans toucher au bg/border existant du bouton.
+ * S'empile sur n'importe quel bouton (shadcn, raw, Link).
+ * ────────────────────────────────────────────────────────────────────── */
+.btn-press {
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+.btn-press:hover:not(:disabled) {
+  transform: translate3d(0, -1px, 0);
+}
+.btn-press:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: 80ms;
+}
+.btn-press:disabled,
+.btn-press[aria-disabled="true"] {
+  transform: none;
+  box-shadow: none !important;
+}
+
+/* Variantes tonales — soft glow uniquement, pas de bg/border imposé */
+.btn-press-bordeaux:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(220, 60, 90, 0.35),
+    0 0 16px -3px rgba(155, 35, 53, 0.30),
+    0 8px 18px -8px rgba(0, 0, 0, 0.55);
+}
+.btn-press-amber:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, 0.40),
+    0 0 16px -3px rgba(245, 158, 11, 0.32),
+    0 8px 18px -8px rgba(0, 0, 0, 0.55);
+}
+.btn-press-neutral:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 14px -3px rgba(255, 255, 255, 0.12),
+    0 8px 18px -8px rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-press,
+  .btn-press:hover,
+  .btn-press:active {
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Hover par-tone pour DataTile (le composant pose --tile-hover-shadow inline) */
 .data-tile {
   transition:

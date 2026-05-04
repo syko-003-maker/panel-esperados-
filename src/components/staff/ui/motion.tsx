@@ -68,13 +68,15 @@ export function MotionListItem({ children, className, delay = 0, ...props }: Mot
   );
 }
 
+// Wrapper léger : la majorité du hover/active est gérée par les classes CSS
+// `.btn-press` côté Button (cohérent partout). Ce wrapper laisse juste un
+// micro-tap visible si quelqu'un ne passe pas par <Button>.
 export function MotionButtonFrame({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <motion.div
       className={cn("inline-flex", className)}
-      whileHover={{ y: -1, scale: 1.02 }}
-      whileTap={{ y: 0, scale: 0.98 }}
-      transition={{ duration: 0.18, ease: STAFF_EASE }}
+      whileTap={{ scale: 0.97 }}
+      transition={{ duration: 0.14, ease: STAFF_EASE }}
     >
       {children}
     </motion.div>
