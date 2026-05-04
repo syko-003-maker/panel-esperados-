@@ -291,3 +291,60 @@
 .glass-card {
   @apply bg-white/6 border border-white/8 backdrop-blur-xl rounded-2xl shadow-[0_30px_80px_-45px_rgba(5,10,20,0.9)];
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Premium card : transition fluide, hover scale subtil, glow doux
+ * Usage : ajouter `premium-card` à n'importe quel élément cliquable/cartes
+ * ────────────────────────────────────────────────────────────────────── */
+.premium-card {
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.premium-card:hover {
+  transform: translateY(-2px) scale(1.012);
+  box-shadow:
+    0 18px 40px -22px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 28px -10px rgba(155, 35, 53, 0.28);
+}
+.premium-card:active {
+  transform: translateY(-1px) scale(1.005);
+  transition-duration: 120ms;
+}
+
+/* Glow accent (rouge famille) — usage sur CTA primaires */
+.premium-glow {
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.premium-glow:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 30px -10px rgba(155, 35, 53, 0.45),
+    0 0 0 1px rgba(155, 35, 53, 0.35);
+  filter: brightness(1.06);
+}
+
+/* Profondeur subtile sur surfaces vitrées (déjà avec border + bg semi-opaque) */
+.premium-surface {
+  backdrop-filter: blur(14px) saturate(1.05);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+}
+
+/* Respect des préférences d'accessibilité */
+@media (prefers-reduced-motion: reduce) {
+  .premium-card,
+  .premium-card:hover,
+  .premium-card:active,
+  .premium-glow,
+  .premium-glow:hover {
+    transform: none;
+    transition: none;
+  }
+}

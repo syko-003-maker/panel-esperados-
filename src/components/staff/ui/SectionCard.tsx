@@ -15,7 +15,7 @@ export function SectionCard({ title, description, icon: Icon, actions, children,
   return (
     <MotionCard
       className={cn(
-        "relative overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.68),rgba(10,3,5,0.78))] shadow-[0_24px_64px_-40px_rgba(2,0,1,0.80)] backdrop-blur-xl transition-all duration-200",
+        "premium-card premium-surface relative overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.68),rgba(10,3,5,0.78))] shadow-[0_24px_64px_-40px_rgba(2,0,1,0.80)]",
         className
       )}
     >
