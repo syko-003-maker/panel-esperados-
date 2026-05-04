@@ -366,6 +366,53 @@
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
 }
 
+/* Surface élevée : blur + saturation renforcés + soupçon de lumière en haut */
+.premium-surface-elevated {
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+}
+.premium-surface-elevated::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 30%);
+}
+
+/* Titre : gradient ambre/blanc/bordeaux pour donner du caractère */
+.title-gradient {
+  background: linear-gradient(135deg, #fde68a 0%, #ffffff 45%, #f5d0d6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35));
+}
+
+/* Hover par-tone pour DataTile (le composant pose --tile-hover-shadow inline) */
+.data-tile {
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.data-tile:hover {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: var(--tile-hover-shadow) !important;
+}
+.data-tile:active {
+  transform: translateY(-1px) scale(1.005);
+  transition-duration: 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .data-tile,
+  .data-tile:hover,
+  .data-tile:active {
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Respect des préférences d'accessibilité */
 @media (prefers-reduced-motion: reduce) {
   .premium-card,
