@@ -167,9 +167,9 @@ export default function MembersListClient() {
     return () => clearInterval(interval);
   }, [members, fetchOnlineStatus]);
 
-  const displayedMembers = useMemo(() => {
-    // Filtrage scope client-side (évite un re-fetch à chaque changement de scope)
-    let filtered = members.filter((member) => {
+  // Filtrage par scope uniquement (utilisé aussi pour les compteurs quick-filter)
+  const scopeMembers = useMemo(() => {
+    return members.filter((member) => {
       if (scope === "active")      return member._isActive === true;
       if (scope === "demoted")     return member._isDemoted === true;
       if (scope === "blacklisted") return member._isBlacklisted === true;
@@ -178,9 +178,11 @@ export default function MembersListClient() {
       // scope === "all" : actifs + démotés + blacklist + réservistes
       return member._isActive || member._isDemoted || member._isBlacklisted || member._isReservist;
     });
+  }, [members, scope]);
 
-    // Quick filter (activité, online…)
-    filtered = filtered.filter((member) =>
+  const displayedMembers = useMemo(() => {
+    // Quick filter (activité, online…) appliqué sur le résultat du scope
+    let filtered = scopeMembers.filter((member) =>
       matchesQuickFilter(member, quickFilter === "online" ? "all" : quickFilter, analyticsAvailable)
     );
     if (quickFilter === "online") {
@@ -189,7 +191,7 @@ export default function MembersListClient() {
       );
     }
     return filtered;
-  }, [members, scope, quickFilter, analyticsAvailable, onlineMap]);
+  }, [scopeMembers, quickFilter, analyticsAvailable, onlineMap]);
 
   const summary = useMemo(() => {
     const activeCount      = members.filter((m) => m._isActive === true).length;
@@ -197,14 +199,14 @@ export default function MembersListClient() {
     const blacklistedCount = members.filter((m) => m._isBlacklisted === true).length;
     const demotedCount     = members.filter((m) => m._isDemoted === true).length;
     const nonLinkCount     = members.filter((m) => m._isNonLink === true).length;
-    const activeMembersPlaytime = members.filter((m) => m._isActive === true);
-    const avgPlaytime = activeMembersPlaytime.length > 0
-      ? Math.round(activeMembersPlaytime.reduce((total, m) => total + (m.playtime7d ?? 0), 0) / activeMembersPlaytime.length)
+    // Moyenne playtime calculée sur le scope courant pour rester cohérent avec l'affichage
+    const avgPlaytime = scopeMembers.length > 0
+      ? Math.round(scopeMembers.reduce((total, m) => total + (m.playtime7d ?? 0), 0) / scopeMembers.length)
       : 0;
     const hasPreviousData = members.some((m) => typeof m.previousPlaytime7d === "number");
 
     return {
-      total: displayedMembers.length,
+      total: scopeMembers.length,
       activeCount,
       reservistCount,
       blacklistedCount,
@@ -213,7 +215,7 @@ export default function MembersListClient() {
       avgPlaytime,
       hasPreviousData,
     };
-  }, [members, displayedMembers]);
+  }, [members, scopeMembers]);
 
   const copyValue = useCallback(async (value: string, key: string) => {
     try {
@@ -354,19 +356,19 @@ export default function MembersListClient() {
         {QUICK_FILTER_OPTIONS.map((option) => {
           const selected = quickFilter === option.value;
           const count = option.value === "all"
-            ? members.length
+            ? scopeMembers.length
             : option.value === "online"
-            ? members.filter((m) => m.steamId && Boolean(onlineMap[m.steamId]?.connected)).length
+            ? scopeMembers.filter((m) => m.steamId && Boolean(onlineMap[m.steamId]?.connected)).length
             : option.value === "active"
-            ? members.filter((m) => !isActivityExempt(m) && (getActivityBand(m.playtime7d).key === "active" || getActivityBand(m.playtime7d).key === "high")).length
+            ? scopeMembers.filter((m) => !isActivityExempt(m) && (getActivityBand(m.playtime7d).key === "active" || getActivityBand(m.playtime7d).key === "high")).length
             : option.value === "inactive"
-            ? members.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "inactive").length
+            ? scopeMembers.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "inactive").length
             : option.value === "low"
-            ? members.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "low").length
+            ? scopeMembers.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "low").length
             : option.value === "top"
-            ? members.filter((m) => getActivityBand(m.playtime7d).key === "high").length
+            ? scopeMembers.filter((m) => getActivityBand(m.playtime7d).key === "high").length
             : option.value === "watch"
-            ? members.filter((m) => isWatchMember(m, analyticsAvailable)).length
+            ? scopeMembers.filter((m) => isWatchMember(m, analyticsAvailable)).length
             : 0;
 
           const styles = {
