@@ -7,7 +7,7 @@ import { getPreviousPlaytimeWeekStart } from "@/lib/playtime-insights";
 import type { StaffMemberDto } from "@/types/staff";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
 import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
-import { getAvatarHashes } from "@/lib/discord/avatar-cache";
+import { getAvatarHashesFast, warmAvatarCache } from "@/lib/discord/avatar-cache";
 import { getMemberDisplayName } from "@/lib/member-display";
 import {
   getMemberScopeFlags,
@@ -471,10 +471,12 @@ export async function GET(req: Request) {
       )
     ) as string[];
 
-    // Récupération des avatars via le cache partagé (mémoire + DB + API Discord)
+    // Récupération des avatars : version rapide (cache mémoire + DB) en bloquant
+    // + warming Discord API en arrière-plan pour les prochaines requêtes
     const avatarHashByDiscordId = discordIds.length > 0
-      ? await getAvatarHashes(discordIds)
+      ? await getAvatarHashesFast(discordIds)
       : new Map<string, string | null>();
+    if (discordIds.length > 0) warmAvatarCache(discordIds);
 
     const rows: StaffMemberDto[] = normalizedMembers.map((member: any) => {
       const playtime = typeof member.playtime7d === "number" ? member.playtime7d : 0;
@@ -496,12 +498,20 @@ export async function GET(req: Request) {
         discordAvatarHash: member.discordId ? avatarHashByDiscordId.get(member.discordId) ?? null : null,
         discordRolesUpdatedAt: member.discordRolesUpdatedAt?.toISOString() ?? null,
         discordLastError: member.discordLastError ?? null,
+        discordInGuild: member.discordInGuild ?? null,
         playtime7d: playtime,
         playtime7dUpdatedAt: member.playtime7dUpdatedAt?.toISOString() ?? null,
         updatedAt: new Date().toISOString(),
         previousPlaytime7d: previousPlaytime,
         playtimeDelta7d: delta,
-      };
+        // Scope flags pour filtrage client-side (scope=everything)
+        _isActive: member._isActive === true,
+        _isDemoted: member._isDemoted === true,
+        _isBlacklisted: member._isBlacklisted === true,
+        _isReservist: member._isReservist === true,
+        _isNonLink: member._isNonLink === true,
+        _isOutOfDiscord: member._isOutOfDiscord === true,
+      } as any;
     });
 
     const now = new Date();

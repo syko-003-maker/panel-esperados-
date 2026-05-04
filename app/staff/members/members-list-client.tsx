@@ -146,11 +146,11 @@ export default function MembersListClient() {
         ? "non link"
       : "visible";
 
-  // Members (playtime from DB) — rafraîchi toutes les 10s, léger
+  // Members — fetch immédiat puis rafraîchi toutes les 60s
   useEffect(() => {
-    const timeout = setTimeout(() => void loadMembers(), 180);
-    const interval = setInterval(() => void loadMembers(), 10_000);
-    return () => { clearTimeout(timeout); clearInterval(interval); };
+    void loadMembers();
+    const interval = setInterval(() => void loadMembers(), 60_000);
+    return () => clearInterval(interval);
   }, [loadMembers]);
 
   // Statuts LYG (API externe) — premier fetch dès que la liste est prête, puis toutes les 45s
