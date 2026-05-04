@@ -88,11 +88,19 @@ export function Sidebar({
   return (
     <nav className="flex flex-col h-full">
       {/* Sections */}
-      <div className="flex-1 overflow-y-auto px-3 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 py-6 space-y-5">
         {visibleSections.map((section, sectionIdx) => (
           <div key={section.section}>
-            {sectionIdx > 0 && <div className="mb-4 h-px bg-white/[0.06]" />}
-            <h3 className="px-3 pb-1 pt-0.5 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.18em]">
+            {sectionIdx > 0 && (
+              // Séparateur dégradé : transparent → bordeaux faible → transparent
+              <div className="mb-4 h-px bg-gradient-to-r from-transparent via-[#7a1f2b]/35 to-transparent" />
+            )}
+            <h3 className="flex items-center gap-2 px-3 pb-2 pt-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/55">
+              {/* Mini point d'accent bordeaux devant chaque section */}
+              <span
+                className="h-1 w-1 rounded-full bg-[#c42a43]/70"
+                style={{ boxShadow: "0 0 6px 0 rgba(196,42,67,0.55)" }}
+              />
               {section.section}
             </h3>
             <ul className="space-y-1">
@@ -107,20 +115,36 @@ export function Sidebar({
                         href={item.href}
                         prefetch={false}
                         onClick={onClose}
-                        className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ease-in-out ${
+                        className={[
+                          // Transition unifiée 280ms cubic-bezier (cohérent avec le reste du panel)
+                          "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-[background-color,color,transform,box-shadow] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                           active
-                            ? "bg-[#7a1f2b]/40 text-slate-50 shadow-[inset_3px_0_0_#c42a43,0_4px_20px_-4px_rgba(196,42,67,0.40)]"
-                            : "text-foreground/70 hover:bg-white/[0.05] hover:text-slate-100"
-                        }`}
+                            // Actif : gradient bordeaux + barre gauche bordeaux→ambre + glow extérieur
+                            ? "bg-gradient-to-r from-[#7a1f2b]/55 via-[#7a1f2b]/22 to-transparent text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-6px_rgba(196,42,67,0.45)] border border-[#7a1f2b]/35"
+                            // Inactif : hover gradient subtil + petit translateX
+                            : "border border-transparent text-foreground/70 hover:bg-gradient-to-r hover:from-white/[0.06] hover:via-white/[0.025] hover:to-transparent hover:text-slate-100 hover:translate-x-0.5 hover:border-white/10",
+                        ].join(" ")}
                       >
+                        {/* Barre verticale d'accent active : dégradée bordeaux→ambre */}
+                        {active && (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-gradient-to-b from-[#c42a43] via-[#9b2335] to-amber-500"
+                            style={{ boxShadow: "0 0 10px 0 rgba(196,42,67,0.55)" }}
+                          />
+                        )}
                         <Icon
-                          className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${
+                          className={[
+                            "h-4 w-4 flex-shrink-0 transition-all duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                             active
-                              ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]"
-                              : "opacity-70 group-hover:opacity-100"
-                          }`}
+                              ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.55)]"
+                              : "text-slate-400 group-hover:text-amber-200/90 group-hover:drop-shadow-[0_0_4px_rgba(245,158,11,0.35)]",
+                          ].join(" ")}
                         />
-                        <span className="truncate text-sm font-medium">
+                        <span className={[
+                          "truncate text-sm font-medium transition-colors",
+                          active ? "tracking-[0.005em]" : "",
+                        ].join(" ")}>
                           {item.label}
                         </span>
                       </Link>
@@ -134,12 +158,12 @@ export function Sidebar({
       </div>
 
       {/* Logout Button */}
-      <div className="px-3 py-4 border-t border-border">
+      <div className="px-3 py-4 border-t border-white/8">
         <MotionButtonFrame className="w-full">
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start rounded-xl text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+            className="w-full justify-start rounded-xl text-slate-500 transition-colors hover:bg-red-500/12 hover:text-red-300 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_18px_-6px_rgba(220,38,38,0.35)]"
             asChild
           >
             <a href="/auth/signout">
