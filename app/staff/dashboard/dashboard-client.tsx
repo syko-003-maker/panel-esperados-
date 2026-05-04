@@ -23,7 +23,25 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { getSanctionLabel } from "@/lib/sanctions";
-import { MotionButtonFrame } from "@/components/staff/ui/motion";
+import { MotionButtonFrame, STAFF_EASE_OUT } from "@/components/staff/ui/motion";
+import { motion, type Variants } from "motion/react";
+
+// ─── Variants d'entrée dashboard ──────────────────────────────────────────
+const dashSectionFade: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: (delay: number = 0) => ({
+    opacity: 1, y: 0,
+    transition: { duration: 0.36, ease: STAFF_EASE_OUT, delay },
+  }),
+};
+const dashKpiParent: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+};
+const dashKpiChild: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: STAFF_EASE_OUT } },
+};
 import { formatAppDate } from "@/lib/app-date-formatter";
 import { useDashboardData } from "@/lib/hooks/useDashboardData";
 import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
@@ -125,7 +143,7 @@ function KpiCard({
   const s = KPI_STYLES[tone];
   return (
     <Link href={href} className="group block">
-      <div className={`relative overflow-hidden rounded-2xl border ${s.border} bg-white/[0.02] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.04] hover:shadow-lg`}>
+      <div className={`premium-card premium-card-bordeaux relative overflow-hidden rounded-2xl border ${s.border} bg-white/[0.02] p-4`}>
         {/* Subtle gradient top bar */}
         <div className={`absolute inset-x-0 top-0 h-[2px] ${s.bg} opacity-80`} />
 
@@ -169,7 +187,7 @@ function Section({
   count?: number;
 }) {
   return (
-    <div className="flex flex-col rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden">
+    <div className="premium-card premium-surface flex flex-col rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-3">
         <div className="flex items-center gap-2.5">
@@ -312,33 +330,60 @@ export default function StaffDashboardClient() {
     >
       {/* ── Alertes ── */}
       {membersSource === "db_stale" && (
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200">
+        <motion.div
+          className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200"
+          variants={dashSectionFade} initial="hidden" animate="visible" custom={0}
+        >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <div>
             <span className="font-semibold">Données membres en fallback —</span>{" "}
             source LYG indisponible, affichage depuis la base locale.
             {membersError && <span className="ml-1 font-mono text-xs opacity-70">{membersError}</span>}
           </div>
-        </div>
+        </motion.div>
       )}
       {error && !membersSource && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-200">
+        <motion.div
+          className="flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-200"
+          variants={dashSectionFade} initial="hidden" animate="visible" custom={0}
+        >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
           <div><span className="font-semibold">Erreur de chargement —</span> {error}</div>
-        </div>
+        </motion.div>
       )}
 
       {/* ── KPI Grid ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        <KpiCard icon={AlertCircle}  label="Plaintes ouvertes"      value={complaintsArr.length}  tone="danger"  href="/staff/complaints"  loading={loading} />
-        <KpiCard icon={UserCheck}    label="Recrutements en attente" value={recruitmentsArr.length} tone="info"    href="/staff/recruitments" loading={loading} />
-        <KpiCard icon={Ban}          label="Sanctions actives"       value={sanctionsArr.length}   tone="warning" href="/staff/sanctions"    loading={loading} />
-        <KpiCard icon={Users}        label="Membres actifs"          value={membersCount}           tone="success" href="/staff/members"      loading={loading} />
-        <KpiCard icon={Landmark}     label="Banque famille"          value={familyBankBalance}      tone="bank"    href="/staff/stats"        loading={loading} isAmount />
-      </div>
+      <motion.div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+        variants={dashKpiParent}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={dashKpiChild}>
+          <KpiCard icon={AlertCircle}  label="Plaintes ouvertes"       value={complaintsArr.length}  tone="danger"  href="/staff/complaints"   loading={loading} />
+        </motion.div>
+        <motion.div variants={dashKpiChild}>
+          <KpiCard icon={UserCheck}    label="Recrutements en attente" value={recruitmentsArr.length} tone="info"    href="/staff/recruitments" loading={loading} />
+        </motion.div>
+        <motion.div variants={dashKpiChild}>
+          <KpiCard icon={Ban}          label="Sanctions actives"       value={sanctionsArr.length}   tone="warning" href="/staff/sanctions"    loading={loading} />
+        </motion.div>
+        <motion.div variants={dashKpiChild}>
+          <KpiCard icon={Users}        label="Membres actifs"          value={membersCount}           tone="success" href="/staff/members"      loading={loading} />
+        </motion.div>
+        <motion.div variants={dashKpiChild}>
+          <KpiCard icon={Landmark}     label="Banque famille"          value={familyBankBalance}      tone="bank"    href="/staff/stats"        loading={loading} isAmount />
+        </motion.div>
+      </motion.div>
 
       {/* ── Content grid ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <motion.div
+        className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+        variants={dashSectionFade}
+        initial="hidden"
+        animate="visible"
+        custom={0.18}
+      >
 
         {/* Actions urgentes */}
         <Section title="Actions urgentes" icon={AlertCircle} href="#" linkLabel="" count={urgentCount}>
@@ -482,7 +527,7 @@ export default function StaffDashboardClient() {
           )}
         </Section>
 
-      </div>
+      </motion.div>
     </PageShell>
   );
 }
