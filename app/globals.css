@@ -326,23 +326,23 @@
 /* Variante bordeaux famille (cartes "lambda") */
 .premium-card-bordeaux:hover {
   transform: translateY(-3px) scale(1.012);
-  border-color: rgba(220, 60, 90, 0.85) !important;
+  border-color: rgba(220, 60, 90, 0.55) !important;
   box-shadow:
-    0 0 0 1px rgba(220, 60, 90, 0.65),
-    0 0 22px 2px rgba(220, 60, 90, 0.60),
-    0 0 60px 8px rgba(155, 35, 53, 0.45),
-    0 24px 50px -8px rgba(0, 0, 0, 0.7) !important;
+    0 0 0 1px rgba(220, 60, 90, 0.32),
+    0 0 18px 0 rgba(220, 60, 90, 0.30),
+    0 0 44px 4px rgba(155, 35, 53, 0.22),
+    0 22px 44px -10px rgba(0, 0, 0, 0.6) !important;
 }
 
 /* Variante ambre (top grades : Chef famille, Général, Consejero, Comandante) */
 .premium-card-amber:hover {
   transform: translateY(-3px) scale(1.012);
-  border-color: rgba(251, 191, 36, 0.85) !important;
+  border-color: rgba(251, 191, 36, 0.55) !important;
   box-shadow:
-    0 0 0 1px rgba(251, 191, 36, 0.70),
-    0 0 24px 2px rgba(251, 191, 36, 0.65),
-    0 0 64px 8px rgba(245, 158, 11, 0.50),
-    0 24px 50px -8px rgba(0, 0, 0, 0.7) !important;
+    0 0 0 1px rgba(251, 191, 36, 0.35),
+    0 0 20px 0 rgba(251, 191, 36, 0.32),
+    0 0 48px 4px rgba(245, 158, 11, 0.25),
+    0 22px 44px -10px rgba(0, 0, 0, 0.6) !important;
 }
 
 /* Glow accent (rouge famille) — usage sur CTA primaires */
