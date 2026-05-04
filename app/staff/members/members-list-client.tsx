@@ -96,9 +96,10 @@ export default function MembersListClient() {
     abortRef.current = controller;
 
     if (manual) setRefreshing(true);
-    else setScopeLoading(true);
+    else if (!members.length) setScopeLoading(true);
     try {
-      const params = new URLSearchParams({ scope, sortBy, sortDir });
+      // Toujours charger everything en une seule requête — le filtrage par scope est client-side
+      const params = new URLSearchParams({ scope: "everything", sortBy, sortDir });
       if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`/api/staff/members?${params.toString()}`, {
         cache: "no-store",
@@ -110,14 +111,16 @@ export default function MembersListClient() {
       setMembers(rows);
       setAnalyticsAvailable(data?.meta?.analyticsAvailable === true);
     } catch (err: unknown) {
-      // Ignorer les erreurs d'abort (changement de scope rapide)
+      // Ignorer les erreurs d'abort
       if ((err as any)?.name === "AbortError") return;
     } finally {
       setLoading(false);
       setScopeLoading(false);
       if (manual) setRefreshing(false);
     }
-  }, [scope, search, sortBy, sortDir]);
+  // scope intentionnellement exclu : le changement de scope ne re-fetch pas, il filtre en mémoire
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, sortBy, sortDir]);
 
   const fetchOnlineStatus = useCallback(async (memberList: MemberItem[]) => {
     const steamIds = memberList.map((m) => m.steamId).filter(Boolean) as string[];
@@ -164,32 +167,20 @@ export default function MembersListClient() {
     return () => clearInterval(interval);
   }, [members, fetchOnlineStatus]);
 
-  const summary = useMemo(() => {
-    const activeCount = members.filter((member) => getMemberStatus(member) === "active").length;
-    const reservistCount = members.filter((member) => getMemberStatus(member) === "reservist").length;
-    const blacklistedCount = members.filter((member) => getMemberStatus(member) === "blacklisted").length;
-    const demotedCount = members.filter((member) => getMemberStatus(member) === "demoted").length;
-    const nonLinkCount = members.filter((member) => getMemberStatus(member) === "non_link").length;
-    const avgPlaytime = members.length > 0
-      ? Math.round(members.reduce((total, member) => total + (member.playtime7d ?? 0), 0) / members.length)
-      : 0;
-    const hasPreviousData = members.some((member) => typeof member.previousPlaytime7d === "number");
-
-    return {
-      total: members.length,
-      activeCount,
-      reservistCount,
-      blacklistedCount,
-      demotedCount,
-      nonLinkCount,
-      avgPlaytime,
-      hasPreviousData,
-    };
-  }, [members]);
-
   const displayedMembers = useMemo(() => {
-    // Les membres sont déjà filtrés par scope côté serveur — on applique uniquement le quickFilter
-    let filtered = members.filter((member) =>
+    // Filtrage scope client-side (évite un re-fetch à chaque changement de scope)
+    let filtered = members.filter((member) => {
+      if (scope === "active")      return member._isActive === true;
+      if (scope === "demoted")     return member._isDemoted === true;
+      if (scope === "blacklisted") return member._isBlacklisted === true;
+      if (scope === "reservists")  return member._isReservist === true;
+      if (scope === "non_link")    return member._isNonLink === true;
+      // scope === "all" : actifs + démotés + blacklist + réservistes
+      return member._isActive || member._isDemoted || member._isBlacklisted || member._isReservist;
+    });
+
+    // Quick filter (activité, online…)
+    filtered = filtered.filter((member) =>
       matchesQuickFilter(member, quickFilter === "online" ? "all" : quickFilter, analyticsAvailable)
     );
     if (quickFilter === "online") {
@@ -198,7 +189,31 @@ export default function MembersListClient() {
       );
     }
     return filtered;
-  }, [members, quickFilter, analyticsAvailable, onlineMap]);
+  }, [members, scope, quickFilter, analyticsAvailable, onlineMap]);
+
+  const summary = useMemo(() => {
+    const activeCount      = members.filter((m) => m._isActive === true).length;
+    const reservistCount   = members.filter((m) => m._isReservist === true).length;
+    const blacklistedCount = members.filter((m) => m._isBlacklisted === true).length;
+    const demotedCount     = members.filter((m) => m._isDemoted === true).length;
+    const nonLinkCount     = members.filter((m) => m._isNonLink === true).length;
+    const activeMembersPlaytime = members.filter((m) => m._isActive === true);
+    const avgPlaytime = activeMembersPlaytime.length > 0
+      ? Math.round(activeMembersPlaytime.reduce((total, m) => total + (m.playtime7d ?? 0), 0) / activeMembersPlaytime.length)
+      : 0;
+    const hasPreviousData = members.some((m) => typeof m.previousPlaytime7d === "number");
+
+    return {
+      total: displayedMembers.length,
+      activeCount,
+      reservistCount,
+      blacklistedCount,
+      demotedCount,
+      nonLinkCount,
+      avgPlaytime,
+      hasPreviousData,
+    };
+  }, [members, displayedMembers]);
 
   const copyValue = useCallback(async (value: string, key: string) => {
     try {
@@ -420,13 +435,13 @@ export default function MembersListClient() {
         })}
       </div>
 
-      {displayedMembers.length === 0 && !scopeLoading ? (
+      {displayedMembers.length === 0 && !loading ? (
         <EmptyState
           title="Aucun membre visible"
           description={scope === "active" ? "Aucun membre actif ne correspond aux filtres courants." : "Aucun membre ne correspond aux filtres courants."}
         />
       ) : (
-        <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 transition-opacity duration-200 ${scopeLoading ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {displayedMembers.map((member) => {
             const activity = getActivityBand(member.playtime7d);
             const exemptActivity = isActivityExempt(member);
