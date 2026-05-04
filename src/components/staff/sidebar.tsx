@@ -86,9 +86,13 @@ export function Sidebar({
       : SIDEBAR_ITEMS;
 
   return (
-    <nav className="flex flex-col h-full">
+    // Pas de flex-1 sur la zone menu : on laisse le bloc se dimensionner à
+    // son contenu pour que la déconnexion reste juste sous le dernier item,
+    // peu importe la hauteur de la sidebar. Le scroll global est porté par
+    // <nav> au cas où la liste dépasse l'écran.
+    <nav className="flex h-full flex-col overflow-y-auto">
       {/* Sections */}
-      <div className="flex-1 overflow-y-auto px-3 py-6 space-y-5">
+      <div className="px-3 py-6 space-y-5">
         {visibleSections.map((section, sectionIdx) => (
           <div key={section.section}>
             {sectionIdx > 0 && (
@@ -157,8 +161,8 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* Logout Button */}
-      <div className="px-3 py-4 border-t border-white/8">
+      {/* Logout Button — collé sous le dernier item, pas en bas de la sidebar */}
+      <div className="mt-2 px-3 py-3 border-t border-white/8">
         <MotionButtonFrame className="w-full">
           <Button
             variant="ghost"
