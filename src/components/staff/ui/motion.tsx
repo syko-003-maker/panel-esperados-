@@ -178,9 +178,9 @@ export function MotionPageTransition({
   return (
     <motion.div
       key={pathname}
-      initial={{ opacity: 0, y: 14, filter: "blur(4px)" }}
-      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      transition={{ duration: 0.42, ease: STAFF_EASE_OUT }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.34, ease: STAFF_EASE_OUT }}
     >
       {children}
     </motion.div>
