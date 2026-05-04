@@ -513,10 +513,10 @@ export default function MembersListClient() {
                     <MemberStatusBadge member={member} analyticsAvailable={analyticsAvailable} />
                     {member._isOutOfDiscord && (
                       <span className="rounded-full border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-400 truncate">
-                        Hors Discord
+                        Quitté Discord
                       </span>
                     )}
-                    {member.rankLabel && (
+                    {member.rankLabel && !member._isOutOfDiscord && (
                       <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium text-foreground/60 truncate max-w-[120px]">
                         {member.rankLabel}
                       </span>

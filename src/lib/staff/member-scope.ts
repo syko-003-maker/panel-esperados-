@@ -61,7 +61,11 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     .join(" ");
   const roleSet = new Set(discordRoleIds);
 
-  const isDemoted = roleSet.has(DEMOTE_ROLE_ID) || statusHints.includes("demote");
+  // Member has a Discord ID but the bot confirmed they are no longer in the guild
+  // → treated as demoted (left the family)
+  const isOutOfDiscord = hasDiscordId && member.discordInGuild === false;
+
+  const isDemoted = roleSet.has(DEMOTE_ROLE_ID) || statusHints.includes("demote") || isOutOfDiscord;
   const isBlacklisted = roleSet.has(BLACKLIST_ROLE_ID) || statusHints.includes("blacklist");
   const isReservist =
     roleSet.has(RESERVIST_ROLE_ID) ||
@@ -74,8 +78,6 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     statusHints.includes("chef");
 
   const hasDiscordGrade = Boolean(gradeInfo.grade);
-  // Member has a Discord ID but the bot confirmed they are no longer in the guild
-  const isOutOfDiscord = hasDiscordId && member.discordInGuild === false;
 
   return {
     discordRoleIds,
@@ -103,8 +105,8 @@ export function isDisplayableStaffMember(member: MemberScopeInput): boolean {
 
   if (!isActive) return false;
   if (isGhost) return false;
-  // Out-of-discord members are shown with a warning badge instead of being hidden
   if (isMissingFromLyg) return false;
+  // isDemoted already includes isOutOfDiscord → they fall into the demote scope
   if (flags.isDemoted || flags.isBlacklisted || flags.isReservist) return false;
 
   return true;
