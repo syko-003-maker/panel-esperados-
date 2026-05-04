@@ -62,15 +62,20 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
   const roleSet = new Set(discordRoleIds);
 
   // Member has a Discord ID but the bot confirmed they are no longer in the guild
-  // → treated as demoted (left the family)
   const isOutOfDiscord = hasDiscordId && member.discordInGuild === false;
 
-  const isDemoted = roleSet.has(DEMOTE_ROLE_ID) || statusHints.includes("demote") || isOutOfDiscord;
   const isBlacklisted = roleSet.has(BLACKLIST_ROLE_ID) || statusHints.includes("blacklist");
   const isReservist =
     roleSet.has(RESERVIST_ROLE_ID) ||
     statusHints.includes("reserviste") ||
     statusHints.includes("reservist");
+
+  // Out-of-discord counts as demoted only if not already in a priority category (blacklist/reservist)
+  const isDemoted =
+    roleSet.has(DEMOTE_ROLE_ID) ||
+    statusHints.includes("demote") ||
+    (isOutOfDiscord && !isBlacklisted && !isReservist);
+
   // Chef & Sous-Chef Famille : exclus du suivi playtime / sanctions
   const isChefExempt =
     (CHEF_FAMILLE_ROLE_ID && roleSet.has(CHEF_FAMILLE_ROLE_ID)) ||
