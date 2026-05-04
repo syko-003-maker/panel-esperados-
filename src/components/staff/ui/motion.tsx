@@ -41,11 +41,13 @@ export function MotionSection({ children, className, delay = 0, ...props }: Moti
   );
 }
 
+// IMPORTANT : pas de whileHover ici. Le hover est piloté par la classe CSS
+// `.premium-card` (globals.css). Sinon Framer pose un `transform` inline qui
+// surcharge le hover CSS et on ne voit aucun effet.
 export function MotionCard({ children, className, delay = 0, ...props }: MotionSurfaceProps) {
   return (
     <motion.div
       className={className}
-      whileHover={{ y: -2 }}
       transition={{ duration: 0.26, ease: STAFF_EASE, delay }}
       {...props}
     >
@@ -58,7 +60,6 @@ export function MotionListItem({ children, className, delay = 0, ...props }: Mot
   return (
     <motion.div
       className={cn("will-change-transform", className)}
-      whileHover={{ y: -1 }}
       transition={{ duration: 0.22, ease: STAFF_EASE, delay }}
       {...props}
     >

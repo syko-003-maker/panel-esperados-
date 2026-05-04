@@ -13,7 +13,6 @@ import {
   MotionPageTransition,
   StaffMotionProvider,
 } from "@/components/staff/ui";
-import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
 
 export function StaffLayout({
   children,
@@ -59,7 +58,6 @@ export function StaffLayout({
 
   return (
     <StaffMotionProvider>
-      <SmoothScrollProvider>
       <div className="relative flex min-h-screen text-foreground">
         <AppBackground />
         <aside className="relative z-10 hidden lg:flex lg:w-72 flex-col border-r border-white/10 bg-[linear-gradient(180deg,rgba(18,5,8,0.72),rgba(11,3,5,0.90))] backdrop-blur-2xl">
@@ -155,7 +153,7 @@ export function StaffLayout({
             )}
           </header>
 
-          <main className="flex-1 overflow-y-auto" data-lenis-root>
+          <main className="flex-1 overflow-y-auto">
             <MotionSection className="w-full p-3 sm:p-4 md:p-6 lg:p-8">
               <MotionPageTransition pathname={pathname ?? ""}>
                 {children}
@@ -164,7 +162,6 @@ export function StaffLayout({
           </main>
         </div>
       </div>
-      </SmoothScrollProvider>
     </StaffMotionProvider>
   );
 }
