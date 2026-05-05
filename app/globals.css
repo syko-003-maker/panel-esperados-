@@ -424,6 +424,42 @@
   box-shadow: none !important;
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+ * Press global : tout <button> du panel reçoit le translateY hover
+ * + scale 0.97 active. Les classes Tailwind existantes (transition-colors,
+ * hover:bg-..., etc.) restent intactes — on n'override que `transform`.
+ * Les buttons qui veulent opt-out posent `data-no-press`.
+ * `transition` ajoute juste transform avec une priorité forte pour battre
+ * Tailwind transition-colors qui sinon ferait snap le transform.
+ * ────────────────────────────────────────────────────────────────────── */
+button:not([data-no-press]),
+a[role="button"]:not([data-no-press]) {
+  transition-property:
+    transform, box-shadow, background-color, border-color, color, opacity, filter !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+button:not([data-no-press]):not(:disabled):hover,
+a[role="button"]:not([data-no-press]):not([aria-disabled="true"]):hover {
+  transform: translate3d(0, -1px, 0);
+}
+button:not([data-no-press]):not(:disabled):active,
+a[role="button"]:not([data-no-press]):not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+  transition-duration: 80ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  button:not([data-no-press]),
+  button:not([data-no-press]):hover,
+  button:not([data-no-press]):active,
+  a[role="button"]:not([data-no-press]),
+  a[role="button"]:not([data-no-press]):hover,
+  a[role="button"]:not([data-no-press]):active {
+    transform: none;
+    transition: none !important;
+  }
+}
+
 /* Variantes tonales — soft glow uniquement, pas de bg/border imposé */
 .btn-press-bordeaux:hover:not(:disabled) {
   box-shadow:
