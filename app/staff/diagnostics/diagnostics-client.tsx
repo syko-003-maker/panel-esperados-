@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useState, useEffect } from "react";
 
 type DiagnosticsData = {
@@ -90,11 +92,11 @@ export function DiagnosticsClient({ data }: { data: DiagnosticsData }) {
       });
       const json = await res.json();
       setLygDiag(json);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setLygDiag({
         ok: false,
         error: "NETWORK_ERROR",
-        message: e.message || "Erreur réseau",
+        message: getErrorMessage(e) || "Erreur réseau",
       });
     } finally {
       setLygLoading(false);

@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -38,8 +40,8 @@ export function ActivityRulesClient() {
       } else {
         setError(data.error ?? "Failed to load rules");
       }
-    } catch (err: any) {
-      setError(err.message ?? "Network error");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || "Network error");
     } finally {
       setLoading(false);
     }
@@ -63,8 +65,8 @@ export function ActivityRulesClient() {
       } else {
         setError(data.error ?? "Failed to update rule");
       }
-    } catch (err: any) {
-      setError(err.message ?? "Network error");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || "Network error");
     } finally {
       setSaving(false);
     }
@@ -90,8 +92,8 @@ export function ActivityRulesClient() {
       } else {
         setError(data.error ?? "Failed to update rule");
       }
-    } catch (err: any) {
-      setError(err.message ?? "Invalid JSON");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || "Invalid JSON");
     } finally {
       setSaving(false);
     }

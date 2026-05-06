@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useEffect, useState } from "react";
 import { Settings, Save, RotateCcw, CheckCircle2, AlertCircle, Hash } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -156,8 +158,8 @@ export default function DiscordConfigClient() {
       setOkMsg("✓ Configuration sauvegardée");
       setTimeout(() => setOkMsg(null), 3000);
       await load();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setSaving(false);
     }

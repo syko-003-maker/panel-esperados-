@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { canClearSanction, canDeleteSanction, getSanctionLabel } from "@/lib/sanctions";
@@ -54,8 +56,8 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Apply failed");
       alert("✅ Sanction mise en file d'attente pour application Discord");
       router.refresh();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setApplying(false);
     }
@@ -72,8 +74,8 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
       if (!res.ok) throw new Error(json?.error || "Échec");
       setSanction(prev => ({ ...prev, discordStatus: "PENDING" }));
       setRetrySuccess(true);
-    } catch (e: any) {
-      setError("Erreur: " + (e?.message ?? String(e)));
+    } catch (e: unknown) {
+      setError("Erreur: " + getErrorMessage(e));
     } finally {
       setRetrying(false);
     }
@@ -90,8 +92,8 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Échec");
       setSanction(prev => ({ ...prev, discordStatus: "APPLIED", discordError: null }));
-    } catch (e: any) {
-      setError("Erreur: " + (e?.message ?? String(e)));
+    } catch (e: unknown) {
+      setError("Erreur: " + getErrorMessage(e));
     } finally {
       setForcingApplied(false);
     }
@@ -114,8 +116,8 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Suppression failed");
       router.refresh();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setClearing(false);
     }
@@ -155,8 +157,8 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
 
       router.push("/staff/sanctions");
       router.refresh();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setDeleting(false);
     }

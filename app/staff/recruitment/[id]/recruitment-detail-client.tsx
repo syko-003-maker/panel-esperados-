@@ -73,15 +73,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const GUILD_ID = "1312845998753710151";
 
-function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-FR", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+// fmtDate centralisé via @/lib/app-date-formatter
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
 function normalizeScores(value: Ticket["scoresJson"]) {
   if (!value || typeof value !== "object") return {};

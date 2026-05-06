@@ -38,10 +38,8 @@ type MemberWarnSummary = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
+// fmtDate centralisé (date seule) via @/lib/app-date-formatter
+import { formatAppDateOnly as fmtDate } from "@/lib/app-date-formatter";
 
 function WarnTypeBadge({ type }: { type: string }) {
   const t = type.toLowerCase();

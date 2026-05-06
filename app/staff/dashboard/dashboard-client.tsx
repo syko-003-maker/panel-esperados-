@@ -70,7 +70,7 @@ type Sanction = {
   createdAt: string;
 };
 
-function fmtDate(iso: string | null) { return formatAppDate(iso); }
+// fmtDate retiré : formatAppDate est utilisé directement (helper centralisé).
 
 function formatMoney(amount: number | null): string {
   if (amount == null) return "N/A";
@@ -433,7 +433,7 @@ export default function StaffDashboardClient() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-200">{rec.rpName ?? rec.ticketKey}</p>
-                  <p className="text-[11px] text-slate-600">{fmtDate(rec.createdAt)}</p>
+                  <p className="text-[11px] text-slate-600">{formatAppDate(rec.createdAt)}</p>
                 </div>
                 <StatusBadge tone={isRecruitmentPending(rec.status) ? "warning" : "neutral"} className="shrink-0 text-[11px]">
                   {isRecruitmentPending(rec.status) ? "En attente" : "Clôturé"}
@@ -483,7 +483,7 @@ export default function StaffDashboardClient() {
                     <p className="text-sm font-medium text-slate-200 truncate">
                       {comp.ticketKey?.trim() ? `Plainte ${comp.ticketKey.trim()}` : `Plainte #${comp.id.slice(-4)}`}
                     </p>
-                    <p className="text-[11px] text-slate-600">{fmtDate(comp.createdAt)}</p>
+                    <p className="text-[11px] text-slate-600">{formatAppDate(comp.createdAt)}</p>
                   </div>
                   <StatusBadge tone={st.tone} className="shrink-0 text-[11px]">{st.label}</StatusBadge>
                 </ListRow>
@@ -519,7 +519,7 @@ export default function StaffDashboardClient() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-200">{abs.member?.rpName ?? abs.discordId ?? "—"}</p>
-                  <p className="text-[11px] text-slate-600">{fmtDate(abs.createdAt)}</p>
+                  <p className="text-[11px] text-slate-600">{formatAppDate(abs.createdAt)}</p>
                 </div>
                 <StatusBadge tone="warning" className="shrink-0 text-[11px]">En attente</StatusBadge>
               </ListRow>

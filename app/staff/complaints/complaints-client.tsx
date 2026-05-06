@@ -64,12 +64,8 @@ const STATUS_DOT: Record<Complaint["status"], string> = {
   CLOSED: "bg-slate-600",
 };
 
-function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-FR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
+// fmtDate centralisé via @/lib/app-date-formatter
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
 export default function ComplaintsClient() {
   const [items, setItems] = useState<Complaint[]>([]);

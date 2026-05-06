@@ -62,17 +62,8 @@ const STATUS_META: Record<string, { label: string }> = {
   FINAL: { label: "Finalisée" },
 };
 
-function fmtDate(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString("fr-BE");
-}
-
-function fmtDateTime(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("fr-BE");
-}
+// fmtDate / fmtDateTime centralisés via @/lib/app-date-formatter
+import { formatAppDateOnly as fmtDate, formatAppDate as fmtDateTime } from "@/lib/app-date-formatter";
 
 export default function MeetingsClient() {
   const router = useRouter();

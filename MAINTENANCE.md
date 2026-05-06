@@ -45,6 +45,23 @@ Cf. `RESTORE.md` pour la procédure complète. Rétention :
 - Passphrase GPG : `/home/ubuntu/.panel-backup-passphrase` (mode 600).
   À sauvegarder dans un password manager — irrécupérable sinon.
 
+## Code dormant (non supprimé volontairement)
+
+### `app/staff/complaints-tickets/complaints-list-client.tsx`
+Code complet, refondu au design system en Lot 1, **mais** `app/staff/complaints-tickets/page.tsx` redirect immédiatement vers `/staff/complaints` (autre composant). Le composant `ComplaintsListClient` n'est référencé que par sa propre déclaration. Aucun usage runtime.
+
+Conservé car la page détail `/staff/complaints-tickets/[ticketKey]/...` reste linkée depuis Discord. À nettoyer dans un lot dette dédié si confirmation que rien ne pointe vers la liste racine.
+
+## Helpers centralisés (lot 5)
+
+- `formatAppDate(input)` — DD/MM/YYYY HH:MM (Bruxelles)
+- `formatAppDateOnly(input)` — DD/MM/YYYY (date seule)
+- `getErrorMessage(err: unknown): string` — extraction safe d'un message
+  d'erreur depuis `Error | string | object | unknown`
+- `toError(err: unknown): Error` — coercion vers Error pour Sentry/logs
+
+Ne plus implémenter de `fmtDate` ou `catch (err: any) { String(err?.message ?? err) }` localement, utiliser ces helpers.
+
 ## Services systemd
 
 Le panel ne tourne PAS via `pm2`. Il tourne via :

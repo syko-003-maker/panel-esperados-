@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useEffect, useState, useRef } from "react";
 import { Search, Copy, RotateCcw, Save, AlertCircle, Eye, FileText, Zap, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -129,9 +131,9 @@ export default function DiscordTemplatesClient() {
       if (!selectedId && json.data && json.data.length > 0) {
         setSelectedId(json.data[0].id);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setItems([]);
-      setError(String(err?.message ?? err));
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -275,8 +277,8 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
       await onSaved();
-    } catch (err: any) {
-      setSaveError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setSaveError(getErrorMessage(err));
       setTimeout(() => setSaveError(null), 6000);
     } finally {
       setSaving(false);

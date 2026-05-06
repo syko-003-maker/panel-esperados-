@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -81,8 +83,8 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Suppression échouée");
       setDeletedIds((prev) => new Set([...prev, id]));
       setConfirmDeleteId(null);
-    } catch (err: any) {
-      setDeleteError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setDeleteError(getErrorMessage(err));
     } finally {
       setDeletingId(null);
     }
@@ -101,8 +103,8 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Impossible de refuser ce recrutement.");
       setRefusedIds((prev) => new Set([...prev, id]));
       setConfirmRefuseId(null);
-    } catch (err: any) {
-      setDeleteError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setDeleteError(getErrorMessage(err));
     } finally {
       setRefusingId(null);
     }
@@ -116,8 +118,8 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Impossible de prendre en charge ce recrutement.");
       router.push(`/staff/recruitments/${r.ticketKey}`);
-    } catch (err: any) {
-      setDeleteError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setDeleteError(getErrorMessage(err));
       setClaimingId(null);
     }
   }
@@ -385,11 +387,5 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
   );
 }
 
-function fmtDate(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("fr-FR", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+// fmtDate centralisé via @/lib/app-date-formatter
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";

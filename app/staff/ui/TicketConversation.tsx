@@ -12,11 +12,8 @@ type TicketMessage = {
   isDeleted: boolean;
 };
 
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-BE");
-}
+// fmtDate centralisé via @/lib/app-date-formatter
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
 export function TicketConversation({
   ticketKind,

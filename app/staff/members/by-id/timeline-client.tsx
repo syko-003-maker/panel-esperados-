@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useEffect, useState } from "react";
 import { formatBanklogTime } from "@/lib/banklogs-formatter";
 import { useRouter } from "next/navigation";
@@ -79,8 +81,8 @@ export default function TimelineClient({ memberId }: { memberId: string }) {
       }
       setItems(data.timeline || []);
       setDiagnostics(data.diagnostics || null);
-    } catch (err: any) {
-      setError(err.message || "Error loading timeline");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || "Error loading timeline");
     } finally {
       setLoading(false);
     }

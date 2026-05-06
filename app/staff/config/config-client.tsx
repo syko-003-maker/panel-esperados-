@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useState, useEffect, useCallback } from "react";
 
 // ─────────────────────────────────────────────────────────────
@@ -45,8 +47,8 @@ export function ConfigClient() {
       }
 
       setData(json);
-    } catch (err: any) {
-      setError(err.message ?? "Network error");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || "Network error");
     } finally {
       setLoading(false);
     }
@@ -74,8 +76,8 @@ export function ConfigClient() {
 
       await fetchData();
       setEditingKey(null);
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      alert(`Error: ${getErrorMessage(err)}`);
     } finally {
       setSaving(null);
     }
@@ -124,8 +126,8 @@ export function ConfigClient() {
       }
 
       await fetchData();
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      alert(`Error: ${getErrorMessage(err)}`);
     } finally {
       setSaving(null);
     }
@@ -146,8 +148,8 @@ export function ConfigClient() {
       }
 
       await fetchData();
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      alert(`Error: ${getErrorMessage(err)}`);
     }
   };
 

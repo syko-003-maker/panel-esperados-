@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -53,8 +55,8 @@ export default function NewSanctionClient() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Create failed");
       router.push(`/staff/sanctions/${json.sanction.id}`);
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setSaving(false);
     }

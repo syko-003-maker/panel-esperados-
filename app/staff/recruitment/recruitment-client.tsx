@@ -46,14 +46,8 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
 
 const GUILD_ID = "1312845998753710151";
 
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-BE", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+// fmtDate centralisé via @/lib/app-date-formatter
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
 function statusBadge(ticket: Ticket) {
   if (ticket.status === "PENDING" && ticket.isClaimed) return CLAIMED_CONFIG;

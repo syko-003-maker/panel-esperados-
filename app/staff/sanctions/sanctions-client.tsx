@@ -34,6 +34,7 @@ import {
   SANCTION_DELETE_BLOCKING_OUTBOX_STATUSES,
 } from "@/lib/sanctions";
 import { getEffectiveSanctionStatus, getSanctionStatusLabel } from "@/lib/sanction-status-labels";
+import { getErrorMessage } from "@/lib/errors";
 
 type Sanction = {
   id: string;
@@ -113,12 +114,8 @@ const DISCORD_BADGE_TONES: Record<Sanction["discordStatus"], "warning" | "succes
   FAILED: "danger",
 };
 
-function fmtDate(iso: string | null) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
+// fmtDate centralisé (date seule) via @/lib/app-date-formatter
+import { formatAppDateOnly as fmtDate } from "@/lib/app-date-formatter";
 
 export default function SanctionsClient() {
   const router = useRouter();
@@ -151,9 +148,9 @@ export default function SanctionsClient() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Failed to load members");
       setMembers(json.items ?? []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setMembers([]);
-      setError(String(err?.message ?? err));
+      setError(getErrorMessage(err));
     }
   }
 
@@ -168,9 +165,9 @@ export default function SanctionsClient() {
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load");
       setItems(data.data ?? []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setItems([]);
-      setError(String(err?.message ?? err));
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -243,8 +240,8 @@ export default function SanctionsClient() {
       });
       setMemberSearch("");
       await load();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -256,8 +253,8 @@ export default function SanctionsClient() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Close failed");
       await load();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     }
   }
 
@@ -293,8 +290,8 @@ export default function SanctionsClient() {
 
       setItems((prev) => prev.filter((entry) => entry.id !== item.id));
       router.refresh();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setDeletingId(null);
     }
@@ -316,8 +313,8 @@ export default function SanctionsClient() {
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Suppression failed");
       await load();
       router.refresh();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setClearingId(null);
     }
@@ -334,8 +331,8 @@ export default function SanctionsClient() {
       setItems((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, discordStatus: "APPLIED" } : s))
       );
-    } catch (err: any) {
-      setError("Erreur: " + (err?.message ?? String(err)));
+    } catch (err: unknown) {
+      setError("Erreur: " + getErrorMessage(err));
     } finally {
       setForcingAppliedId(null);
     }
@@ -351,8 +348,8 @@ export default function SanctionsClient() {
       setItems((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, discordStatus: "PENDING" } : s))
       );
-    } catch (err: any) {
-      setError("Erreur relance Discord: " + (err?.message ?? String(err)));
+    } catch (err: unknown) {
+      setError("Erreur relance Discord: " + getErrorMessage(err));
     } finally {
       setRetryingId(null);
     }
@@ -367,8 +364,8 @@ export default function SanctionsClient() {
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Sync failed");
       router.refresh();
       await load();
-    } catch (err: any) {
-      setSyncError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setSyncError(getErrorMessage(err));
     } finally {
       setSyncing(false);
     }

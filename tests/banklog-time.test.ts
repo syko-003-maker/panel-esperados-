@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { formatBanklogTime } from "@/lib/banklogs-formatter";
+import { formatAppDate, formatAppDateOnly } from "@/lib/app-date-formatter";
 
 describe("formatBanklogTime", () => {
   it("null → '—'", () => {
@@ -62,5 +63,36 @@ describe("formatBanklogTime", () => {
 
   it("String non parseable → renvoyée telle quelle (fallback)", () => {
     expect(formatBanklogTime("definitely-not-a-date")).toBe("definitely-not-a-date");
+  });
+});
+
+describe("formatAppDate (alias)", () => {
+  it("est strictement équivalent à formatBanklogTime", () => {
+    expect(formatAppDate("2026-05-06T14:30:00Z")).toBe(formatBanklogTime("2026-05-06T14:30:00Z"));
+    expect(formatAppDate(null)).toBe(formatBanklogTime(null));
+    expect(formatAppDate("invalid")).toBe(formatBanklogTime("invalid"));
+  });
+});
+
+describe("formatAppDateOnly", () => {
+  it("ISO avec timezone → DD/MM/YYYY (sans heure)", () => {
+    expect(formatAppDateOnly("2026-05-06T14:30:00Z")).toBe("06/05/2026");
+  });
+
+  it("null/undefined → '—'", () => {
+    expect(formatAppDateOnly(null)).toBe("—");
+    expect(formatAppDateOnly(undefined)).toBe("—");
+  });
+
+  it("Date invalide → '—'", () => {
+    expect(formatAppDateOnly(new Date("invalid"))).toBe("—");
+  });
+
+  it("Format local → DD/MM/YYYY", () => {
+    expect(formatAppDateOnly("2026-05-06 14:30:00")).toBe("06/05/2026");
+  });
+
+  it("String non parseable → renvoyée telle quelle", () => {
+    expect(formatAppDateOnly("definitely-not-a-date")).toBe("definitely-not-a-date");
   });
 });

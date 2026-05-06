@@ -1,5 +1,7 @@
 "use client";
 
+import { getErrorMessage } from "@/lib/errors";
+
 import { useEffect, useState } from "react";
 import { RefreshCw, AlertCircle, Inbox, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -95,14 +97,8 @@ const TYPE_FILTER_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "SANCTION_JUSTIFICATION_CREATED", label: "Justificatif de sanction (staff)" },
 ];
 
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-FR", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+// fmtDate centralisé via @/lib/app-date-formatter (DD/MM/YYYY HH:MM Bruxelles)
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
 function fmtDateShort(iso: string) {
   const d = new Date(iso);
@@ -139,9 +135,9 @@ export default function DiscordOutboxClient() {
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Chargement échoué");
       setItems(json.data ?? []);
       setTotal(json.total ?? 0);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setItems([]);
-      setError(String(err?.message ?? err));
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -160,8 +156,8 @@ export default function DiscordOutboxClient() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Annulation échouée");
       await load();
-    } catch (err: any) {
-      setError(String(err?.message ?? err));
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
       setTimeout(() => setError(null), 5000);
     } finally {
       setCancellingId(null);

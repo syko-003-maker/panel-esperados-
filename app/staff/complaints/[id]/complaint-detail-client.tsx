@@ -77,15 +77,8 @@ const STATUS_SURFACES: Record<ComplaintStatus, string> = {
   CLOSED: "from-slate-500/12 via-slate-500/5 to-transparent",
 };
 
-function fmtDate(iso: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("fr-FR", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+// fmtDate centralisé via @/lib/app-date-formatter
+import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
 function renderArchivedMessage(content: string) {
   return content.replace(/<@&(\d{17,20})>/g, (raw, roleId: string) => {

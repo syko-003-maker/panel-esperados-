@@ -43,18 +43,9 @@ function fmtMoney(value: number) {
   }).format(Math.round(value));
 }
 
-function fmtDate(value: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("fr-BE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+// fmtDate centralisé (date seule) via @/lib/app-date-formatter
+// (l'ancienne impl utilisait toLocaleDateString qui ignore hour/minute → date seule de facto)
+import { formatAppDateOnly as fmtDate } from "@/lib/app-date-formatter";
 
 function MemberAvatar({ url, name }: { url?: string | null; name?: string | null }) {
   const [failed, setFailed] = useState(false);
