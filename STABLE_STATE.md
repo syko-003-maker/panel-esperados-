@@ -86,6 +86,15 @@ Compteur "stalled" (alerte Discord après 5 cycles consécutifs) : **non déclen
 
 ---
 
+## 🆕 Mises à jour post-stabilisation
+
+| Lot | Commit | État |
+|---|---|---|
+| Lot 6 hotfix (BANKLOGS stalled + memory watch) | `e38e349` | ✅ déployé, 0 stalled depuis fix |
+| **Lot 7** — refactor `staff/members/route.ts` | `aa37d26` | ✅ validé, 661→163 L, +43 tests, smoke test 307 OK |
+| **Lot 8** — refactor `banklogs/route.ts` | `8ee6555` | ✅ validé, 578→203 L, +41 tests |
+| Lot 8 confirmation auto-sync réel | _ce commit_ | ✅ POST `/api/banklogs` 200 + shape OK ; auto-sync worker `/api/cron/banklogs-auto-sync` 6/6 = 200 sur 30 min ; total BankLog 11 675 (croît) |
+
 ## 📚 Lots livrés
 
 | Lot | Commit | Effet |

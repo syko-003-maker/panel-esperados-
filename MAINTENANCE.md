@@ -47,6 +47,15 @@ Cf. `RESTORE.md` pour la procédure complète. Rétention :
 
 ## Code dormant (non supprimé volontairement)
 
+### `app/api/banklogs/route.ts — POST handler`
+La route POST existe mais n'est **appelée par personne** (vérifié par grep sur tout le code panel + worker + frontend). Le sync banklogs réel passe par :
+- **Worker auto-cron** : `POST /api/cron/banklogs-auto-sync` → `runLygBanklogsSync` (toutes les 5 min, healthy : 6/6 = 200, total BankLog 11 675 et croît).
+- **Frontend `/staff/banklogs` bouton sync manuel** : `POST /api/staff/sync/banklogs` (route différente).
+
+La route `POST /api/banklogs` reste fonctionnelle (refactorée Lot 8) mais a un **bug pré-existant** : `normalizeLygItem` accepte les alias `steamId`, `steam`, `playerSteamId` mais pas `steamid` (lowercase, format réel envoyé par LYG). Résultat sur un appel direct : `stored: false`, `created: 0`, `PrismaClientValidationError` non-bloquante loguée. Comportement strictement identique avant/après Lot 8.
+
+À nettoyer un jour (lot dette) : soit ajouter `x.steamid` à l'alias, soit supprimer la route POST si confirmé inutilisée.
+
 ### `app/staff/complaints-tickets/complaints-list-client.tsx`
 Code complet, refondu au design system en Lot 1, **mais** `app/staff/complaints-tickets/page.tsx` redirect immédiatement vers `/staff/complaints` (autre composant). Le composant `ComplaintsListClient` n'est référencé que par sa propre déclaration. Aucun usage runtime.
 
