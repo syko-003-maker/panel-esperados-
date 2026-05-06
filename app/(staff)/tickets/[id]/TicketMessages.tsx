@@ -30,7 +30,9 @@ export default function TicketMessages({ ticketId }: { ticketId: string }) {
 
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 7000); // Poll toutes 7s
+    // 25s (7s avant) : ~3.5x moins de req. Les nouveaux messages remontent en
+    // 25s max, suffisant pour un ticket non temps-réel.
+    const interval = setInterval(fetchMessages, 25_000);
     return () => clearInterval(interval);
   }, [ticketId]);
 

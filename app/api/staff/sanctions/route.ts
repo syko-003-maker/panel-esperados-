@@ -214,6 +214,9 @@ export async function GET(req: Request) {
     if (type) where.type = type;
     if (memberId) where.memberId = memberId;
 
+    // Optim : on récupère `member` via la relation Prisma (au lieu d'un 2e
+     // findMany séquentiel sur les memberIds). Économie : 1 round-trip DB par
+     // page de sanctions. La relation `member` sur Sanction est nullable.
     const [data, total] = await Promise.all([
       prisma.sanction.findMany({
         where,
@@ -241,30 +244,27 @@ export async function GET(req: Request) {
           discordAppliedAt: true,
           discordError: true,
           createdById: true,
+          member: {
+            select: { id: true, rpName: true, discordId: true },
+          },
         },
       }) as any,
       prisma.sanction.count({ where }),
     ]);
 
-    const memberIds = Array.from(new Set(data.map((item: any) => item.memberId).filter(Boolean)));
+    // Outbox : seul findMany annexe restant (pas de relation Prisma déclarée
+     // entre Sanction.outboxJobId et DiscordOutbox.id pour cette table).
     const outboxIds = Array.from(new Set(data.map((item: any) => item.outboxJobId).filter(Boolean)));
-    const members = memberIds.length
-      ? await prisma.member.findMany({
-          where: { id: { in: memberIds as string[] } },
-          select: { id: true, rpName: true, discordId: true },
-        })
-      : [];
     const outboxes = outboxIds.length
       ? await prisma.discordOutbox.findMany({
           where: { id: { in: outboxIds as string[] } },
           select: { id: true, status: true },
         })
       : [];
-    const memberMap = new Map(members.map((m) => [m.id, m]));
     const outboxMap = new Map(outboxes.map((outbox) => [outbox.id, outbox.status]));
 
     const items = data.map((item: any) => {
-      const member = item.memberId ? memberMap.get(item.memberId) : null;
+      const member = item.member ?? null;
       const effectiveDiscordStatus =
         item.discordStatus === "PENDING" && item.discordAppliedAt ? "APPLIED" : item.discordStatus;
       return {

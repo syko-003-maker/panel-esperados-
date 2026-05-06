@@ -787,6 +787,7 @@ model Sanction {
 
   @@index([familyId, status, createdAt])
   @@index([familyId, memberId, createdAt])
+  @@index([familyId, discordStatus])
   @@index([discordStatus])
   @@index([memberId, createdAt])
   @@index([discordId])

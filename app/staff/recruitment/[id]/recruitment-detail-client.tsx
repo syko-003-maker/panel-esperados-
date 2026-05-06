@@ -229,7 +229,9 @@ export default function RecruitmentDetailClient({
   }, [scores, staffNotes, dirty, canEdit, ticket]);
 
   useEffect(() => {
-    const id = setInterval(() => { poll().catch(() => null); }, 10_000);
+    // 30s : 3x moins de requêtes Prisma vers /api/staff/recruitment/[id] sans
+    // perte UX réelle sur une fiche détail rarement modifiée en simultané.
+    const id = setInterval(() => { poll().catch(() => null); }, 30_000);
     return () => clearInterval(id);
   }, []);
 

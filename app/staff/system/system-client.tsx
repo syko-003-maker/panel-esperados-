@@ -100,7 +100,9 @@ export default function SystemClient() {
 
   useEffect(() => {
     void load();
-    const interval = setInterval(() => void load(), 5_000);
+    // 30s côté client (5s avant) — la route serveur ajoute un cache 15s en plus,
+    // donc 1 collectSystemStats() max toutes les 15s même avec plusieurs onglets.
+    const interval = setInterval(() => void load(), 30_000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -251,7 +253,8 @@ function LogsViewer() {
   useEffect(() => {
     void load();
     if (!autoRefresh) return;
-    const interval = setInterval(() => void load(), 10_000);
+    // 30s pour les logs en direct (10s avant) — moins agressif sur journalctl.
+    const interval = setInterval(() => void load(), 30_000);
     return () => clearInterval(interval);
   }, [load, autoRefresh]);
 

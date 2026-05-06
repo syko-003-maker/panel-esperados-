@@ -235,11 +235,34 @@ function getExclusionReason(params: {
   return "filtered_by_scope_rules";
 }
 
+/**
+ * Cache module-level pour la response /api/staff/members.
+ * Polling client : 60s ; cache 15s → la majorité des hits multi-onglets
+ * tombent en cache hit. Coalescing identique à /api/staff/system.
+ *
+ * Clé : famille + scope + sort + search + limit + countOnly.
+ * Invalidé : passif (TTL). Aucun mutation côté client cette route.
+ */
+const RESPONSE_CACHE_TTL_MS = 15_000;
+const RESPONSE_CACHE_MAX_KEYS = 32;
+const responseCache = new Map<string, { at: number; payload: unknown }>();
+const responseInFlight = new Map<string, Promise<unknown>>();
+
+function trimCacheIfFull() {
+  if (responseCache.size <= RESPONSE_CACHE_MAX_KEYS) return;
+  const oldest = [...responseCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+  if (oldest) responseCache.delete(oldest[0]);
+}
+
 export async function GET(req: Request) {
   const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) {
     return guard;
   }
+
+  // Variables hoistées hors du try pour être accessibles au catch (cleanup flight).
+  let cacheKey: string | null = null;
+  let finishFlight: ((payload: unknown, err?: unknown) => void) | null = null;
 
   try {
     const url = new URL(req.url);
@@ -251,6 +274,29 @@ export async function GET(req: Request) {
     const sortDir = parseSortDir(url.searchParams.get("sortDir"));
     const limit = parseLimit(url.searchParams.get("limit"));
     const includeInactive = scope !== "active";
+
+    // Cache lookup (avant tout travail) — clé déterministe
+    cacheKey = JSON.stringify({ familySlug, scope, countOnly, search, sortBy, sortDir, limit });
+    const cached = responseCache.get(cacheKey);
+    const cacheCheckAt = Date.now();
+    if (cached && cacheCheckAt - cached.at < RESPONSE_CACHE_TTL_MS) {
+      return NextResponse.json(cached.payload);
+    }
+    // Coalescing : si une req identique est déjà en cours, on partage
+    const existingFlight = responseInFlight.get(cacheKey);
+    if (existingFlight) {
+      return NextResponse.json(await existingFlight);
+    }
+    let resolveFlight!: (v: unknown) => void;
+    let rejectFlight!: (e: unknown) => void;
+    const flightPromise = new Promise<unknown>((res, rej) => { resolveFlight = res; rejectFlight = rej; });
+    responseInFlight.set(cacheKey, flightPromise);
+    const flightKey = cacheKey;
+    finishFlight = (payload: unknown, err?: unknown) => {
+      if (err) rejectFlight(err);
+      else resolveFlight(payload);
+      responseInFlight.delete(flightKey);
+    };
 
     const family = await prisma.family.findUnique({
       where: { slug: familySlug },
@@ -418,11 +464,15 @@ export async function GET(req: Request) {
       });
 
     if (countOnly) {
-      return NextResponse.json({
+      const payload = {
         ok: true,
         familyId: familySlug,
         count: normalizedMembers.length,
-      });
+      };
+      responseCache.set(cacheKey, { at: Date.now(), payload });
+      trimCacheIfFull();
+      finishFlight(payload);
+      return NextResponse.json(payload);
     }
 
     const memberIds = normalizedMembers.map((member: any) => member.id);
@@ -585,7 +635,7 @@ export async function GET(req: Request) {
       .map(({ row }) => row)
       .slice(0, limit);
 
-    return NextResponse.json({
+    const finalPayload = {
       ok: true,
       rows: sortedRows,
       meta: {
@@ -598,8 +648,13 @@ export async function GET(req: Request) {
         historyReadFailed,
         historyModelAvailable,
       },
-    });
+    };
+    responseCache.set(cacheKey, { at: Date.now(), payload: finalPayload });
+    trimCacheIfFull();
+    finishFlight(finalPayload);
+    return NextResponse.json(finalPayload);
   } catch (error) {
+    if (finishFlight) finishFlight(null, error);
     logError("staff_members_failed", { path: "/api/staff/members" }, error);
     return jsonError(500, "INTERNAL_ERROR", "Failed to load staff members", { rows: [] });
   }
