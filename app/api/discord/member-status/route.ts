@@ -22,16 +22,9 @@ import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 import { debug } from "@/lib/logger";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 
-// ✅ CRITICAL: Log environment variables immediately
+// Pas de log au boot (évite la fuite de configuration sur les logs PM2).
 const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
 const GUILD_ID = (process.env.GUILD_ID ?? process.env.DISCORD_GUILD_ID ?? "").trim();
-
-console.log("[member-status] env check", {
-  hasDiscordToken: !!DISCORD_TOKEN,
-  hasGuildId: !!GUILD_ID,
-  tokenSource: process.env.DISCORD_BOT_TOKEN ? "DISCORD_BOT_TOKEN" : process.env.DISCORD_TOKEN ? "DISCORD_TOKEN" : "none",
-  guildIdSource: process.env.GUILD_ID ? "GUILD_ID" : process.env.DISCORD_GUILD_ID ? "DISCORD_GUILD_ID" : "none",
-});
 
 // Valid role IDs that indicate "active" membership
 const VALID_ACTIVE_ROLES = new Set([

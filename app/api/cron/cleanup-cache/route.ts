@@ -21,20 +21,18 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret if configured
+  // Fail-closed : require CRON_SECRET configured AND provided.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    const providedSecret =
-      authHeader?.replace("Bearer ", "") ??
-      req.nextUrl.searchParams.get("secret");
+  const authHeader = req.headers.get("authorization");
+  const providedSecret =
+    authHeader?.replace("Bearer ", "") ??
+    req.nextUrl.searchParams.get("secret");
 
-    if (providedSecret !== cronSecret) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+  if (!cronSecret || providedSecret !== cronSecret) {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 }
+    );
   }
 
   const start = Date.now();

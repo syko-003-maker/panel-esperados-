@@ -308,8 +308,15 @@ export async function POST(req: NextRequest) {
     const wantHtml = acceptHeader.includes("text/html");
 
     if (wantHtml) {
-      const destination = redirectTo || "/staff/dashboard";
-      return NextResponse.redirect(new URL(destination, req.url));
+      // Anti open-redirect : on n'accepte que des destinations same-origin
+      // commençant par "/" et sans "//" (évite "//evil.com" qui devient absolu).
+      const safeDestination =
+        typeof redirectTo === "string" &&
+        redirectTo.startsWith("/") &&
+        !redirectTo.startsWith("//")
+          ? redirectTo
+          : "/staff/dashboard";
+      return NextResponse.redirect(new URL(safeDestination, req.url));
     }
 
     return NextResponse.json({

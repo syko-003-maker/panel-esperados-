@@ -7,14 +7,17 @@ import { getLinkedMemberBySession } from "@/lib/member-link";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
-  // ✅ Allow in production for debugging RBAC issues
-  // Requires authentication to prevent info leak
+  // Fermé en prod sauf si DEBUG_SESSION_ENABLED=1 (opt-in explicite).
+  // Évite la fuite d'email/discordId/permissions sur cookie volé.
+  if (process.env.NODE_ENV === "production" && process.env.DEBUG_SESSION_ENABLED !== "1") {
+    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+  }
+
   const session = await getSession();
-  
-  if (!session && process.env.NODE_ENV === "production") {
-    return NextResponse.json({ 
+  if (!session) {
+    return NextResponse.json({
       error: "Authentication required",
-      hint: "This endpoint requires an active session"
+      hint: "This endpoint requires an active session",
     }, { status: 401 });
   }
 

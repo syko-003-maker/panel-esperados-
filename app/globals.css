@@ -287,6 +287,32 @@
   );
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+ * Mobile : empêcher le zoom auto iOS sur focus d'un input à font-size < 16px.
+ * On override sur < 640px uniquement, le desktop garde sa typo compacte.
+ * Les selects natifs et textarea sont aussi concernés.
+ * ────────────────────────────────────────────────────────────────────── */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Lisibilité : remonter le texte minuscule (text-[10px]) à 11px sur mobile */
+  .text-\[10px\] {
+    font-size: 11px !important;
+  }
+
+  /* Tables : garantir le scroll horizontal sur tout `<table>` même si le
+     parent n'a pas pensé à mettre overflow-x-auto. */
+  table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}
+
 /* ✅ Glass Card Utility */
 .glass-card {
   @apply bg-white/6 border border-white/8 backdrop-blur-xl rounded-2xl shadow-[0_30px_80px_-45px_rgba(5,10,20,0.9)];

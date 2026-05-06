@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "@/server/rate-limit";
 
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
+const discordIdRegex = /^[0-9]{17,20}$/;
 
 /**
  * POST /api/discord/contact
@@ -22,17 +24,17 @@ export async function POST(req: NextRequest) {
       rpName,
     } = body;
 
-    // Validate required fields
-    if (!discordId) {
+    // Validate required fields (strict, pas de typage permissif)
+    if (typeof discordId !== "string" || !discordIdRegex.test(discordId)) {
       return NextResponse.json(
-        { ok: false, error: "discordId required" },
+        { ok: false, error: "discordId invalid" },
         { status: 400 }
       );
     }
 
-    if (!username) {
+    if (typeof username !== "string" || username.length < 2 || username.length > 80) {
       return NextResponse.json(
-        { ok: false, error: "username required" },
+        { ok: false, error: "username invalid" },
         { status: 400 }
       );
     }
@@ -52,10 +54,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Rate-limit anti-spam (3 contacts par 10 minutes par discordId).
+    // Le worker authentifié (isAuthenticated) bypasse pour ne pas être bloqué.
+    if (!isAuthenticated) {
+      const rl = await enforceRateLimit({
+        discordId,
+        key: "discord-contact",
+        limit: 3,
+        windowMs: 10 * 60 * 1000,
+      });
+      if (!rl.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "rate_limited",
+            retryAfterMs: rl.retryAfterMs,
+          },
+          { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+        );
+      }
+    }
+
+    // Log minimal — pas de username/IDs en clair dans PM2 (RGPD).
     console.log(JSON.stringify({
       event: "contact_notification_api",
-      discordId,
-      username,
+      discordIdHash: discordId.slice(-4),
       hasSteamId: !!steamId,
       hasRpName: !!rpName,
       timestamp: new Date().toISOString(),

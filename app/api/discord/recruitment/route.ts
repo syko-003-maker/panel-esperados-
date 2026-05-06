@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { buildRecruitmentStorage } from "@/lib/recruitment/ingest";
 
 const TICKET_PARENT_CHANNEL = process.env.DISCORD_TICKETS_CATEGORY_ID || null;
+const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
 
 function makeDebugId(): string {
   return randomUUID();
@@ -21,6 +22,15 @@ function badRequest(message: string, details?: any) {
 }
 
 export async function POST(req: Request) {
+  // Auth obligatoire (worker Discord uniquement). Le worker doit envoyer
+  // x-ingest-secret ou Authorization: Bearer <DISCORD_WORKER_SECRET>.
+  const authHeader = req.headers.get("authorization");
+  const providedSecret =
+    req.headers.get("x-ingest-secret") ?? authHeader?.replace("Bearer ", "");
+  if (!WORKER_SECRET || providedSecret !== WORKER_SECRET) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   const debugId = makeDebugId();
   let payload: any = null;
 

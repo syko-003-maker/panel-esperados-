@@ -101,7 +101,8 @@ export function StaffLayout({
             <MotionButtonFrame>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="rounded-md p-1 transition-colors hover:bg-muted"
+                aria-label="Fermer la sidebar"
+                className="rounded-md p-2 transition-colors hover:bg-muted min-h-10 min-w-10"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -114,7 +115,7 @@ export function StaffLayout({
           />
         </aside>
 
-        <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
+        <div className="relative z-10 flex flex-1 flex-col overflow-hidden min-w-0">
           <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[linear-gradient(180deg,rgba(11,3,5,0.62),rgba(11,3,5,0.46))] px-4 backdrop-blur-xl md:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <MotionButtonFrame className="lg:hidden">
@@ -138,11 +139,11 @@ export function StaffLayout({
                   <img
                     src={user.image}
                     alt={user.name ?? ""}
-                    className="h-8 w-8 rounded-full border border-white/10 object-cover"
+                    className="h-9 w-9 rounded-full border border-white/10 object-cover sm:h-8 sm:w-8"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[#7a1f2b]/40 text-xs font-bold text-amber-200">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[#7a1f2b]/40 text-xs font-bold text-amber-200 sm:h-8 sm:w-8">
                     {(user.name ?? "?").charAt(0).toUpperCase()}
                   </div>
                 )}

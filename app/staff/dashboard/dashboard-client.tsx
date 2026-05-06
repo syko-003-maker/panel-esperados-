@@ -158,7 +158,7 @@ function KpiCard({
           {loading ? (
             <Skeleton className="h-7 w-16 mb-1" />
           ) : (
-            <div className={`font-bold tracking-tight ${isAmount ? "text-xl leading-tight" : "text-3xl"} ${s.value}`}>
+            <div className={`truncate font-bold tracking-tight ${isAmount ? "text-base leading-tight sm:text-xl" : "text-2xl sm:text-3xl"} ${s.value}`}>
               {isAmount ? formatMoney(value) : (value ?? "—")}
             </div>
           )}

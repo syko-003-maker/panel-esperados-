@@ -21,10 +21,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDiscordRolesForUserWithStatus } from "@/lib/discord-roles";
 import { pickGradeFromRoleIds } from "@/lib/discord/grades";
 
+const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ discordId: string }> }
 ) {
+  // Auth : exige WORKER_SECRET (route consomme le bot token Discord — pas
+  // exposable au public sans risque de DoS sur les quotas et fuite de rôles).
+  const authHeader = req.headers.get("authorization");
+  const providedSecret =
+    req.headers.get("x-ingest-secret") ?? authHeader?.replace("Bearer ", "");
+  if (!WORKER_SECRET || providedSecret !== WORKER_SECRET) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { discordId } = await params;
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { randomUUID } from "crypto";
 
 const TICKET_PARENT_CHANNEL = process.env.DISCORD_TICKETS_CATEGORY_ID || null;
+const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
 const discordIdRegex = /^[0-9]{17,20}$/;
 
 function makeDebugId(): string {
@@ -21,6 +22,14 @@ function badRequest(message: string, details?: any) {
 }
 
 export async function POST(req: Request) {
+  // Auth obligatoire (worker Discord uniquement).
+  const authHeader = req.headers.get("authorization");
+  const providedSecret =
+    req.headers.get("x-ingest-secret") ?? authHeader?.replace("Bearer ", "");
+  if (!WORKER_SECRET || providedSecret !== WORKER_SECRET) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   const debugId = makeDebugId();
   let payload: any = null;
 

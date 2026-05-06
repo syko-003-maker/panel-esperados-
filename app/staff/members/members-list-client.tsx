@@ -283,7 +283,7 @@ export default function MembersListClient() {
       >
 
         {/* Top bar: title + refresh + count */}
-        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/6">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-white/6">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#9b2335]/20 border border-[#9b2335]/30">
               <span className="text-sm">👥</span>
@@ -299,7 +299,7 @@ export default function MembersListClient() {
             <button
               onClick={() => void loadMembers(true)}
               disabled={refreshing}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-white/[0.08] hover:text-slate-200 disabled:opacity-40"
+              className="flex min-h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-white/[0.08] hover:text-slate-200 disabled:opacity-40"
             >
               <span className={refreshing ? "animate-spin inline-block" : ""}>↻</span>
               Actualiser
@@ -345,7 +345,7 @@ export default function MembersListClient() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="RP name, SteamID, Discord ID…"
-              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
+              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-9 pr-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
@@ -531,7 +531,7 @@ export default function MembersListClient() {
                 className={[
                   // Hover (translate + scale + glow + border) géré par .premium-card-* en CSS
                   // pour éviter le conflit transform Tailwind/CSS et garder l'animation fluide.
-                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[220px] w-full",
+                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[200px] sm:min-h-[220px] w-full",
                   isTopGrade
                     ? "premium-card-amber border-amber-500/30"
                     : "premium-card-bordeaux border-white/8",
