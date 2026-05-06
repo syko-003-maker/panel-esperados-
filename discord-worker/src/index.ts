@@ -162,6 +162,34 @@ import {
   getLastPlaytimeAutoSyncAt,
 } from "./playtime-auto-sync.js";
 import { PrismaClient } from "@prisma/client";
+import { initSentry, captureException } from "./sentry.js";
+import { startHeartbeat } from "./heartbeat.js";
+import { sendDiscordAlert } from "./alerts.js";
+
+// Init Sentry au plus tôt (no-op si SENTRY_DSN absent — n'affecte pas le boot)
+void initSentry();
+
+// Tracking sync stalled : compteur consécutif par sync.
+// Quand on atteint le seuil → alerte Discord (throttle interne du module alerts).
+// Quand le sync redevient sain (cycle sans stall), le compteur retombe à 0.
+const stallCounters: Record<string, number> = {};
+const STALL_ALERT_THRESHOLD = 5;
+function trackStall(name: string, isStalled: boolean, ctx: Record<string, unknown> = {}) {
+  if (!isStalled) {
+    if (stallCounters[name]) stallCounters[name] = 0;
+    return;
+  }
+  const next = (stallCounters[name] ?? 0) + 1;
+  stallCounters[name] = next;
+  if (next === STALL_ALERT_THRESHOLD) {
+    void sendDiscordAlert({
+      key: `sync_stalled_${name}`,
+      severity: "error",
+      title: `Sync ${name} stalled (${STALL_ALERT_THRESHOLD} cycles consécutifs)`,
+      fields: { ...ctx, threshold: STALL_ALERT_THRESHOLD },
+    });
+  }
+}
 
 const LEGACY_TICKETS_PANEL_RECRUIT_ID = "ticket:recruitment";
 const LEGACY_TICKETS_PANEL_COMPLAINT_ID = "ticket:complaint";
@@ -473,6 +501,14 @@ client.once("ready", async () => {
     logError("http_server_startup_failed", e);
   }
 
+  // Heartbeat DB (le panel watchdog lit cette ligne via Prisma).
+  // Indépendant du serveur HTTP : tient même si HTTP tombe.
+  try {
+    startHeartbeat();
+  } catch (e) {
+    logError("heartbeat_startup_failed", e);
+  }
+
   // Schedule role sync if configured
   const syncEnabled = process.env.ROLE_SYNC_ENABLED === "true";
   if (syncEnabled) {
@@ -551,9 +587,9 @@ client.once("ready", async () => {
     setInterval(() => {
       const lastRun = getLastBanklogsAutoSyncAt();
       if (!lastRun) return;
-      if (Date.now() - lastRun > 120_000) {
-        console.warn("[BANKLOGS_AUTO_SYNC] not running or stalled");
-      }
+      const isStalled = Date.now() - lastRun > 120_000;
+      if (isStalled) console.warn("[BANKLOGS_AUTO_SYNC] not running or stalled");
+      trackStall("banklogs", isStalled, { lastRunIso: new Date(lastRun).toISOString() });
     }, 60_000);
 
     // Schedule members auto-sync on existing panel pipeline (members-only mode)
@@ -572,9 +608,9 @@ client.once("ready", async () => {
       setInterval(() => {
         const lastRun = getLastMembersAutoSyncAt();
         if (!lastRun) return;
-        if (Date.now() - lastRun > membersIntervalMs * 2) {
-          console.warn("[MEMBERS_AUTO_SYNC] not running or stalled");
-        }
+        const isStalled = Date.now() - lastRun > membersIntervalMs * 2;
+        if (isStalled) console.warn("[MEMBERS_AUTO_SYNC] not running or stalled");
+        trackStall("members", isStalled, { lastRunIso: new Date(lastRun).toISOString() });
       }, 60_000);
     } else {
       log("members_auto_sync_disabled", { message: "Set MEMBERS_AUTO_SYNC_ENABLED=false to keep disabled" });
@@ -587,9 +623,9 @@ client.once("ready", async () => {
     setInterval(() => {
       const lastRun = getLastInfosAutoSyncAt();
       if (!lastRun) return;
-      if (Date.now() - lastRun > infosIntervalMs * 2) {
-        console.warn("[INFOS_AUTO_SYNC] not running or stalled");
-      }
+      const isStalled = Date.now() - lastRun > infosIntervalMs * 2;
+      if (isStalled) console.warn("[INFOS_AUTO_SYNC] not running or stalled");
+      trackStall("infos", isStalled, { lastRunIso: new Date(lastRun).toISOString() });
     }, 60_000);
 
     const playtimeIntervalMs = getPlaytimeSyncIntervalMs();
@@ -599,9 +635,9 @@ client.once("ready", async () => {
     setInterval(() => {
       const lastRun = getLastPlaytimeAutoSyncAt();
       if (!lastRun) return;
-      if (Date.now() - lastRun > playtimeIntervalMs * 2) {
-        console.warn("[PLAYTIME_AUTO_SYNC] not running or stalled");
-      }
+      const isStalled = Date.now() - lastRun > playtimeIntervalMs * 2;
+      if (isStalled) console.warn("[PLAYTIME_AUTO_SYNC] not running or stalled");
+      trackStall("playtime", isStalled, { lastRunIso: new Date(lastRun).toISOString() });
     }, 60_000);
   }
 });

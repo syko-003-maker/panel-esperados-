@@ -68,10 +68,18 @@ export function initWorkerServer(client: Client): { start: () => Promise<void>; 
   app = express();
   app.use(express.json());
 
-  // Health check endpoint
-  app.get("/api/health", (req: Request, res: Response) => {
-    res.json({ ok: true, service: "discord-worker" });
-  });
+  // Health check endpoints — répondent à /health ET /api/health
+  // (le panel watchdog ping 127.0.0.1:3001/health, certaines healthchecks externes /api/health)
+  const healthHandler = (_req: Request, res: Response) => {
+    res.json({
+      ok: true,
+      service: "discord-worker",
+      uptimeSec: Math.round(process.uptime()),
+      pid: process.pid,
+    });
+  };
+  app.get("/health", healthHandler);
+  app.get("/api/health", healthHandler);
 
   /**
    * POST /api/worker/contact-notification
