@@ -3,31 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft, AlertCircle, Calendar, Tag, Hash, MessageSquare, Save, Copy, Check } from "lucide-react";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
-
-function CopyLinkButton({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error("Failed to copy:", e);
-    }
-  };
-
-  return (
-    <button
-      onClick={copyToClipboard}
-      className="bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300 text-sm"
-    >
-      {copied ? "✓ Copié !" : "📋 Copier le lien"}
-    </button>
-  );
-}
+import { SectionCard, StatusBadge, MotionButtonFrame } from "@/components/staff/ui";
+import { Button } from "@/components/ui/button";
+import { getErrorMessage } from "@/lib/errors";
+import { formatAppDate } from "@/lib/app-date-formatter";
 
 type Complaint = {
   id: string;
@@ -55,12 +37,51 @@ const STATUS_OPTIONS = [
   { value: "CLOSED", label: "FERMÉ" },
 ];
 
-const STATUS_COLORS: Record<string, string> = {
-  OPEN: "bg-green-100 text-green-800",
-  RESOLVED: "bg-blue-100 text-blue-800",
-  REJECTED: "bg-orange-100 text-orange-800",
-  CLOSED: "bg-gray-100 text-gray-800",
+const STATUS_TONE: Record<string, "success" | "info" | "warning" | "neutral" | "danger"> = {
+  OPEN: "success",
+  RESOLVED: "info",
+  REJECTED: "warning",
+  CLOSED: "neutral",
 };
+
+const STATUS_LABEL: Record<string, string> = {
+  OPEN: "Ouverte",
+  RESOLVED: "Traitée",
+  REJECTED: "Refusée",
+  CLOSED: "Fermée",
+};
+
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* noop */
+    }
+  };
+  return (
+    <MotionButtonFrame>
+      <Button onClick={onCopy} variant="outline" size="sm" className="gap-1.5">
+        {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+        {copied ? "Copié" : "Copier le lien"}
+      </Button>
+    </MotionButtonFrame>
+  );
+}
+
+function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:w-32 sm:shrink-0">
+        {label}
+      </dt>
+      <dd className="text-sm text-slate-200 break-words">{children}</dd>
+    </div>
+  );
+}
 
 export function ComplaintDetailClient({
   complaint: initialData,
@@ -68,7 +89,7 @@ export function ComplaintDetailClient({
   complaint: Complaint;
 }) {
   const router = useRouter();
-  const [complaint, setComplaint] = useState(initialData);
+  const [complaint] = useState(initialData);
   const [newStatus, setNewStatus] = useState(complaint.status);
   const [newSummary, setNewSummary] = useState(complaint.summary ?? "");
   const [loading, setLoading] = useState(false);
@@ -89,152 +110,149 @@ export function ComplaintDetailClient({
           summary: newSummary || null,
         }),
       });
-
       const data = await res.json();
       if (!data.ok) {
         setError(data.error ?? "Erreur");
         return;
       }
-
       setSuccess(true);
       router.refresh();
     } catch (e) {
-      setError("Erreur réseau");
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
   };
 
+  const tone = STATUS_TONE[complaint.status] ?? "neutral";
+  const label = STATUS_LABEL[complaint.status] ?? complaint.status;
+
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="mb-4">
-        <Link href="/staff/complaints-tickets" className="text-blue-600 hover:underline">
-          ← Retour à la liste
-        </Link>
-      </div>
-
-      <div className="flex items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold">Plainte {complaint.ticketKey}</h1>
-        <span
-          className={`px-3 py-1 rounded text-sm font-medium ${
-            STATUS_COLORS[complaint.status] ?? STATUS_COLORS.CLOSED
-          }`}
+    <div className="space-y-4">
+      {/* Header — retour + ticket key + statut */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href="/staff/complaints"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-amber-300"
         >
-          {complaint.status}
-        </span>
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Retour aux plaintes
+        </Link>
+        <span className="text-slate-600">·</span>
+        <span className="font-mono text-xs text-slate-300">{complaint.ticketKey}</span>
+        <StatusBadge tone={tone}>{label}</StatusBadge>
       </div>
 
+      {/* Bandeaux feedback */}
       {error && (
-        <div className="bg-red-100 text-red-800 px-4 py-2 rounded mb-4">
-          {error}
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+          <div><span className="font-semibold">Erreur —</span> {error}</div>
         </div>
       )}
-
       {success && (
-        <div className="bg-green-100 text-green-800 px-4 py-2 rounded mb-4">
-          Mis à jour avec succès
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-200">
+          <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+          <div><span className="font-semibold">Plainte mise à jour.</span></div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Infos principales */}
-        <div className="border rounded p-4">
-          <h2 className="font-semibold mb-3">Informations</h2>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-gray-500">Auteur Discord</dt>
-              <dd className="font-mono">{complaint.authorDiscordId ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Tag</dt>
-              <dd>{complaint.authorTag ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Cible</dt>
-              <dd>{complaint.targetName ?? "—"}</dd>
-            </div>
+      {/* 2 colonnes : infos + meta */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <SectionCard title="Informations" icon={Tag}>
+          <dl className="space-y-3">
+            <MetaRow label="Auteur Discord">
+              {complaint.authorDiscordId ? (
+                <Link
+                  href={`/staff/members/by-discord/${complaint.authorDiscordId}`}
+                  prefetch={false}
+                  className="font-mono text-amber-300 hover:underline"
+                >
+                  {complaint.authorTag ?? complaint.authorDiscordId}
+                </Link>
+              ) : (
+                <span className="text-slate-500">—</span>
+              )}
+            </MetaRow>
+            <MetaRow label="Tag">{complaint.authorTag ?? <span className="text-slate-500">—</span>}</MetaRow>
+            <MetaRow label="Cible">{complaint.targetName ?? <span className="text-slate-500">—</span>}</MetaRow>
           </dl>
-        </div>
+        </SectionCard>
 
-        {/* Meta */}
-        <div className="border rounded p-4">
-          <h2 className="font-semibold mb-3">Métadonnées</h2>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-gray-500">Créé le</dt>
-              <dd>{new Date(complaint.createdAt).toLocaleString("fr-FR")}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Mis à jour</dt>
-              <dd>{new Date(complaint.updatedAt).toLocaleString("fr-FR")}</dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Fermé le</dt>
-              <dd>
-                {complaint.closedAt
-                  ? new Date(complaint.closedAt).toLocaleString("fr-FR")
-                  : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Fermé par</dt>
-              <dd>{complaint.closedByDiscordId ?? "—"}</dd>
-            </div>
+        <SectionCard title="Métadonnées" icon={Calendar}>
+          <dl className="space-y-3">
+            <MetaRow label="Créée le">{formatAppDate(complaint.createdAt)}</MetaRow>
+            <MetaRow label="Mise à jour">{formatAppDate(complaint.updatedAt)}</MetaRow>
+            <MetaRow label="Fermée le">
+              {complaint.closedAt ? formatAppDate(complaint.closedAt) : <span className="text-slate-500">—</span>}
+            </MetaRow>
+            <MetaRow label="Fermée par">
+              {complaint.closedByDiscordId ? (
+                <span className="font-mono text-slate-300">{complaint.closedByDiscordId}</span>
+              ) : (
+                <span className="text-slate-500">—</span>
+              )}
+            </MetaRow>
           </dl>
-        </div>
+        </SectionCard>
       </div>
 
-      {/* Titre & Description */}
-      <div className="mt-6 border rounded p-4">
-        <h2 className="font-semibold mb-3">Raison / Titre</h2>
-        <p className="text-sm bg-gray-50 p-3 rounded">{complaint.title}</p>
-      </div>
+      {/* Raison / Titre */}
+      <SectionCard title="Raison / Titre" icon={Hash}>
+        <p className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-slate-100">
+          {complaint.title}
+        </p>
+      </SectionCard>
 
-      <div className="mt-4 border rounded p-4">
-        <h2 className="font-semibold mb-3">Description</h2>
-        <p className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
+      {/* Description */}
+      <SectionCard title="Description" icon={MessageSquare}>
+        <p className="whitespace-pre-wrap rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-slate-100">
           {complaint.description}
         </p>
-      </div>
+      </SectionCard>
 
-      {/* Payload brut */}
+      {/* Payload brut (si présent) */}
       {complaint.payload && Object.keys(complaint.payload).length > 0 && (
-        <div className="mt-4 border rounded p-4">
-          <h2 className="font-semibold mb-3">Payload (brut)</h2>
-          <pre className="text-xs bg-gray-50 p-3 rounded overflow-auto">
-            {JSON.stringify(complaint.payload, null, 2)}
+        <SectionCard title="Payload" description="Données brutes reçues de Discord">
+          <pre className="overflow-x-auto rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-[11px] leading-5 text-slate-300">
+{JSON.stringify(complaint.payload, null, 2)}
           </pre>
-        </div>
+        </SectionCard>
       )}
 
       {/* Thread Discord */}
-      <div className="mt-6 border rounded p-4">
-        <h2 className="font-semibold mb-3">Thread Discord</h2>
+      <SectionCard title="Thread Discord" description="Lien direct vers le thread du ticket">
         {complaint.threadId ? (
-          <div className="flex gap-3 items-center">
-            <a
-              href={getDiscordThreadUrl(complaint.threadId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-            >
-              Ouvrir le thread Discord
-            </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <MotionButtonFrame>
+              <a
+                href={getDiscordThreadUrl(complaint.threadId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-2xl border border-[#7a1f2b]/40 bg-[#7a1f2b]/20 px-4 py-2 text-sm font-semibold text-rose-100 transition-colors hover:bg-[#7a1f2b]/30"
+              >
+                Ouvrir le thread Discord
+              </a>
+            </MotionButtonFrame>
             <CopyLinkButton url={getDiscordThreadUrl(complaint.threadId)} />
           </div>
         ) : (
-          <p className="text-gray-500">Aucun thread associé</p>
+          <p className="text-sm text-slate-400">Aucun thread Discord associé.</p>
         )}
-      </div>
+      </SectionCard>
 
-      {/* Actions */}
-      <div className="mt-6 border rounded p-4">
-        <h2 className="font-semibold mb-3">Actions Staff</h2>
-
+      {/* Actions Staff */}
+      <SectionCard
+        title="Actions staff"
+        description="Mise à jour du statut et notes internes. Le lock/archive du thread Discord se fait via les boutons Discord."
+      >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Status</label>
+          <div className="space-y-1.5">
+            <label htmlFor="cmpl-status" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Statut
+            </label>
             <StyledSelect
+              id="cmpl-status"
               value={newStatus}
               onChange={(e) => setNewStatus(e.target.value)}
               className="w-full max-w-xs"
@@ -247,32 +265,28 @@ export function ComplaintDetailClient({
             </StyledSelect>
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">
-              Résumé / Notes (optionnel)
+          <div className="space-y-1.5">
+            <label htmlFor="cmpl-summary" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Résumé / Notes internes
             </label>
             <textarea
+              id="cmpl-summary"
               value={newSummary}
               onChange={(e) => setNewSummary(e.target.value)}
-              className="border rounded px-3 py-2 w-full"
-              rows={3}
-              placeholder="Notes internes..."
+              rows={4}
+              placeholder="Notes visibles uniquement par le staff…"
+              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
-          <button
-            onClick={updateComplaint}
-            disabled={loading}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "..." : "Enregistrer"}
-          </button>
+          <MotionButtonFrame>
+            <Button onClick={updateComplaint} disabled={loading} className="gap-2">
+              <Save className="h-4 w-4" />
+              {loading ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </MotionButtonFrame>
         </div>
-
-        <p className="text-xs text-gray-500 mt-3">
-          Note : le lock/archive du thread Discord se fait uniquement via les boutons Discord.
-        </p>
-      </div>
+      </SectionCard>
     </div>
   );
 }

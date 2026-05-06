@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, Upload, FileText, AlertTriangle, CheckCircle2, ListChecks, Trash2 } from "lucide-react";
 import {
   parseCSV,
   validateRow,
@@ -10,6 +11,10 @@ import {
   type ImportRowData,
   type ValidatedRow,
 } from "@/lib/import-validation";
+import { SectionCard, StatusBadge, MotionButtonFrame, EmptyState } from "@/components/staff/ui";
+import { Button } from "@/components/ui/button";
+import { getErrorMessage } from "@/lib/errors";
+import { formatAppDate } from "@/lib/app-date-formatter";
 
 type ImportRun = {
   id: string;
@@ -20,7 +25,7 @@ type ImportRun = {
   updatedCount: number;
   skippedCount: number;
   errorCount: number;
-  createdAt: Date;
+  createdAt: Date | string;
 };
 
 export function MemberImportClient({ recentRuns }: { recentRuns: ImportRun[] }) {
@@ -49,64 +54,50 @@ export function MemberImportClient({ recentRuns }: { recentRuns: ImportRun[] }) 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setError(null);
     setResult(null);
     setFileName(file.name);
 
-    const text = await file.text();
-    setCsvContent(text);
-
-    const rows = parseCSV(text);
-    setParsedRows(rows);
-
-    // Validate all rows
-    const validated = rows.map((row, i) => validateRow(row, i + 2));
-    setValidatedRows(validated);
-
-    // Check duplicates
-    const dups = findDuplicates(rows);
-    setDuplicates(dups);
+    try {
+      const text = await file.text();
+      setCsvContent(text);
+      const rows = parseCSV(text);
+      setParsedRows(rows);
+      const validated = rows.map((row, i) => validateRow(row, i + 2));
+      setValidatedRows(validated);
+      const dups = findDuplicates(rows);
+      setDuplicates(dups);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
   };
 
-  const previewRows = useMemo(() => {
-    return validatedRows.slice(0, 20);
-  }, [validatedRows]);
-
+  const previewRows = useMemo(() => validatedRows.slice(0, 20), [validatedRows]);
   const validCount = validatedRows.filter((r) => r.isValid).length;
   const invalidCount = validatedRows.filter((r) => !r.isValid).length;
   const hasDuplicates = duplicates.size > 0;
-
   const canImport = parsedRows.length > 0 && !hasDuplicates && invalidCount === 0;
 
   const handleImport = async () => {
     if (!csvContent || !canImport) return;
-
     setLoading(true);
     setError(null);
     setResult(null);
-
     try {
       const formData = new FormData();
       const blob = new Blob([csvContent], { type: "text/csv" });
       formData.append("file", blob, fileName ?? "import.csv");
 
-      const res = await fetch("/api/staff/import/members", {
-        method: "POST",
-        body: formData,
-      });
-
+      const res = await fetch("/api/staff/import/members", { method: "POST", body: formData });
       const data = await res.json();
-
       if (!data.ok) {
         setError(data.error ?? "Import failed");
         return;
       }
-
       setResult(data);
       router.refresh();
-    } catch (e) {
-      setError("Erreur réseau lors de l'import");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -120,139 +111,122 @@ export function MemberImportClient({ recentRuns }: { recentRuns: ImportRun[] }) 
     setDuplicates(new Map());
     setError(null);
     setResult(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-4">
-        <Link href="/staff/members" className="text-blue-600 hover:underline">
-          ← Retour aux membres
+    <div className="space-y-4">
+      {/* Header — retour */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href="/staff/members"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-amber-300"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Retour aux membres
         </Link>
       </div>
 
-      <h1 className="text-2xl font-bold mb-6">Import des membres</h1>
+      {/* 1. Upload */}
+      <SectionCard
+        title="1. Sélectionner un fichier CSV"
+        description="Format attendu : entêtes discordId (requis), steamId, rpName/nom, grade, age."
+        icon={Upload}
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-white/8 bg-white/[0.025] p-4 text-xs leading-6 text-slate-400">
+            <p className="mb-2 text-slate-300">Colonnes acceptées :</p>
+            <ul className="space-y-1 [&>li>strong]:text-amber-200">
+              <li><strong>discordId</strong> — ID Discord (17–20 chiffres) <span className="text-rose-300">requis</span></li>
+              <li><strong>steamId</strong> — Steam ID64 (17 chiffres) — optionnel</li>
+              <li><strong>rpName / nom</strong> — Nom RP — optionnel</li>
+              <li><strong>grade</strong> — WL1, WL2, WL3, WL4, OFFICER, CAPTAIN, CHEF — optionnel</li>
+              <li><strong>age</strong> — entier — optionnel</li>
+            </ul>
+          </div>
 
-      {/* Upload Section */}
-      <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4 text-foreground">1. Sélectionner un fichier CSV</h2>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.txt"
+            onChange={handleFileSelect}
+            className="block w-full text-sm text-slate-400
+              file:mr-4 file:rounded-xl file:border file:border-[#7a1f2b]/40 file:bg-[#7a1f2b]/20
+              file:px-4 file:py-2 file:text-sm file:font-semibold file:text-rose-100
+              file:transition-colors hover:file:bg-[#7a1f2b]/30 cursor-pointer"
+          />
 
-        <div className="mb-4">
-          <p className="text-sm text-muted-foreground mb-2">
-            Le fichier doit contenir les colonnes suivantes :
-          </p>
-          <ul className="text-sm text-gray-600 list-disc list-inside mb-4">
-            <li>
-              <strong>discordId</strong> (requis) - ID Discord (17-20 chiffres)
-            </li>
-            <li>
-              <strong>steamId</strong> (optionnel) - Steam ID64 (17 chiffres)
-            </li>
-            <li>
-              <strong>rpName / nom</strong> (optionnel) - Nom RP
-            </li>
-            <li>
-              <strong>grade</strong> (optionnel) - WL1, WL2, WL3, WL4, OFFICER, CAPTAIN, CHEF
-            </li>
-            <li>
-              <strong>age</strong> (optionnel) - Âge
-            </li>
-          </ul>
+          {fileName && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+              <FileText className="h-4 w-4 text-amber-300" />
+              <span>{fileName}</span>
+              <MotionButtonFrame>
+                <Button onClick={resetForm} variant="ghost" size="sm" className="gap-1">
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Effacer
+                </Button>
+              </MotionButtonFrame>
+            </div>
+          )}
         </div>
+      </SectionCard>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv,.txt"
-          onChange={handleFileSelect}
-          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-        />
-
-        {fileName && (
-          <div className="mt-2 flex items-center gap-2">
-            <span className="text-sm text-gray-600">Fichier: {fileName}</span>
-            <button
-              onClick={resetForm}
-              className="text-sm text-red-600 hover:underline"
-            >
-              Effacer
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Preview Section */}
+      {/* 2. Prévisualisation */}
       {parsedRows.length > 0 && (
-        <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4 text-foreground">2. Prévisualisation</h2>
-
-          <div className="flex flex-wrap gap-4 mb-4">
-            <div className="bg-slate-900/20 px-4 py-2 rounded">
-              <span className="text-sm text-muted-foreground">Total:</span>
-              <span className="ml-2 font-semibold">{parsedRows.length}</span>
-            </div>
-            <div className="bg-green-100 px-4 py-2 rounded">
-              <span className="text-sm text-green-700">Valides:</span>
-              <span className="ml-2 font-semibold text-green-700">{validCount}</span>
-            </div>
-            {invalidCount > 0 && (
-              <div className="bg-red-100 px-4 py-2 rounded">
-                <span className="text-sm text-red-700">Erreurs:</span>
-                <span className="ml-2 font-semibold text-red-700">{invalidCount}</span>
-              </div>
-            )}
-            {hasDuplicates && (
-              <div className="bg-orange-100 px-4 py-2 rounded">
-                <span className="text-sm text-orange-700">Doublons:</span>
-                <span className="ml-2 font-semibold text-orange-700">{duplicates.size}</span>
-              </div>
-            )}
+        <SectionCard title="2. Prévisualisation" icon={ListChecks}>
+          {/* Stats */}
+          <div className="mb-4 flex flex-wrap gap-2">
+            <StatChip label="Total" value={parsedRows.length} tone="neutral" />
+            <StatChip label="Valides" value={validCount} tone="success" />
+            {invalidCount > 0 && <StatChip label="Erreurs" value={invalidCount} tone="danger" />}
+            {hasDuplicates && <StatChip label="Doublons" value={duplicates.size} tone="warning" />}
           </div>
 
+          {/* Doublons */}
           {hasDuplicates && (
-            <div className="bg-orange-50 border border-orange-200 rounded p-4 mb-4">
-              <h3 className="font-medium text-orange-800 mb-2">Doublons détectés</h3>
-              <ul className="text-sm text-orange-700 list-disc list-inside">
-                {Array.from(duplicates.entries()).map(([id, rows]) => (
-                  <li key={id}>
-                    Discord ID {id} aux lignes {rows.join(", ")}
-                  </li>
-                ))}
-              </ul>
+            <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <div className="space-y-1">
+                <span className="font-semibold">Doublons détectés —</span>
+                <ul className="ml-4 list-disc text-xs">
+                  {Array.from(duplicates.entries()).map(([id, rows]) => (
+                    <li key={id}>
+                      Discord ID <span className="font-mono">{id}</span> aux lignes {rows.join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-slate-900/20">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">#</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Discord ID</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Steam ID</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Nom RP</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Grade</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Erreurs</th>
+          {/* Table de preview */}
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-white/8">
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">#</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Statut</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Discord ID</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Steam ID</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Nom RP</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Grade</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Erreurs</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {previewRows.map((row, i) => (
-                  <tr key={i} className={row.isValid ? "" : "bg-red-500/10"}>
-                    <td className="px-3 py-2 text-muted-foreground">{i + 2}</td>
+                  <tr key={i} className={`border-b border-white/4 ${row.isValid ? "" : "bg-red-500/[0.05]"}`}>
+                    <td className="px-3 py-2 text-xs text-slate-500">{i + 2}</td>
                     <td className="px-3 py-2">
-                      {row.isValid ? (
-                        <span className="text-green-600">✓</span>
-                      ) : (
-                        <span className="text-red-600">✗</span>
-                      )}
+                      {row.isValid
+                        ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        : <AlertTriangle className="h-4 w-4 text-red-400" />}
                     </td>
-                    <td className="px-3 py-2 font-mono">{row.data.discordId ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono">{row.data.steamId ?? "—"}</td>
-                    <td className="px-3 py-2">{row.data.rpName ?? "—"}</td>
-                    <td className="px-3 py-2">{row.data.grade ?? "—"}</td>
-                    <td className="px-3 py-2 text-red-600 text-xs">
+                    <td className="px-3 py-2 font-mono text-xs text-slate-300">{row.data.discordId ?? <span className="text-slate-600">—</span>}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-300">{row.data.steamId ?? <span className="text-slate-600">—</span>}</td>
+                    <td className="px-3 py-2 text-sm text-slate-200">{row.data.rpName ?? <span className="text-slate-500">—</span>}</td>
+                    <td className="px-3 py-2 text-sm text-slate-200">{row.data.grade ?? <span className="text-slate-500">—</span>}</td>
+                    <td className="px-3 py-2 text-xs text-rose-300">
                       {row.errors.map((e) => e.message).join(", ")}
                     </td>
                   </tr>
@@ -262,99 +236,101 @@ export function MemberImportClient({ recentRuns }: { recentRuns: ImportRun[] }) 
           </div>
 
           {validatedRows.length > 20 && (
-            <p className="mt-2 text-sm text-gray-500">
-              Affichage des 20 premières lignes sur {validatedRows.length}
-            </p>
+            <p className="mt-3 text-xs text-slate-500">Affichage des 20 premières lignes sur {validatedRows.length}</p>
           )}
-        </div>
+        </SectionCard>
       )}
 
-      {/* Import Button */}
+      {/* 3. Lancer l'import */}
       {parsedRows.length > 0 && (
-        <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4 text-foreground">3. Lancer l'import</h2>
-
+        <SectionCard title="3. Lancer l'import" icon={Upload}>
           {error && (
-            <div className="bg-red-500/10 text-red-400 border border-red-500/30 px-4 py-2 rounded mb-4">{error}</div>
+            <div className="mb-4 flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              <div><span className="font-semibold">Erreur —</span> {error}</div>
+            </div>
           )}
 
           {result && (
-            <div className="bg-green-100 text-green-800 px-4 py-3 rounded mb-4">
-              <p className="font-semibold mb-2">Import terminé !</p>
-              <ul className="text-sm list-disc list-inside">
-                <li>Insérés: {result.summary.insertedCount}</li>
-                <li>Mis à jour: {result.summary.updatedCount}</li>
-                <li>Ignorés: {result.summary.skippedCount}</li>
-                <li>Erreurs: {result.summary.errorCount}</li>
+            <div className="mb-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-100">
+              <div className="mb-2 flex items-center gap-2 font-semibold">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Import terminé
+              </div>
+              <ul className="ml-6 list-disc text-xs leading-6 text-emerald-200/90">
+                <li>Insérés : <strong>{result.summary.insertedCount}</strong></li>
+                <li>Mis à jour : <strong>{result.summary.updatedCount}</strong></li>
+                <li>Ignorés : <strong>{result.summary.skippedCount}</strong></li>
+                <li>Erreurs : <strong>{result.summary.errorCount}</strong></li>
               </ul>
               <Link
                 href={`/staff/members/import/${result.importRunId}`}
-                className="mt-2 inline-block text-green-900 underline"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-emerald-200 underline-offset-2 hover:underline"
               >
-                Voir les détails →
+                Voir le détail du run →
               </Link>
             </div>
           )}
 
           {!result && (
-            <button
-              onClick={handleImport}
-              disabled={loading || !canImport}
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Import en cours..." : `Importer ${validCount} membres`}
-            </button>
+            <>
+              <MotionButtonFrame>
+                <Button onClick={handleImport} disabled={loading || !canImport} className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  {loading ? "Import en cours…" : `Importer ${validCount} membres`}
+                </Button>
+              </MotionButtonFrame>
+              {!canImport && (
+                <p className="mt-2 text-xs text-rose-300">
+                  {hasDuplicates
+                    ? "Corrige les doublons avant d'importer."
+                    : invalidCount > 0
+                      ? "Corrige les erreurs avant d'importer."
+                      : "Aucune donnée valide à importer."}
+                </p>
+              )}
+            </>
           )}
-
-          {!canImport && !result && (
-            <p className="mt-2 text-sm text-red-600">
-              {hasDuplicates
-                ? "Corrigez les doublons avant d'importer"
-                : invalidCount > 0
-                ? "Corrigez les erreurs avant d'importer"
-                : "Aucune donnée valide à importer"}
-            </p>
-          )}
-        </div>
+        </SectionCard>
       )}
 
-      {/* Recent Imports */}
-      {recentRuns.length > 0 && (
-        <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-4 text-foreground">Imports récents</h2>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-800 text-sm">
-              <thead className="bg-slate-900/20">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-500">Source</th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-500">Fichier</th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-500">Total</th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-500">Insérés</th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-500">MAJ</th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-500">Erreurs</th>
-                  <th className="px-3 py-2"></th>
+      {/* Imports récents */}
+      <SectionCard title="Imports récents" icon={FileText}>
+        {recentRuns.length === 0 ? (
+          <EmptyState title="Aucun import" description="Aucun import n'a encore été effectué." />
+        ) : (
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-white/8">
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Date</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Source</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Fichier</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Total</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Insérés</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">MAJ</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Erreurs</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {recentRuns.map((run) => (
-                  <tr key={run.id}>
-                    <td className="px-3 py-2 text-gray-500">
-                      {new Date(run.createdAt).toLocaleString("fr-FR")}
+                  <tr key={run.id} className="border-b border-white/4 transition-colors hover:bg-white/[0.025]">
+                    <td className="px-3 py-3 whitespace-nowrap text-xs text-slate-400">{formatAppDate(run.createdAt)}</td>
+                    <td className="px-3 py-3 text-sm text-slate-300">{run.source}</td>
+                    <td className="px-3 py-3 text-xs text-slate-400">{run.fileName ?? <span className="text-slate-600">—</span>}</td>
+                    <td className="px-3 py-3 text-right text-sm text-slate-200 tabular-nums">{run.totalRows}</td>
+                    <td className="px-3 py-3 text-right text-sm text-emerald-300 tabular-nums">{run.insertedCount}</td>
+                    <td className="px-3 py-3 text-right text-sm text-sky-300 tabular-nums">{run.updatedCount}</td>
+                    <td className={`px-3 py-3 text-right text-sm tabular-nums ${run.errorCount > 0 ? "text-rose-300" : "text-slate-500"}`}>
+                      {run.errorCount}
                     </td>
-                    <td className="px-3 py-2">{run.source}</td>
-                    <td className="px-3 py-2 text-gray-500">{run.fileName ?? "—"}</td>
-                    <td className="px-3 py-2 text-right">{run.totalRows}</td>
-                    <td className="px-3 py-2 text-right text-green-600">{run.insertedCount}</td>
-                    <td className="px-3 py-2 text-right text-blue-600">{run.updatedCount}</td>
-                    <td className="px-3 py-2 text-right text-red-600">{run.errorCount}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-3 text-right">
                       <Link
                         href={`/staff/members/import/${run.id}`}
-                        className="text-blue-600 hover:underline"
+                        className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-slate-100"
                       >
-                        Détails
+                        Détail
                       </Link>
                     </td>
                   </tr>
@@ -362,8 +338,31 @@ export function MemberImportClient({ recentRuns }: { recentRuns: ImportRun[] }) 
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+function StatChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "neutral" | "success" | "warning" | "danger";
+}) {
+  const TONES = {
+    neutral: "border-white/10 bg-white/[0.05] text-slate-300",
+    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+    warning: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+    danger: "border-red-500/30 bg-red-500/10 text-red-200",
+  };
+  return (
+    <div className={`inline-flex items-baseline gap-2 rounded-xl border px-3 py-1.5 text-xs ${TONES[tone]}`}>
+      <span className="font-semibold uppercase tracking-[0.16em] text-[10px] opacity-80">{label}</span>
+      <span className="font-bold tabular-nums">{value}</span>
     </div>
   );
 }

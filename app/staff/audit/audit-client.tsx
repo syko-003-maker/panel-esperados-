@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { Filter, X, RefreshCw, Eye } from "lucide-react";
+import { StyledSelect } from "@/components/staff/ui/StyledSelect";
+import { SectionCard, StatusBadge, EmptyState, MotionButtonFrame } from "@/components/staff/ui";
+import { Button } from "@/components/ui/button";
+import { getErrorMessage } from "@/lib/errors";
+import { formatAppDate } from "@/lib/app-date-formatter";
 
 type AuditLog = {
   id: string;
@@ -24,7 +30,22 @@ type Filters = {
   actorTypes: FilterOption[];
 };
 
-import { StyledSelect } from "@/components/staff/ui/StyledSelect";
+const ACTION_TONE: Record<string, "success" | "info" | "warning" | "neutral" | "danger" | "accent"> = {
+  CREATED: "success",
+  UPDATED: "info",
+  DELETED: "danger",
+  CLOSED: "neutral",
+  FINALIZED: "accent",
+  APPROVED: "success",
+  REJECTED: "danger",
+};
+
+const ACTOR_TONE: Record<string, "success" | "info" | "warning" | "neutral" | "accent"> = {
+  staff: "info",
+  worker: "accent",
+  system: "neutral",
+  member: "success",
+};
 
 export function AuditLogsClient() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -69,342 +90,245 @@ export function AuditLogsClient() {
       } else {
         setError(data.error ?? "Failed to load logs");
       }
-    } catch (err: any) {
-      setError(err.message ?? "Network error");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }, [page, entity, action, actorType, startDate, endDate]);
 
-  useEffect(() => {
-    loadLogs();
-  }, [loadLogs]);
+  useEffect(() => { void loadLogs(); }, [loadLogs]);
 
-  function getActionColor(action: string) {
-    switch (action) {
-      case "CREATED":
-        return "bg-green-100 text-green-800";
-      case "UPDATED":
-        return "bg-blue-100 text-blue-800";
-      case "DELETED":
-        return "bg-red-100 text-red-800";
-      case "CLOSED":
-        return "bg-gray-100 text-gray-800";
-      case "FINALIZED":
-        return "bg-purple-100 text-purple-800";
-      case "APPROVED":
-        return "bg-green-100 text-green-800";
-      case "REJECTED":
-        return "bg-red-100 text-red-800";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
-  }
-
-  function getActorTypeBadge(type: string) {
-    switch (type) {
-      case "staff":
-        return "bg-blue-50 text-blue-700";
-      case "worker":
-        return "bg-purple-50 text-purple-700";
-      case "system":
-        return "bg-gray-50 text-gray-700";
-      case "member":
-        return "bg-green-50 text-green-700";
-      default:
-        return "bg-gray-50 text-gray-600";
-    }
-  }
-
-  function resetFilters() {
+  const resetFilters = () => {
     setEntity("");
     setAction("");
     setActorType("");
     setStartDate("");
     setEndDate("");
     setPage(1);
-  }
+  };
+
+  const hasFilters = Boolean(entity || action || actorType || startDate || endDate);
 
   return (
-    <div>
-      {/* Filters */}
-      <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-4 mb-6">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Entity</label>
-            <StyledSelect
-              value={entity}
-              onChange={(e) => {
-                setEntity(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Tous</option>
-              {filters?.entities.map((e) => (
-                <option key={e.value} value={e.value}>
-                  {e.value} ({e.count})
-                </option>
-              ))}
-            </StyledSelect>
-          </div>
+    <div className="space-y-4">
+      {/* Filters card */}
+      <SectionCard title="Filtres" description="Affinage par entité, action, type d'acteur et plage de dates." icon={Filter}>
+        <div className="flex flex-wrap items-end gap-3">
+          <FilterField label="Entité" value={entity} onChange={(v) => { setEntity(v); setPage(1); }}>
+            <option value="">Toutes</option>
+            {filters?.entities.map((e) => (
+              <option key={e.value} value={e.value}>{e.value} ({e.count})</option>
+            ))}
+          </FilterField>
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Action</label>
-            <StyledSelect
-              value={action}
-              onChange={(e) => {
-                setAction(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Toutes</option>
-              {filters?.actions.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.value} ({a.count})
-                </option>
-              ))}
-            </StyledSelect>
-          </div>
+          <FilterField label="Action" value={action} onChange={(v) => { setAction(v); setPage(1); }}>
+            <option value="">Toutes</option>
+            {filters?.actions.map((a) => (
+              <option key={a.value} value={a.value}>{a.value} ({a.count})</option>
+            ))}
+          </FilterField>
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Actor Type</label>
-            <StyledSelect
-              value={actorType}
-              onChange={(e) => {
-                setActorType(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Tous</option>
-              {filters?.actorTypes.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.value} ({a.count})
-                </option>
-              ))}
-            </StyledSelect>
-          </div>
+          <FilterField label="Type d'acteur" value={actorType} onChange={(v) => { setActorType(v); setPage(1); }}>
+            <option value="">Tous</option>
+            {filters?.actorTypes.map((a) => (
+              <option key={a.value} value={a.value}>{a.value} ({a.count})</option>
+            ))}
+          </FilterField>
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Date début</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setPage(1);
-              }}
-              className="border rounded px-3 py-1.5 text-sm"
-            />
-          </div>
+          <DateField label="Date début" value={startDate} onChange={(v) => { setStartDate(v); setPage(1); }} />
+          <DateField label="Date fin" value={endDate} onChange={(v) => { setEndDate(v); setPage(1); }} />
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Date fin</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setPage(1);
-              }}
-              className="border rounded px-3 py-1.5 text-sm"
-            />
-          </div>
-
-          <button
-            onClick={resetFilters}
-            className="bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded text-sm"
-          >
-            Reset
-          </button>
+          {hasFilters && (
+            <MotionButtonFrame>
+              <Button onClick={resetFilters} variant="ghost" size="sm" className="gap-1.5">
+                <X className="h-4 w-4" />
+                Réinitialiser
+              </Button>
+            </MotionButtonFrame>
+          )}
         </div>
-      </div>
+      </SectionCard>
 
       {error && (
-        <div className="bg-red-100 text-red-800 px-4 py-2 rounded mb-4">{error}</div>
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-200">
+          <span className="font-semibold">Erreur —</span> {error}
+        </div>
       )}
 
-      {/* Stats */}
-      <div className="mb-4 text-sm text-gray-600">
-        {total} entrée(s) • Page {page}/{totalPages}
-      </div>
-
-      {/* Table */}
-      <div className="bg-slate-900/40 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-800 text-sm">
-            <thead className="bg-slate-900/20">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Actor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Action</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Entity</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Details</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    Chargement...
-                  </td>
-                </tr>
-              ) : logs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                    Aucun log trouvé
-                  </td>
-                </tr>
-              ) : (
-                logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-xs">
-                        {new Date(log.createdAt).toLocaleDateString("fr-FR")}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(log.createdAt).toLocaleTimeString("fr-FR")}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getActorTypeBadge(log.actorType)}`}
-                      >
-                        {log.actorType}
-                      </span>
-                      <div className="text-xs mt-1">{log.actorName ?? log.actorId ?? "—"}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getActionColor(log.action)}`}
-                      >
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{log.entity}</div>
-                      <div className="text-xs text-gray-500 font-mono">{log.entityId.slice(0, 8)}...</div>
-                      {log.entityName && (
-                        <div className="text-xs text-gray-600">{log.entityName}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      {log.meta && Object.keys(log.meta).length > 0 ? (
-                        <div className="text-xs text-gray-600 truncate">
-                          {Object.entries(log.meta)
-                            .slice(0, 2)
-                            .map(([k, v]) => `${k}: ${String(v).slice(0, 20)}`)
-                            .join(", ")}
-                          {Object.keys(log.meta).length > 2 && "..."}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setSelectedLog(log)}
-                        className="text-blue-600 hover:underline text-xs"
-                      >
-                        Détails
-                      </button>
-                    </td>
+      {/* Table card */}
+      <SectionCard
+        title="Journal d'audit"
+        description={`${total} entrée${total !== 1 ? "s" : ""} · page ${page}/${totalPages}`}
+        actions={
+          <MotionButtonFrame>
+            <Button onClick={() => void loadLogs()} variant="outline" size="sm" disabled={loading} className="gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Actualiser
+            </Button>
+          </MotionButtonFrame>
+        }
+      >
+        {loading && logs.length === 0 ? (
+          <div className="space-y-2">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="h-12 rounded-xl bg-white/[0.04] animate-pulse" />
+            ))}
+          </div>
+        ) : logs.length === 0 ? (
+          <EmptyState
+            title="Aucun log"
+            description={hasFilters ? "Aucune entrée ne correspond aux filtres courants." : "Pas encore d'entrées dans le journal d'audit."}
+          />
+        ) : (
+          <>
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b border-white/8">
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Date</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Acteur</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Action</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Entité</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Détails</th>
+                    <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500"></th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id} className="border-b border-white/4 transition-colors hover:bg-white/[0.025]">
+                      <td className="px-3 py-3 whitespace-nowrap text-xs text-slate-300">
+                        {formatAppDate(log.createdAt)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-1">
+                          <StatusBadge tone={ACTOR_TONE[log.actorType] ?? "neutral"}>
+                            {log.actorType}
+                          </StatusBadge>
+                          <span className="text-xs text-slate-400">{log.actorName ?? log.actorId ?? "—"}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <StatusBadge tone={ACTION_TONE[log.action] ?? "neutral"}>
+                          {log.action}
+                        </StatusBadge>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="text-sm font-medium text-slate-200">{log.entity}</div>
+                        <div className="font-mono text-[11px] text-slate-500">{log.entityId.slice(0, 8)}…</div>
+                        {log.entityName && (
+                          <div className="text-xs text-slate-400">{log.entityName}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 max-w-xs">
+                        {log.meta && Object.keys(log.meta).length > 0 ? (
+                          <div className="truncate text-xs text-slate-400">
+                            {Object.entries(log.meta)
+                              .slice(0, 2)
+                              .map(([k, v]) => `${k}: ${String(v).slice(0, 20)}`)
+                              .join(", ")}
+                            {Object.keys(log.meta).length > 2 && "…"}
+                          </div>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => setSelectedLog(log)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-slate-100"
+                        >
+                          <Eye className="h-3 w-3" />
+                          Détails
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1 rounded border disabled:opacity-50"
-          >
-            ←
-          </button>
-          <span className="px-3 py-1">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="px-3 py-1 rounded border disabled:opacity-50"
-          >
-            →
-          </button>
-        </div>
-      )}
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <MotionButtonFrame>
+                  <Button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    variant="outline"
+                    size="sm"
+                  >
+                    ←
+                  </Button>
+                </MotionButtonFrame>
+                <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-300 tabular-nums">
+                  {page} / {totalPages}
+                </span>
+                <MotionButtonFrame>
+                  <Button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    variant="outline"
+                    size="sm"
+                  >
+                    →
+                  </Button>
+                </MotionButtonFrame>
+              </div>
+            )}
+          </>
+        )}
+      </SectionCard>
 
       {/* Detail Modal */}
       {selectedLog && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={() => setSelectedLog(null)}
         >
           <div
-            className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-auto"
+            className="premium-card premium-surface-elevated w-full max-w-2xl max-h-[85vh] overflow-auto rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.92),rgba(10,3,5,0.96))] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-lg font-bold">Détails du log</h2>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#9b2335]/65 to-transparent" />
+            <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+              <h2 className="text-base font-semibold text-slate-50">Détails du log</h2>
               <button
                 onClick={() => setSelectedLog(null)}
-                className="text-gray-500 hover:text-gray-700"
+                aria-label="Fermer"
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-200"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-gray-500">ID</div>
-                  <div className="font-mono">{selectedLog.id}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Date</div>
-                  <div>{new Date(selectedLog.createdAt).toLocaleString("fr-FR")}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Actor Type</div>
-                  <div>{selectedLog.actorType}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Actor</div>
-                  <div>{selectedLog.actorName ?? selectedLog.actorId ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Action</div>
-                  <div>
-                    <span className={`px-2 py-0.5 rounded text-xs ${getActionColor(selectedLog.action)}`}>
-                      {selectedLog.action}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Entity</div>
-                  <div>{selectedLog.entity}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Entity ID</div>
-                  <div className="font-mono text-xs break-all">{selectedLog.entityId}</div>
-                </div>
-                <div>
-                  <div className="text-gray-500">Entity Name</div>
-                  <div>{selectedLog.entityName ?? "—"}</div>
-                </div>
+            <div className="space-y-5 p-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <DetailField label="ID"><span className="font-mono text-xs">{selectedLog.id}</span></DetailField>
+                <DetailField label="Date">{formatAppDate(selectedLog.createdAt)}</DetailField>
+                <DetailField label="Type d'acteur">
+                  <StatusBadge tone={ACTOR_TONE[selectedLog.actorType] ?? "neutral"}>
+                    {selectedLog.actorType}
+                  </StatusBadge>
+                </DetailField>
+                <DetailField label="Acteur">{selectedLog.actorName ?? selectedLog.actorId ?? "—"}</DetailField>
+                <DetailField label="Action">
+                  <StatusBadge tone={ACTION_TONE[selectedLog.action] ?? "neutral"}>
+                    {selectedLog.action}
+                  </StatusBadge>
+                </DetailField>
+                <DetailField label="Entité">{selectedLog.entity}</DetailField>
+                <DetailField label="Entity ID">
+                  <span className="font-mono text-xs break-all">{selectedLog.entityId}</span>
+                </DetailField>
+                <DetailField label="Entity name">{selectedLog.entityName ?? "—"}</DetailField>
               </div>
 
               {selectedLog.meta && Object.keys(selectedLog.meta).length > 0 && (
                 <div>
-                  <div className="text-gray-500 mb-2">Meta (JSON)</div>
-                  <pre className="bg-gray-50 p-4 rounded overflow-auto text-xs font-mono">
-                    {JSON.stringify(selectedLog.meta, null, 2)}
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Meta (JSON)</div>
+                  <pre className="overflow-x-auto rounded-xl border border-white/8 bg-[rgba(10,4,6,0.7)] p-3 text-[11px] leading-5 font-mono text-slate-300">
+{JSON.stringify(selectedLog.meta, null, 2)}
                   </pre>
                 </div>
               )}
@@ -412,6 +336,58 @@ export function AuditLogsClient() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function FilterField({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</label>
+      <StyledSelect value={value} onChange={(e) => onChange(e.target.value)} className="min-w-[10rem]">
+        {children}
+      </StyledSelect>
+    </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</label>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-1.5 text-sm text-slate-100 transition-colors focus:border-amber-500/40 focus:outline-none [color-scheme:dark]"
+      />
+    </div>
+  );
+}
+
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="mt-1 text-sm text-slate-200">{children}</div>
     </div>
   );
 }

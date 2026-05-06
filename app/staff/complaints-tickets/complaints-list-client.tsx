@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
+import { AlertCircle, ExternalLink, Hash } from "lucide-react";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
+import { SectionCard, StatusBadge, EmptyState } from "@/components/staff/ui";
+import { formatAppDate } from "@/lib/app-date-formatter";
 
 type Complaint = {
   id: string;
@@ -18,11 +21,18 @@ type Complaint = {
   closedAt: string | null;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  OPEN: "bg-green-100 text-green-800",
-  RESOLVED: "bg-blue-100 text-blue-800",
-  REJECTED: "bg-orange-100 text-orange-800",
-  CLOSED: "bg-gray-100 text-gray-800",
+const STATUS_TONE: Record<string, "success" | "info" | "warning" | "neutral" | "danger"> = {
+  OPEN: "success",
+  RESOLVED: "info",
+  REJECTED: "warning",
+  CLOSED: "neutral",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  OPEN: "Ouverte",
+  RESOLVED: "Traitée",
+  REJECTED: "Refusée",
+  CLOSED: "Fermée",
 };
 
 export function ComplaintsListClient({
@@ -33,134 +43,140 @@ export function ComplaintsListClient({
   const [filter, setFilter] = useState<string>("ALL");
   const [search, setSearch] = useState("");
 
-  const filtered = complaints.filter((c) => {
-    if (filter === "OPEN" && c.status !== "OPEN") return false;
-    if (filter === "CLOSED" && c.status === "OPEN") return false;
-    if (search) {
-      const s = search.toLowerCase();
-      return (
-        c.ticketKey.toLowerCase().includes(s) ||
-        (c.authorDiscordId?.toLowerCase().includes(s) ?? false) ||
-        (c.target?.toLowerCase().includes(s) ?? false)
-      );
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return complaints.filter((c) => {
+      if (filter === "OPEN" && c.status !== "OPEN") return false;
+      if (filter === "CLOSED" && c.status === "OPEN") return false;
+      if (search) {
+        const s = search.toLowerCase();
+        return (
+          c.ticketKey.toLowerCase().includes(s) ||
+          (c.authorDiscordId?.toLowerCase().includes(s) ?? false) ||
+          (c.target?.toLowerCase().includes(s) ?? false) ||
+          (c.reason?.toLowerCase().includes(s) ?? false)
+        );
+      }
+      return true;
+    });
+  }, [complaints, filter, search]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Plaintes (Tickets Discord)</h1>
-
-      <div className="flex gap-4 mb-4 items-center">
+    <SectionCard
+      title="Plaintes (tickets Discord)"
+      description="Suivi des tickets ouverts depuis Discord, par statut et auteur."
+      icon={AlertCircle}
+      actions={
+        <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-300 tabular-nums">
+          {filtered.length} / {complaints.length}
+        </span>
+      }
+    >
+      {/* Filtres */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <StyledSelect
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
+          className="sm:w-48"
         >
-          <option value="ALL">Tous</option>
-          <option value="OPEN">OPEN</option>
-          <option value="CLOSED">Fermés</option>
+          <option value="ALL">Tous les statuts</option>
+          <option value="OPEN">Ouvertes</option>
+          <option value="CLOSED">Fermées / Traitées</option>
         </StyledSelect>
 
         <input
-          type="text"
-          placeholder="Rechercher..."
+          type="search"
+          placeholder="Rechercher (ticketKey, auteur, cible, raison)…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border rounded px-3 py-2 flex-1 max-w-xs"
+          className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
         />
-
-        <span className="text-gray-500">{filtered.length} résultat(s)</span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse border">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border px-3 py-2 text-left">Status</th>
-              <th className="border px-3 py-2 text-left">TicketKey</th>
-              <th className="border px-3 py-2 text-left">Auteur</th>
-              <th className="border px-3 py-2 text-left">Cible</th>
-              <th className="border px-3 py-2 text-left">Raison</th>
-              <th className="border px-3 py-2 text-left">Créé</th>
-              <th className="border px-3 py-2 text-left">Fermé</th>
-              <th className="border px-3 py-2 text-left">Thread</th>
-              <th className="border px-3 py-2 text-left">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="border px-3 py-2">
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      STATUS_COLORS[c.status] ?? STATUS_COLORS.CLOSED
-                    }`}
-                  >
-                    {c.status}
-                  </span>
-                </td>
-                <td className="border px-3 py-2 font-mono text-sm">
-                  {c.ticketKey}
-                </td>
-                <td className="border px-3 py-2 text-sm">
-                  {c.authorDiscordId ? (
+      {/* Liste */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="Aucune plainte"
+          description={search || filter !== "ALL" ? "Aucun ticket ne correspond aux filtres courants." : "Aucun ticket de plainte enregistré pour l'instant."}
+        />
+      ) : (
+        <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="min-w-full">
+            <thead>
+              <tr className="border-b border-white/8">
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Statut</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ticket</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Auteur</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Cible</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Raison</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Créé</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Fermé</th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Thread</th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id} className="border-b border-white/4 transition-colors hover:bg-white/[0.025]">
+                  <td className="px-3 py-3">
+                    <StatusBadge tone={STATUS_TONE[c.status] ?? "neutral"}>
+                      {STATUS_LABEL[c.status] ?? c.status}
+                    </StatusBadge>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-xs text-slate-300">
+                      <Hash className="h-3 w-3 text-slate-500" />
+                      {c.ticketKey}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-sm">
+                    {c.authorDiscordId ? (
+                      <Link
+                        href={`/staff/members/by-discord/${c.authorDiscordId}`}
+                        prefetch={false}
+                        className="text-amber-300 transition-colors hover:underline"
+                      >
+                        {c.authorTag ?? c.authorDiscordId}
+                      </Link>
+                    ) : (
+                      <span className="text-slate-500">{c.authorTag ?? "—"}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-sm text-slate-300">{c.target ?? <span className="text-slate-500">—</span>}</td>
+                  <td className="px-3 py-3 text-sm text-slate-300 max-w-xs truncate" title={c.reason ?? undefined}>
+                    {c.reason ?? <span className="text-slate-500">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-400">{formatAppDate(c.createdAt)}</td>
+                  <td className="px-3 py-3 text-xs text-slate-400">
+                    {c.closedAt ? formatAppDate(c.closedAt) : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-3 py-3">
+                    {c.threadId ? (
+                      <a
+                        href={getDiscordThreadUrl(c.threadId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-amber-300 transition-colors hover:underline"
+                      >
+                        Discord <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-right">
                     <Link
-                      href={`/staff/members/by-discord/${c.authorDiscordId}`}
-                      prefetch={false}
-                      className="text-blue-600 hover:underline"
+                      href={`/staff/complaints-tickets/${c.ticketKey}`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-slate-100"
                     >
-                      {c.authorTag ?? c.authorDiscordId}
+                      Ouvrir
                     </Link>
-                  ) : (
-                    c.authorTag ?? c.authorDiscordId ?? "—"
-                  )}
-                </td>
-                <td className="border px-3 py-2 text-sm">{c.target ?? "—"}</td>
-                <td className="border px-3 py-2 text-sm truncate max-w-xs">
-                  {c.reason ?? "—"}
-                </td>
-                <td className="border px-3 py-2 text-xs">
-                  {new Date(c.createdAt).toLocaleString("fr-FR")}
-                </td>
-                <td className="border px-3 py-2 text-xs">
-                  {c.closedAt
-                    ? new Date(c.closedAt).toLocaleString("fr-FR")
-                    : "—"}
-                </td>
-                <td className="border px-3 py-2">
-                  {c.threadId ? (
-                    <a
-                      href={getDiscordThreadUrl(c.threadId)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-sm"
-                    >
-                      Discord
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="border px-3 py-2">
-                  <Link
-                    href={`/staff/complaints-tickets/${c.ticketKey}`}
-                    className="text-blue-600 hover:underline text-sm"
-                  >
-                    Ouvrir
-                  </Link>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="border px-3 py-4 text-center text-gray-500">
-                  Aucune plainte trouvée
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </SectionCard>
   );
 }
