@@ -2,655 +2,157 @@ import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { jsonError } from "@/lib/api-errors";
 import { prisma } from "@/lib/db";
-import { logError, logWarn } from "@/lib/obs";
-import { getPreviousPlaytimeWeekStart } from "@/lib/playtime-insights";
+import { logError } from "@/lib/obs";
 import type { StaffMemberDto } from "@/types/staff";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
-import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
 import { getAvatarHashesFast, warmAvatarCache } from "@/lib/discord/avatar-cache";
-import { getMemberDisplayName } from "@/lib/member-display";
+
+import { parseMembersQuery, makeCacheKey } from "@/lib/staff/members/query-params";
+import { fetchMembersForFamily } from "@/lib/staff/members/fetch-members";
 import {
-  getMemberScopeFlags,
-  isActiveMembersScopeMember,
-  isDisplayableStaffMember,
-  isLinkedStaffMember,
-  isNonLinkedDisplayableStaffMember,
-} from "@/lib/staff/member-scope";
-import { parseAbsenceMeta } from "@/lib/meetings";
+  normalizeMember,
+  sortNormalizedByGradeAndName,
+  type NormalizedMember,
+} from "@/lib/staff/members/member-normalize";
+import { buildStaffMemberRow } from "@/lib/staff/members/build-row";
+import { loadPreviousWeekPlaytime } from "@/lib/staff/members/playtime-history";
+import { enrichRowsWithActiveAbsences } from "@/lib/staff/members/active-absences";
+import { matchesSearch, sortRowsStable } from "@/lib/staff/members/row-status";
 import {
-  BLACKLIST_ROLE_ID,
-  getDiscordGradeLevel,
-  getDiscordGradeRoleId,
-  getDiscordGradeMappings,
-  RESERVIST_ROLE_ID,
-} from "@/lib/discord-grade";
-import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+  acquireFlight,
+  lookupCache,
+  storeInCache,
+} from "@/lib/staff/members/response-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-// ---------------------------------------------------------------------------
-// Module-level cache for Discord avatar hashes fetched directly from Discord API.
-// Persists across requests within the same Node.js process (1-hour TTL).
-// This covers members who have never logged into the panel (no Account row).
-// ---------------------------------------------------------------------------
-const discordAvatarCache = new Map<string, { hash: string | null; fetchedAt: number }>();
-const AVATAR_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for real hashes
-const AVATAR_NULL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for null (retry sooner)
-
-async function fetchDiscordAvatarHashBatch(
-  discordIds: string[]
-): Promise<Map<string, string | null>> {
-  const result = new Map<string, string | null>();
-  if (!discordIds.length) return result;
-
-  const botToken = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
-
-  // No guildId required: we use the /users/:id endpoint which works even for ex-guild members.
-  if (!botToken) {
-    for (const id of discordIds) result.set(id, null);
-    return result;
-  }
-
-  const now = Date.now();
-  const toFetch: string[] = [];
-
-  for (const id of discordIds) {
-    const cached = discordAvatarCache.get(id);
-    if (cached) {
-      const ttl = cached.hash ? AVATAR_CACHE_TTL_MS : AVATAR_NULL_CACHE_TTL_MS;
-      if (now - cached.fetchedAt < ttl) {
-        result.set(id, cached.hash);
-        continue;
-      }
-    }
-    toFetch.push(id);
-  }
-
-  // Fetch from Discord API with concurrency=3 to respect rate limits
-  const CONCURRENCY = 3;
-  for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
-    const batch = toFetch.slice(i, i + CONCURRENCY);
-    const settled = await Promise.allSettled(
-      batch.map(async (discordId) => {
-        const res = await fetch(
-           `https://discord.com/api/v10/users/${discordId}`,
-          {
-            headers: { Authorization: `Bot ${botToken}` },
-            signal: AbortSignal.timeout(5000),
-          }
-        );
-        if (!res.ok) return { discordId, hash: null as string | null };
-         const user = (await res.json()) as { avatar?: string | null };
-         return { discordId, hash: user.avatar ?? null };
-      })
-    );
-
-    for (const s of settled) {
-      if (s.status === "fulfilled") {
-        const { discordId, hash } = s.value;
-        discordAvatarCache.set(discordId, { hash, fetchedAt: now });
-        result.set(discordId, hash);
-      }
-    }
-  }
-
-  for (const id of toFetch) {
-    if (!result.has(id)) {
-      discordAvatarCache.set(id, { hash: null, fetchedAt: now });
-      result.set(id, null);
-    }
-  }
-
-  return result;
-}
-
-function isMissingColumnError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as any).code === "P2022";
-}
-
-type MembersScope = "active" | "all" | "demoted" | "non_link" | "blacklisted" | "reservists" | "everything";
-
-type MembersSortBy = "name" | "grade" | "playtime7d" | "status";
-type MembersSortDir = "asc" | "desc";
-
-const MAX_SEARCH_LENGTH = 120;
-
-const GRADE_LEVEL_BY_NAME = new Map(
-  getDiscordGradeMappings().map((entry, index, arr) => [entry.grade.toLowerCase(), arr.length - index])
-);
-
-function parseScope(raw: string | null): MembersScope {
-  if (raw === "all" || raw === "demoted" || raw === "non_link" || raw === "blacklisted" || raw === "reservists" || raw === "everything") return raw;
-  return "active";
-}
-
-function parseSortBy(raw: string | null): MembersSortBy {
-  if (raw === "grade" || raw === "playtime7d" || raw === "status") return raw;
-  return "name";
-}
-
-function parseSortDir(raw: string | null): MembersSortDir {
-  return raw === "desc" ? "desc" : "asc";
-}
-
-function parseLimit(raw: string | null): number {
-  const parsed = Number.parseInt(raw ?? "200", 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 200;
-  }
-
-  return Math.min(parsed, 500);
-}
-
-function sanitizeSearch(raw: string | null): string {
-  return (raw ?? "").trim().slice(0, MAX_SEARCH_LENGTH);
-}
-
-function getRowStatus(row: StaffMemberDto): "active" | "demoted" | "blacklisted" | "non_link" | "reservist" {
-  const grade = row.currentGradeName ?? "";
-  if (grade === "Blacklist") return "blacklisted";
-  if (grade === "Demote") return "demoted";
-  if (grade === "Réserviste" || grade === "Reservist") return "reservist";
-  if (!row.discordId) return "non_link";
-  return "active";
-}
-
-function matchesSearch(row: StaffMemberDto, search: string): boolean {
-  if (!search) return true;
-  const needle = search.toLowerCase();
-  return [row.rpName, row.steamId, row.discordId]
-    .filter((value): value is string => typeof value === "string" && value.trim() !== "")
-    .some((value) => value.toLowerCase().includes(needle));
-}
-
-function compareRows(a: StaffMemberDto, b: StaffMemberDto, sortBy: MembersSortBy, sortDir: MembersSortDir): number {
-  const direction = sortDir === "desc" ? -1 : 1;
-
-  switch (sortBy) {
-    case "grade": {
-      const levelA = GRADE_LEVEL_BY_NAME.get((a.currentGradeName ?? "").toLowerCase()) ?? -1;
-      const levelB = GRADE_LEVEL_BY_NAME.get((b.currentGradeName ?? "").toLowerCase()) ?? -1;
-      if (levelA !== levelB) return direction * (levelA - levelB);
-      break;
-    }
-    case "playtime7d": {
-      const playtimeA = typeof a.playtime7d === "number" ? a.playtime7d : 0;
-      const playtimeB = typeof b.playtime7d === "number" ? b.playtime7d : 0;
-      if (playtimeA !== playtimeB) return direction * (playtimeA - playtimeB);
-      break;
-    }
-    case "status": {
-      const order = { active: 0, blacklisted: 1, reservist: 2, demoted: 3, non_link: 4 } as const;
-      const statusA = order[getRowStatus(a)];
-      const statusB = order[getRowStatus(b)];
-      if (statusA !== statusB) return direction * (statusA - statusB);
-      break;
-    }
-    case "name":
-    default:
-      break;
-  }
-
-  return (a.rpName ?? "").localeCompare(b.rpName ?? "", "fr");
-}
-
-function getExclusionReason(params: {
-  scope: MembersScope;
-  isActiveMember: boolean;
-  hasDiscordId: boolean;
-  hasRoles: boolean;
-  hasMappedGrade: boolean;
-  isDemoted: boolean;
-  isBlacklisted: boolean;
-  isReservist: boolean;
-}): string {
-  const {
-    scope,
-    isActiveMember,
-    hasDiscordId,
-    hasRoles,
-    hasMappedGrade,
-    isDemoted,
-    isBlacklisted,
-    isReservist,
-  } = params;
-
-  if (!hasDiscordId) return "missing_discord_id";
-  if (!hasRoles) return "missing_roles";
-  if (!hasMappedGrade && !isDemoted) return "roles_not_mapped_to_grade";
-
-  if (scope === "non_link" && hasDiscordId) return "has_discord_id_for_non_link_scope";
-  if (scope === "blacklisted" && !isBlacklisted) return "not_blacklisted_for_blacklisted_scope";
-  if (scope === "reservists" && !isReservist) return "not_reservist_for_reservists_scope";
-
-  if (scope === "demoted" && !isDemoted) return "not_demoted_for_demoted_scope";
-  if (scope === "all" && !isDemoted && !isBlacklisted && !isReservist && !isActiveMember) return "inactive_not_special_for_all_scope";
-  if (scope === "active" && !isActiveMember) return "inactive_for_active_scope";
-  if (scope === "active" && isDemoted) return "demoted_for_active_scope";
-  if (scope === "active" && isBlacklisted) return "blacklisted_for_active_scope";
-  if (scope === "active" && isReservist) return "reservist_for_active_scope";
-
-  return "filtered_by_scope_rules";
-}
-
 /**
- * Cache module-level pour la response /api/staff/members.
- * Polling client : 60s ; cache 15s → la majorité des hits multi-onglets
- * tombent en cache hit. Coalescing identique à /api/staff/system.
+ * GET /api/staff/members
  *
- * Clé : famille + scope + sort + search + limit + countOnly.
- * Invalidé : passif (TTL). Aucun mutation côté client cette route.
+ * Route orchestrateur fin (post Lot 7) — toute la logique métier est dans
+ * src/lib/staff/members/. Cette route fait :
+ *   1. Auth (requireChefOrEtatMajor)
+ *   2. Parse query params
+ *   3. Cache lookup + coalescing (tt 15s)
+ *   4. Fetch members + normalisation + filtrage scope
+ *   5. Enrichissement (avatars, playtime history, active absences)
+ *   6. Build DTOs + tri + search + slice limit
+ *   7. NextResponse.json
+ *
+ * Le shape de la réponse est inchangé depuis la version monolithique :
+ *   { ok: true, rows: StaffMemberDto[], meta: { ... } }
+ *   { ok: true, familyId, count } si countOnly=1
  */
-const RESPONSE_CACHE_TTL_MS = 15_000;
-const RESPONSE_CACHE_MAX_KEYS = 32;
-const responseCache = new Map<string, { at: number; payload: unknown }>();
-const responseInFlight = new Map<string, Promise<unknown>>();
-
-function trimCacheIfFull() {
-  if (responseCache.size <= RESPONSE_CACHE_MAX_KEYS) return;
-  const oldest = [...responseCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-  if (oldest) responseCache.delete(oldest[0]);
-}
-
 export async function GET(req: Request) {
   const guard = await requireChefOrEtatMajor();
-  if (guard instanceof Response) {
-    return guard;
-  }
+  if (guard instanceof Response) return guard;
 
-  // Variables hoistées hors du try pour être accessibles au catch (cleanup flight).
+  // Variables hoistées hors du try pour cleanup en cas d'exception
   let cacheKey: string | null = null;
   let finishFlight: ((payload: unknown, err?: unknown) => void) | null = null;
 
   try {
     const url = new URL(req.url);
-    const familySlug = url.searchParams.get("familyId") ?? "esperados";
-    const scope = parseScope(url.searchParams.get("scope"));
-    const countOnly = url.searchParams.get("countOnly") === "1";
-    const search = sanitizeSearch(url.searchParams.get("search") ?? url.searchParams.get("q"));
-    const sortBy = parseSortBy(url.searchParams.get("sortBy"));
-    const sortDir = parseSortDir(url.searchParams.get("sortDir"));
-    const limit = parseLimit(url.searchParams.get("limit"));
-    const includeInactive = scope !== "active";
+    const query = parseMembersQuery(url);
+    cacheKey = makeCacheKey(query);
 
-    // Cache lookup (avant tout travail) — clé déterministe
-    cacheKey = JSON.stringify({ familySlug, scope, countOnly, search, sortBy, sortDir, limit });
-    const cached = responseCache.get(cacheKey);
-    const cacheCheckAt = Date.now();
-    if (cached && cacheCheckAt - cached.at < RESPONSE_CACHE_TTL_MS) {
-      return NextResponse.json(cached.payload);
+    // ── Cache + coalescing ────────────────────────────────────────────
+    const cacheLookup = lookupCache(cacheKey);
+    if (cacheLookup.hit) {
+      return NextResponse.json(cacheLookup.payload);
     }
-    // Coalescing : si une req identique est déjà en cours, on partage
-    const existingFlight = responseInFlight.get(cacheKey);
-    if (existingFlight) {
-      return NextResponse.json(await existingFlight);
+    if (cacheLookup.inFlight) {
+      return NextResponse.json(await cacheLookup.inFlight);
     }
-    let resolveFlight!: (v: unknown) => void;
-    let rejectFlight!: (e: unknown) => void;
-    const flightPromise = new Promise<unknown>((res, rej) => { resolveFlight = res; rejectFlight = rej; });
-    responseInFlight.set(cacheKey, flightPromise);
-    const flightKey = cacheKey;
-    finishFlight = (payload: unknown, err?: unknown) => {
-      if (err) rejectFlight(err);
-      else resolveFlight(payload);
-      responseInFlight.delete(flightKey);
-    };
+    const flight = acquireFlight(cacheKey);
+    finishFlight = flight.finish;
 
+    // ── Famille ───────────────────────────────────────────────────────
     const family = await prisma.family.findUnique({
-      where: { slug: familySlug },
+      where: { slug: query.familySlug },
       select: { id: true },
     });
-
     if (!family) {
       return jsonError(404, "FAMILY_NOT_FOUND", "Family not found", { rows: [] });
     }
 
-    await ensureFreshFamilyPlaytime(familySlug);
+    await ensureFreshFamilyPlaytime(query.familySlug);
 
-    let members: any[];
+    // ── Fetch members + normalisation + filtre scope ──────────────────
+    const members = await fetchMembersForFamily({
+      familyId: family.id,
+      familySlug: query.familySlug,
+      includeInactive: query.includeInactive,
+    });
 
-    try {
-      members = await prisma.member.findMany({
-        where: {
-          familyId: family.id,
-          source: { not: "BANKLOG_GHOST" },
-          ...(includeInactive ? {} : { isActive: true }),
-        },
-        orderBy: [{ rpName: "asc" }],
-        select: {
-          id: true,
-          steamId: true,
-          discordId: true,
-          rpName: true,
-          discordDisplayName: true,
-          discordUsername: true,
-          grade: true,
-          isActive: true,
-          isGhost: true,
-          discordInGuild: true,
-          missingFromLygSince: true,
-          discordRoleIds: true,
-          rankRoleId: true,
-          rankLabel: true,
-          discordLastError: true,
-          discordRolesUpdatedAt: true,
-          playtime7d: true,
-          playtime7dUpdatedAt: true,
-        } as any,
-      } as any);
-    } catch (error) {
-      if (!isMissingColumnError(error)) {
-        throw error;
-      }
+    const normalizedMembers = sortNormalizedByGradeAndName(
+      members
+        .map((m) => normalizeMember(m, query.scope))
+        .filter((m): m is NormalizedMember => m !== null)
+    );
 
-      logWarn("staff_members_missing_playtime_columns", {
-        code: (error as any)?.code,
-        familySlug,
-      });
-
-      members = await prisma.member.findMany({
-        where: {
-          familyId: family.id,
-          source: { not: "BANKLOG_GHOST" },
-          ...(includeInactive ? {} : { isActive: true }),
-        },
-        orderBy: [{ rpName: "asc" }],
-        select: {
-          id: true,
-          steamId: true,
-          discordId: true,
-          rpName: true,
-          discordDisplayName: true,
-          discordUsername: true,
-          grade: true,
-          isActive: true,
-          isGhost: true,
-          discordInGuild: true,
-          missingFromLygSince: true,
-          discordRoleIds: true,
-          rankRoleId: true,
-          rankLabel: true,
-          discordLastError: true,
-          discordRolesUpdatedAt: true,
-        } as any,
-      } as any);
-    }
-
-    const normalizedMembers = members
-      .map((member: any) => {
-        const {
-          discordRoleIds,
-          hasDiscordId,
-          hasRoles,
-          hasDiscordGrade,
-          gradeInfo,
-          isDemoted,
-          isBlacklisted,
-          isReservist,
-          isOutOfDiscord,
-        } = getMemberScopeFlags(member);
-        const isDisplayableMember = isDisplayableStaffMember(member);
-        const isLinkedMember = isLinkedStaffMember(member);
-        const isActiveMember = isActiveMembersScopeMember(member);
-
-        const isNonLink = isNonLinkedDisplayableStaffMember(member);
-
-        // scope=everything : inclure tout le monde (filtrages côté client)
-        if (scope !== "everything") {
-          if (scope === "non_link") {
-            if (!isNonLink) return null;
-          } else {
-            const includeByScope = scope === "demoted"
-              ? isDemoted
-              : scope === "blacklisted"
-                ? isBlacklisted
-              : scope === "reservists"
-                ? isReservist
-              : scope === "all"
-                ? (isDisplayableMember || isDemoted || isBlacklisted || isReservist)
-              : isActiveMember;
-
-            if (!includeByScope) return null;
-          }
-        } else {
-          // everything: exclure les membres qui ne sont dans aucune catégorie utile
-          const inAnyCat = isActiveMember || isDemoted || isBlacklisted || isReservist || isNonLink;
-          if (!inAnyCat) return null;
-        }
-
-        const resolvedGrade = isBlacklisted
-          ? "Blacklist"
-          : isDemoted
-            ? "Demote"
-            : isReservist
-              ? "Réserviste"
-              : gradeInfo.grade;
-        const resolvedRoleId = isBlacklisted
-          ? BLACKLIST_ROLE_ID
-          : isDemoted
-            ? DEMOTE_ROLE_ID
-            : isReservist
-              ? RESERVIST_ROLE_ID
-              : getDiscordGradeRoleId(discordRoleIds);
-        const resolvedLevel = isDemoted || isBlacklisted || isReservist ? null : getDiscordGradeLevel(discordRoleIds);
-
-        return {
-          ...member,
-          grade: resolvedGrade,
-          _displayName: getMemberDisplayName(member),
-          _discordGrade: resolvedGrade,
-          _discordGradeLevel: resolvedLevel,
-          _discordGradeRoleId: resolvedRoleId,
-          // Flags pour filtrage client-side (scope=everything)
-          _isActive: isActiveMember,
-          _isDemoted: isDemoted,
-          _isBlacklisted: isBlacklisted,
-          _isReservist: isReservist,
-          _isNonLink: isNonLink,
-          _isOutOfDiscord: isOutOfDiscord,
-        };
-      })
-      .filter((member): member is any => member !== null)
-      .sort((a, b) => {
-        const levelA = typeof a._discordGradeLevel === "number" ? a._discordGradeLevel : -1;
-        const levelB = typeof b._discordGradeLevel === "number" ? b._discordGradeLevel : -1;
-        if (levelA !== levelB) return levelB - levelA;
-
-        const nameA = (a._displayName ?? "").toString();
-        const nameB = (b._displayName ?? "").toString();
-        return nameA.localeCompare(nameB, "fr");
-      });
-
-    if (countOnly) {
+    // ── countOnly : early return ──────────────────────────────────────
+    if (query.countOnly) {
       const payload = {
         ok: true,
-        familyId: familySlug,
+        familyId: query.familySlug,
         count: normalizedMembers.length,
       };
-      responseCache.set(cacheKey, { at: Date.now(), payload });
-      trimCacheIfFull();
+      storeInCache(cacheKey, payload);
       finishFlight(payload);
       return NextResponse.json(payload);
     }
 
-    const memberIds = normalizedMembers.map((member: any) => member.id);
-    const previousWeekStart = getPreviousPlaytimeWeekStart();
-    const historyModel = (prisma as any).memberPlaytimeHistory;
-    const historyModelAvailable = typeof historyModel?.findMany === "function";
-    let analyticsAvailable = false;
-    let historyReadFailed = false;
-    const previousWeekMap = new Map<string, number>();
+    // ── Enrichissement : history playtime ─────────────────────────────
+    const memberIds = normalizedMembers.map((m) => m.id);
+    const { previousWeekMap, analyticsAvailable, historyReadFailed, historyModelAvailable } =
+      await loadPreviousWeekPlaytime({ memberIds, familySlug: query.familySlug });
 
-    if (historyModelAvailable && memberIds.length > 0) {
-      try {
-        const playtimeHistory = await historyModel.findMany({
-          where: {
-            memberId: { in: memberIds },
-            weekStart: previousWeekStart,
-          },
-          select: {
-            memberId: true,
-            weekStart: true,
-            playtime7d: true,
-          },
-        });
-
-        for (const history of playtimeHistory as Array<{ memberId: string; weekStart: Date; playtime7d: number }>) {
-          if (history.weekStart.getTime() === previousWeekStart.getTime()) {
-            previousWeekMap.set(history.memberId, history.playtime7d);
-          }
-        }
-
-        analyticsAvailable = true;
-      } catch (error) {
-        historyReadFailed = true;
-        logWarn("staff_members_history_read_failed", {
-          familySlug,
-          details: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
+    // ── Enrichissement : avatars Discord (cache rapide + warming bg) ──
     const discordIds = Array.from(
       new Set(
         normalizedMembers
-          .map((member: any) => member.discordId)
-          .filter((discordId: unknown) => typeof discordId === "string" && discordId.trim() !== "")
+          .map((m) => m.discordId)
+          .filter((id): id is string => typeof id === "string" && id.trim() !== "")
       )
-    ) as string[];
-
-    // Récupération des avatars : version rapide (cache mémoire + DB) en bloquant
-    // + warming Discord API en arrière-plan pour les prochaines requêtes
-    const avatarHashByDiscordId = discordIds.length > 0
-      ? await getAvatarHashesFast(discordIds)
-      : new Map<string, string | null>();
+    );
+    const avatarHashByDiscordId =
+      discordIds.length > 0
+        ? await getAvatarHashesFast(discordIds)
+        : new Map<string, string | null>();
     if (discordIds.length > 0) warmAvatarCache(discordIds);
 
-    const rows: StaffMemberDto[] = normalizedMembers.map((member: any) => {
-      const playtime = typeof member.playtime7d === "number" ? member.playtime7d : 0;
-      const previousPlaytime = previousWeekMap.get(member.id) ?? null;
-      const delta = previousPlaytime == null ? null : playtime - previousPlaytime;
-      const grade = member._discordGrade ?? null;
+    // ── Build rows ────────────────────────────────────────────────────
+    const rows: StaffMemberDto[] = normalizedMembers.map((m) =>
+      buildStaffMemberRow(m, avatarHashByDiscordId, previousWeekMap)
+    );
 
-      return {
-        id: member.id,
-        steamId: member.steamId ?? null,
-        discordId: member.discordId ?? null,
-        rpName: getMemberDisplayName(member),
-        familyName: null,
-        currentGradeName: grade,
-        rankRoleId: member._discordGradeRoleId ?? member.rankRoleId ?? null,
-        rankLabel: member._discordGrade ?? member.rankLabel ?? null,
-        grade,
-        gradeLevel: typeof member._discordGradeLevel === "number" ? member._discordGradeLevel : null,
-        discordAvatarHash: member.discordId ? avatarHashByDiscordId.get(member.discordId) ?? null : null,
-        discordRolesUpdatedAt: member.discordRolesUpdatedAt?.toISOString() ?? null,
-        discordLastError: member.discordLastError ?? null,
-        discordInGuild: member.discordInGuild ?? null,
-        playtime7d: playtime,
-        playtime7dUpdatedAt: member.playtime7dUpdatedAt?.toISOString() ?? null,
-        updatedAt: new Date().toISOString(),
-        previousPlaytime7d: previousPlaytime,
-        playtimeDelta7d: delta,
-        // Scope flags pour filtrage client-side (scope=everything)
-        _isActive: member._isActive === true,
-        _isDemoted: member._isDemoted === true,
-        _isBlacklisted: member._isBlacklisted === true,
-        _isReservist: member._isReservist === true,
-        _isNonLink: member._isNonLink === true,
-        _isOutOfDiscord: member._isOutOfDiscord === true,
-      } as any;
-    });
+    // ── Enrichissement : absences actives ─────────────────────────────
+    await enrichRowsWithActiveAbsences({ rows, familyId: family.id });
 
-    const now = new Date();
-    const memberIdsForAbsence = rows.map((row) => row.id);
-    const discordIdsForAbsence = rows
-      .map((row) => row.discordId)
-      .filter((value): value is string => typeof value === "string" && value.trim() !== "");
+    // ── Search + tri stable + slice ───────────────────────────────────
+    const filteredRows = rows.filter((row) => matchesSearch(row, query.search));
+    const sortedRows = sortRowsStable(filteredRows, query.sortBy, query.sortDir).slice(0, query.limit);
 
-    // Inclure les absences qui démarrent dans les 48h à venir (pas seulement déjà démarrées)
-    const upcoming48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-    const approvedActiveAbsences = (memberIdsForAbsence.length > 0 || discordIdsForAbsence.length > 0)
-      ? await prisma.absence.findMany({
-          where: {
-            familyId: family.id,
-            status: "APPROVED",
-            startAt: { lte: upcoming48h },
-            endAt: { gte: now },
-            OR: [
-              ...(memberIdsForAbsence.length > 0 ? [{ memberId: { in: memberIdsForAbsence } }] : []),
-              ...(discordIdsForAbsence.length > 0 ? [{ discordId: { in: discordIdsForAbsence } }] : []),
-            ],
-          },
-          orderBy: [{ endAt: "asc" }, { createdAt: "desc" }],
-          select: {
-            id: true,
-            memberId: true,
-            discordId: true,
-            reason: true,
-            notes: true,
-            startAt: true,
-            endAt: true,
-          },
-        })
-      : [];
-
-    const activeAbsenceByMemberId = new Map<string, any>();
-    const activeAbsenceByDiscordId = new Map<string, any>();
-    for (const absence of approvedActiveAbsences) {
-      const meta = parseAbsenceMeta(absence.notes);
-      const payload = {
-        id: absence.id,
-        type: meta.type,
-        meetingDate: meta.meetingDate,
-        reason: absence.reason,
-        startAt: absence.startAt.toISOString(),
-        endAt: absence.endAt.toISOString(),
-        upcoming: absence.startAt > now, // true si l'absence n'a pas encore démarré
-      };
-
-      if (absence.memberId && !activeAbsenceByMemberId.has(absence.memberId)) {
-        activeAbsenceByMemberId.set(absence.memberId, payload);
-      }
-      if (absence.discordId && !activeAbsenceByDiscordId.has(absence.discordId)) {
-        activeAbsenceByDiscordId.set(absence.discordId, payload);
-      }
-    }
-
-    for (const row of rows) {
-      (row as any).activeAbsence =
-        activeAbsenceByMemberId.get(row.id) ??
-        (row.discordId ? activeAbsenceByDiscordId.get(row.discordId) ?? null : null);
-    }
-
-    const filteredRows = rows.filter((row) => matchesSearch(row, search));
-    const sortedRows = filteredRows
-      .map((row, index) => ({ row, index }))
-      .sort((left, right) => {
-        const result = compareRows(left.row, right.row, sortBy, sortDir);
-        return result !== 0 ? result : left.index - right.index;
-      })
-      .map(({ row }) => row)
-      .slice(0, limit);
-
+    // ── Réponse finale (shape inchangé, à ne pas modifier) ────────────
     const finalPayload = {
       ok: true,
       rows: sortedRows,
       meta: {
-        scope,
-        sortBy,
-        sortDir,
-        limit,
-        search,
+        scope: query.scope,
+        sortBy: query.sortBy,
+        sortDir: query.sortDir,
+        limit: query.limit,
+        search: query.search,
         analyticsAvailable,
         historyReadFailed,
         historyModelAvailable,
       },
     };
-    responseCache.set(cacheKey, { at: Date.now(), payload: finalPayload });
-    trimCacheIfFull();
+
+    storeInCache(cacheKey, finalPayload);
     finishFlight(finalPayload);
     return NextResponse.json(finalPayload);
   } catch (error) {
