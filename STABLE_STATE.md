@@ -93,7 +93,51 @@ Compteur "stalled" (alerte Discord après 5 cycles consécutifs) : **non déclen
 | Lot 6 hotfix (BANKLOGS stalled + memory watch) | `e38e349` | ✅ déployé, 0 stalled depuis fix |
 | **Lot 7** — refactor `staff/members/route.ts` | `aa37d26` | ✅ validé, 661→163 L, +43 tests, smoke test 307 OK |
 | **Lot 8** — refactor `banklogs/route.ts` | `8ee6555` | ✅ validé, 578→203 L, +41 tests |
-| Lot 8 confirmation auto-sync réel | _ce commit_ | ✅ POST `/api/banklogs` 200 + shape OK ; auto-sync worker `/api/cron/banklogs-auto-sync` 6/6 = 200 sur 30 min ; total BankLog 11 675 (croît) |
+| Lot 8 confirmation auto-sync réel | `c129d2a` | ✅ POST `/api/banklogs` 200 + shape OK ; auto-sync worker `/api/cron/banklogs-auto-sync` 6/6 = 200 sur 30 min ; total BankLog 11 675 (croît) |
+| **Lot 9** — refactor `meetings/[id]/finalize/route.ts` | `3bbc91d` | ⚠️ **Validé build/tests, PAS encore validé métier réel** — voir ci-dessous |
+
+## ⚠️ Lot 9 — validation métier réelle EN ATTENTE
+
+Le refactor de `app/api/staff/meetings/[id]/finalize/route.ts` est :
+- ✅ Build production OK (15.0s)
+- ✅ tsc 0 erreur
+- ✅ 246 tests passed (dont 80 nouveaux verrouillant les mappings critiques)
+- ✅ Smoke test endpoint : 401 (auth fonctionne) sans impact métier
+- ✅ Aucune régression sur les autres flows (sync LYG/Discord, BANKLOGS = 200, MEMBERS = 200)
+
+Mais **le finalize d'une vraie réunion n'a PAS été testé**. Le main loop (Prisma writes + outbox Discord) a été conservé verbatim donc le risque est faible, mais une validation en condition réelle reste nécessaire **avant tout autre refactor god-route**.
+
+### Procédure de validation lors de la prochaine réunion réelle
+
+1. Lancer la finalize depuis `/staff/meetings/[id]` avec le bouton dédié
+2. Vérifier le retour HTTP 200 + summary cohérent
+3. Vérifier les **sanctions créées** :
+   - Bons types (DEMOTE / BLACKLIST / RESERVISTE / AVERT_LEGER / AVERT_LOURD / AVERT_ORAL_*)
+   - **EXCLUDE/EXCLUSION → bien créées en BLACKLIST**
+   - `source: "MEETING"`, `notes` contient `[meeting:<id>]`
+   - `discordStatus: "PENDING"` puis `APPLIED` après le worker
+4. Vérifier les **promotions UP / DOUBLE_UP** :
+   - Member.grade / gradeLevel / rankRoleId / rankLabel updated
+   - GradeHistory.create avec `source: "MEETING"`
+   - Discord : nouveau rôle assigné, ancien rôle retiré, "En test" retiré si présent
+5. Vérifier les **REMOVE_TEST_RANK** :
+   - Pas de sanction créée
+   - Discord : rôle "En test" (1312845999340781643) retiré
+6. Vérifier l'**embed Discord compte-rendu** dans le salon réunion :
+   - 4 fields ordonnés : Statistiques / Sanctions prises / Cas concernés / Notes finales
+   - Footer "Membres: N"
+   - Counts agrégés cohérents avec la session
+
+Si la prochaine finalize réelle passe, marquer ce point comme ✅ dans ce document et reprendre le refactor des god-routes (`staff/meetings/[id]/route.ts`, `staff/link/[discordId]/route.ts`, `ingest/tickets/route.ts` en dernier).
+
+## 🛑 Stop sur les gros refactors d'ici-là
+
+D'ici la validation manuelle, **aucun refactor god-route ne sera lancé** :
+- Pas de touch à `staff/link/[discordId]/route.ts`
+- Pas de touch à `ingest/tickets/route.ts`
+- Pas de touch à `staff/meetings/[id]/route.ts` (autre route, mais même périmètre meetings)
+
+Hotfixes mineurs et fixes sécurité restent acceptés au cas par cas.
 
 ## 📚 Lots livrés
 
