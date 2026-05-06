@@ -17,7 +17,11 @@
     "discord:dev": "cd discord-worker && npm run dev",
     "discord:build": "cd discord-worker && npm run build",
     "discord:start": "cd discord-worker && cross-env NODE_ENV=production npm run start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -53,6 +57,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/ui": "^4.1.5",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "eslint": "^9",
@@ -60,6 +65,8 @@
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "tsx": "^3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.5"
   }
 }
