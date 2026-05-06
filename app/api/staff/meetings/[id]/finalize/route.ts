@@ -7,219 +7,58 @@ import { resolveFamilyId } from "@/lib/family";
 import { recordPanelMetric } from "@/lib/metrics";
 import { requireMeetingsEnabled } from "@/lib/feature-guard";
 import { computeMeetingSummary } from "@/lib/meetings";
-import type { SanctionType } from "@prisma/client";
 import {
   enqueueSanctionApply,
   enqueueAssignRole,
   enqueueRemoveRole,
-  type DiscordEmbedPayload,
 } from "@/lib/discord/discord";
 import { evaluateSanctionRules } from "@/lib/sanction-rules";
 import { getSanctionExpirationDate } from "@/lib/sanctions";
 import { GRADE_LABEL_BY_ROLE_ID } from "@/lib/grade-colors";
 import { getRankGradeLevel } from "@/lib/discord-rank";
 
-const RANK_ROLE_ID_BY_LABEL = new Map(
-  Object.entries(GRADE_LABEL_BY_ROLE_ID).map(([roleId, label]) => [label.toLowerCase(), roleId])
-);
-
-function normalizeMeetingTargetGrade(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (!normalized) return null;
-  for (const label of Object.values(GRADE_LABEL_BY_ROLE_ID)) {
-    if (label.toLowerCase() === normalized) return label;
-  }
-  return null;
-}
-
-const SANCTION_TYPES: SanctionType[] = [
-  "AVERT_ORAL_PLAYTIME",
-  "AVERT_ORAL_REUNION",
-  "AVERT_LEGER",
-  "AVERT_LOURD",
-  "DEMOTE",
-  "RESERVISTE",
-  "BLACKLIST",
-];
-
-const MAX_EMBED_FIELD_LENGTH = 1000;
-
-const MEETING_DECISION_LABELS: Record<string, string | null> = {
-  MAINTAIN: "Maintiens à sa place",
-  KEEP: "Maintiens à sa place",
-  NONE: "Maintiens à sa place",
-  DEMOTE: "Démote",
-  UP: "UP",
-  DOUBLE_UP: "Double UP",
-  WARN_LIGHT: "Avertissement léger",
-  WARN_HEAVY: "Avertissement lourd",
-  WARN: "Avertissement",
-  WARNING: "Avertissement",
-  PLAYTIME_WARN: "Averto playtime",
-  AVERT_ORAL_PLAYTIME: "Averto playtime",
-  AVERT_ORAL_REUNION: "Avertissement oral",
-  AVERT_LEGER: "Avertissement léger",
-  AVERT_LOURD: "Avertissement lourd",
-  REMINDER: "Rappel",
-  RESERVE: "Réserviste",
-  RESERVIST: "Réserviste",
-  RESERVISTE: "Réserviste",
-  BLACKLIST: "Blacklist",
-  EXCLUSION: "Exclusion",
-  EXCLUDE: "Exclusion",
-  WEEK_VALID_1: "Semaine Validé 1",
-  WEEK_VALID_2: "Semaine Validé 2",
-  WEEK_VALID_3: "Semaine Validé 3",
-  WEEK_INVALID: "Semaine Non Validé",
-  REMOVE_TEST_RANK: "Test validé (rang En test retiré)",
-  OTHER: null,
-  AUTRE: null,
-  WARNING_ORAL: null,
-};
-
-function formatMeetingDate(value: Date | string | null | undefined) {
-  if (!value) return "Date inconnue";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "Date inconnue";
-  return date.toLocaleDateString("fr-FR");
-}
-
-function formatMeetingMinutes(minutes: number | null | undefined) {
-  const safeMinutes = typeof minutes === "number" && Number.isFinite(minutes)
-    ? Math.max(0, Math.round(minutes))
-    : 0;
-  const hours = Math.floor(safeMinutes / 60);
-  const remainingMinutes = safeMinutes % 60;
-  if (hours === 0) return `${remainingMinutes}min`;
-  if (remainingMinutes === 0) return `${hours}h`;
-  return `${hours}h ${remainingMinutes}min`;
-}
-
-function truncateEmbedLines(lines: string[], maxChars = MAX_EMBED_FIELD_LENGTH) {
-  if (lines.length === 0) return "-";
-
-  const keptLines: string[] = [];
-  let length = 0;
-
-  for (const line of lines) {
-    const nextLength = length + line.length + (keptLines.length > 0 ? 1 : 0);
-    if (nextLength > maxChars) {
-      const remaining = lines.length - keptLines.length;
-      if (remaining > 0) {
-        keptLines.push(`... (+${remaining} autre${remaining > 1 ? "s" : ""})`);
-      }
-      break;
-    }
-
-    keptLines.push(line);
-    length = nextLength;
-  }
-
-  return keptLines.join("\n");
-}
-
-function resolveMeetingDecisionCode(row: { sanctionType?: string | null; decisionType?: string | null }) {
-  const sanctionCode = String(row.sanctionType ?? "").trim().toUpperCase();
-  if (sanctionCode) return sanctionCode;
-
-  const decisionCode = String(row.decisionType ?? "NONE").trim().toUpperCase();
-  if (decisionCode === "NONE") return "MAINTAIN";
-  if (decisionCode === "EXCLUDE") return "EXCLUSION";
-  // WARNING (enum) → avertissement léger formel ; WARNING_ORAL → avertissement oral réunion
-  if (decisionCode === "WARNING") return "AVERT_LEGER";
-  if (decisionCode === "WARNING_ORAL") return "AVERT_ORAL_REUNION";
-  return decisionCode;
-}
-
-function translateMeetingDecision(code: string | null | undefined) {
-  const normalized = String(code ?? "").trim().toUpperCase();
-  if (!normalized) return null;
-  return MEETING_DECISION_LABELS[normalized] ?? null;
-}
-
-function buildMeetingFinalizeEmbed(params: {
-  meetingDate: Date | string | null | undefined;
-  meetingLabel: string;
-  rows: Array<{
-    rpNameSnapshot?: string | null;
-    playtimeMinutes?: number | null;
-    sanctionType?: string | null;
-    decisionType?: string | null;
-  }>;
-  notes?: string | null;
-  statsSummary: Array<{ label: string; value: number }>;
-}): DiscordEmbedPayload {
-  const decisionCounts = new Map<string, number>();
-  const concernedCases: string[] = [];
-
-  for (const row of params.rows) {
-    const decisionCode = resolveMeetingDecisionCode(row);
-    const translatedDecision = translateMeetingDecision(decisionCode);
-    if (!translatedDecision) continue;
-
-    const memberName = String(row.rpNameSnapshot ?? "Membre inconnu").trim() || "Membre inconnu";
-    const playtime = formatMeetingMinutes(row.playtimeMinutes);
-
-    decisionCounts.set(translatedDecision, (decisionCounts.get(translatedDecision) ?? 0) + 1);
-    concernedCases.push(`${memberName} — ${playtime} — ${translatedDecision}`);
-  }
-
-  const sanctionsLines = Array.from(decisionCounts.entries())
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "fr"))
-    .map(([label, count]) => `${label}: ${count}`);
-
-  const statsLines = params.statsSummary.map(({ label, value }) => `${label}: ${value}`);
-  const finalNotes = String(params.notes ?? "").trim() || "Aucune note finale.";
-
-  return {
-    title: `📋 Réunion Famille — ${formatMeetingDate(params.meetingDate)}`,
-    description: params.meetingLabel,
-    color: 0x1d4ed8,
-    fields: [
-      {
-        name: "📊 Statistiques",
-        value: truncateEmbedLines(statsLines),
-        inline: false,
-      },
-      {
-        name: "⚖️ Sanctions prises",
-        value: truncateEmbedLines(sanctionsLines.length > 0 ? sanctionsLines : ["Aucune"]),
-        inline: false,
-      },
-      {
-        name: "📌 Cas concernés",
-        value: truncateEmbedLines(concernedCases.length > 0 ? concernedCases : ["Aucun cas concerné"]),
-        inline: false,
-      },
-      {
-        name: "📝 Notes finales",
-        value: finalNotes.slice(0, MAX_EMBED_FIELD_LENGTH),
-        inline: false,
-      },
-    ],
-    footer: {
-      text: `Réunion Famille • Membres: ${params.rows.length}`,
-    },
-    timestamp: new Date(),
-  };
-}
+import {
+  resolveMeetingDecisionCode,
+  decisionToSanctionType,
+  isPromotionDecision,
+} from "@/lib/staff/meetings/finalize/decision-codes";
+import {
+  normalizeMeetingTargetGrade,
+  findRoleIdForGradeLabel,
+} from "@/lib/staff/meetings/finalize/target-grade";
+import {
+  findMissingPromotionTargets,
+  buildPromotionDecisionMap,
+} from "@/lib/staff/meetings/finalize/validate";
 
 /**
  * POST /api/staff/meetings/[id]/finalize
- * Finalize meeting and apply all decisions
+ *
+ * Finalise une réunion :
+ *   1. Applique les promotions (UP / DOUBLE_UP) → grade member + roles Discord
+ *   2. Crée les sanctions (DEMOTE / BLACKLIST / RESERVISTE / AVERT_*) +
+ *      enqueue SANCTION_APPLY outbox
+ *   3. Retire le rôle "En test" si REMOVE_TEST_RANK
+ *   4. Marque le meeting FINAL + audit log + metric
+ *
+ * Logique métier (Prisma writes + outbox enqueues) GARDÉE INLINE :
+ * critique, tout changement = risque. Seules les fonctions PURES sont
+ * extraites dans src/lib/staff/meetings/finalize/.
+ *
+ * Refactor Lot 9 : 684 → ~410 lignes. Aucun changement de comportement.
  */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Check feature flag
+  // Feature flag
   const featureCheck = await requireMeetingsEnabled("finalize");
   if (!featureCheck.allowed) {
     console.log("[finalize] feature flag blocked:", featureCheck.response.status);
     return featureCheck.response;
   }
 
-  // Only chef can finalize
+  // Auth chef uniquement
   const guard = await requireChef();
   if (guard instanceof Response) {
     console.log("[finalize] requireChef blocked:", guard.status);
@@ -232,17 +71,13 @@ export async function POST(
   const userDiscordId = (session as any)?.discordId ?? (session?.user as any)?.discordId ?? null;
 
   const { id: meetingId } = await params;
-
   const meetingMarker = `[meeting:${meetingId}]`;
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
 
-  // Get meeting with rows
+  // Charger le meeting + ses rows et decisions
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    include: {
-      decisions: true,
-      rows: true,
-    },
+    include: { decisions: true, rows: true },
   });
 
   if (!meeting) {
@@ -276,33 +111,18 @@ export async function POST(
     errors: [] as Array<{ memberDiscordId: string; error: string }>,
   };
 
-  const promotionDecisionByDiscordId = new Map(
-    meeting.decisions
-      .filter(
-        (decision) =>
-          typeof decision.memberDiscordId === "string" &&
-          decision.memberDiscordId.trim() !== ""
-      )
-      .map((decision) => [decision.memberDiscordId, decision])
+  // ── Validation TARGET_GRADE_REQUIRED ───────────────────────────────
+  const promotionDecisionByDiscordId = buildPromotionDecisionMap(meeting.decisions);
+  const missingPromotionTargets = findMissingPromotionTargets(
+    meeting.rows,
+    promotionDecisionByDiscordId
   );
-  const missingPromotionTargets = meeting.rows
-    .filter((row) => {
-      const businessDecision = resolveMeetingDecisionCode(row);
-      return businessDecision === "UP" || businessDecision === "DOUBLE_UP";
-    })
-    .map((row) => {
-      const memberDiscordId = String(row.discordIdSnapshot ?? "").trim();
-      const decision = memberDiscordId ? promotionDecisionByDiscordId.get(memberDiscordId) : null;
-      const targetGrade = normalizeMeetingTargetGrade(decision?.newGrade ?? null);
-      return {
-        memberDiscordId: memberDiscordId || "unknown",
-        memberName: row.rpNameSnapshot,
-        targetGrade,
-      };
-    })
-    .filter((item) => !item.targetGrade);
 
-  console.log("[finalize] missingPromotionTargets:", missingPromotionTargets.length, JSON.stringify(missingPromotionTargets));
+  console.log(
+    "[finalize] missingPromotionTargets:",
+    missingPromotionTargets.length,
+    JSON.stringify(missingPromotionTargets)
+  );
   if (missingPromotionTargets.length > 0) {
     return NextResponse.json(
       {
@@ -316,18 +136,16 @@ export async function POST(
   }
 
   const GUILD_ID = process.env.DISCORD_GUILD_ID ?? "";
+  const EN_TEST_ROLE_ID = "1312845999340781643";
 
+  // ── Main loop : appliquer les décisions row par row ────────────────
   for (const row of meeting.rows) {
     try {
-      // Use resolveMeetingDecisionCode so decisions stored only as decisionType enum
-      // (legacy path or direct DB writes) are also processed correctly.
       const rawDecision = resolveMeetingDecisionCode(row);
       const memberDiscordId = String(row.discordIdSnapshot ?? "").trim();
 
-      // ─── Retirer rang En test ─────────────────────────────────
+      // ── REMOVE_TEST_RANK ────────────────────────────────────────────
       if (rawDecision === "REMOVE_TEST_RANK") {
-        const EN_TEST_ROLE_ID = "1312845999340781643";
-
         if (GUILD_ID && memberDiscordId) {
           await enqueueRemoveRole({
             familyId: familyDbId,
@@ -339,13 +157,15 @@ export async function POST(
             meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
           });
         }
-
         results.kept++;
         continue;
       }
 
-      if (rawDecision === "UP" || rawDecision === "DOUBLE_UP") {
-        const promotionDecision = memberDiscordId ? promotionDecisionByDiscordId.get(memberDiscordId) : null;
+      // ── UP / DOUBLE_UP : promotion ──────────────────────────────────
+      if (isPromotionDecision(rawDecision)) {
+        const promotionDecision = memberDiscordId
+          ? promotionDecisionByDiscordId.get(memberDiscordId)
+          : null;
         const targetGrade = normalizeMeetingTargetGrade(promotionDecision?.newGrade ?? null);
 
         if (!targetGrade) {
@@ -359,10 +179,7 @@ export async function POST(
         const member = await prisma.member.findFirst({
           where: row.memberId
             ? { id: row.memberId, familyId: familyDbId }
-            : {
-                familyId: familyDbId,
-                discordId: memberDiscordId || undefined,
-              },
+            : { familyId: familyDbId, discordId: memberDiscordId || undefined },
         });
 
         if (!member || !member.discordId) {
@@ -373,8 +190,9 @@ export async function POST(
           continue;
         }
 
-        const targetRoleId = RANK_ROLE_ID_BY_LABEL.get(targetGrade.toLowerCase()) ?? null;
-        const targetGradeLevel = getRankGradeLevel(targetGrade, targetRoleId) || member.gradeLevel;
+        const targetRoleId = findRoleIdForGradeLabel(targetGrade);
+        const targetGradeLevel =
+          getRankGradeLevel(targetGrade, targetRoleId) || member.gradeLevel;
 
         await prisma.member.update({
           where: { id: member.id },
@@ -403,13 +221,11 @@ export async function POST(
         if (row.id) {
           await prisma.meetingRow.update({
             where: { id: row.id },
-            data: {
-              gradeSnapshot: targetGrade,
-            },
+            data: { gradeSnapshot: targetGrade },
           });
         }
 
-        // Apply Discord role change for the promotion.
+        // Enqueue Discord role changes pour la promotion
         if (GUILD_ID && targetRoleId && member.discordId) {
           await enqueueAssignRole({
             familyId: familyDbId,
@@ -421,18 +237,16 @@ export async function POST(
             meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
           });
 
-          // Collecter TOUS les anciens rôles de grade à retirer.
-          // Priorité : discordRoleIds (source de vérité Discord) + champs legacy DB.
+          // Collecter les anciens rôles de grade à retirer (priorité
+          // discordRoleIds source de vérité Discord + champs legacy DB).
           const ALL_RANK_ROLE_IDS = new Set(Object.keys(GRADE_LABEL_BY_ROLE_ID));
           const roleIdsToRemove = new Set<string>();
 
-          // 1. Champs legacy DB (roleDiscordId / rankRoleId)
           const legacyOld = member.roleDiscordId ?? member.rankRoleId ?? null;
           if (legacyOld && legacyOld !== targetRoleId) {
             roleIdsToRemove.add(legacyOld);
           }
 
-          // 2. Rôles Discord actuels du membre (le plus fiable)
           if (Array.isArray(member.discordRoleIds)) {
             for (const rid of member.discordRoleIds) {
               if (rid !== targetRoleId && ALL_RANK_ROLE_IDS.has(rid)) {
@@ -453,10 +267,10 @@ export async function POST(
             });
           }
 
-          // Si le membre avait le rôle "En test", le retirer automatiquement lors d'un UP
-          const EN_TEST_ROLE_ID = "1312845999340781643";
+          // Si "En test" présent → retrait automatique lors d'un UP
           const hasTestRole =
-            Array.isArray(member.discordRoleIds) && member.discordRoleIds.includes(EN_TEST_ROLE_ID);
+            Array.isArray(member.discordRoleIds) &&
+            member.discordRoleIds.includes(EN_TEST_ROLE_ID);
           if (hasTestRole) {
             await enqueueRemoveRole({
               familyId: familyDbId,
@@ -474,17 +288,12 @@ export async function POST(
         continue;
       }
 
-      // EXCLUDE has no Prisma SanctionType entry and the worker doesn't handle it.
-      // resolveMeetingDecisionCode may return "EXCLUSION" (from decisionType enum) or "EXCLUDE"
-      // (from sanctionType string) — both map to BLACKLIST.
-      const effectiveDecision =
-        rawDecision === "EXCLUDE" || rawDecision === "EXCLUSION" ? "BLACKLIST" : rawDecision;
-
-      const sanctionType = SANCTION_TYPES.includes(effectiveDecision as SanctionType)
-        ? (effectiveDecision as SanctionType)
-        : null;
+      // ── Sanctions (DEMOTE / BLACKLIST / RESERVISTE / AVERT_*) ───────
+      // EXCLUDE / EXCLUSION → BLACKLIST (cf decisionToSanctionType).
+      const sanctionType = decisionToSanctionType(rawDecision);
 
       if (!sanctionType) {
+        // Décision non sanctionnable (MAINTAIN, WEEK_*, etc.) — on n'enqueue rien
         results.kept++;
         continue;
       }
@@ -492,10 +301,7 @@ export async function POST(
       const member = await prisma.member.findFirst({
         where: row.memberId
           ? { id: row.memberId, familyId: familyDbId }
-          : {
-              familyId: familyDbId,
-              discordId: memberDiscordId || undefined,
-            },
+          : { familyId: familyDbId, discordId: memberDiscordId || undefined },
       });
 
       if (!member || !member.discordId) {
@@ -530,7 +336,9 @@ export async function POST(
         }
 
         const startAt = new Date();
-        const reason = String(row.sanctionReason ?? "").trim() || `Sanction réunion - ${meeting.title ?? meeting.weekKey}`;
+        const reason =
+          String(row.sanctionReason ?? "").trim() ||
+          `Sanction réunion - ${meeting.title ?? meeting.weekKey}`;
 
         const sanction = await prisma.sanction.create({
           data: {
@@ -588,9 +396,7 @@ export async function POST(
       if (row.id) {
         await prisma.meetingRow.update({
           where: { id: row.id },
-          data: {
-            sanctionReason: row.sanctionReason ?? null,
-          },
+          data: { sanctionReason: row.sanctionReason ?? null },
         });
       }
     } catch (err: any) {
@@ -601,11 +407,13 @@ export async function POST(
     }
   }
 
+  // ── Marquer les decisions appliquées ────────────────────────────────
   await prisma.meetingDecision.updateMany({
     where: { meetingId, appliedAt: null },
     data: { appliedAt: new Date() },
   });
 
+  // ── Recalcul du summary final ───────────────────────────────────────
   const refreshedRows = await prisma.meetingRow.findMany({
     where: { meetingId },
     orderBy: { sortOrder: "asc" },
@@ -629,7 +437,7 @@ export async function POST(
     },
   });
 
-  // Audit log
+  // ── Audit log ───────────────────────────────────────────────────────
   await prisma.auditLog.create({
     data: {
       familyId: DEFAULT_FAMILY_ID,
@@ -653,7 +461,7 @@ export async function POST(
     },
   });
 
-  // Record metric
+  // ── Metric ──────────────────────────────────────────────────────────
   recordPanelMetric("meeting.finalize", meetingId, {
     promoted: results.promoted,
     applied: results.applied,
