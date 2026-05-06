@@ -52,6 +52,16 @@ Code complet, refondu au design system en Lot 1, **mais** `app/staff/complaints-
 
 Conservé car la page détail `/staff/complaints-tickets/[ticketKey]/...` reste linkée depuis Discord. À nettoyer dans un lot dette dédié si confirmation que rien ne pointe vers la liste racine.
 
+## Variables d'env (référence)
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `INGEST_SECRET` | requis | Auth panel ↔ worker (header `x-ingest-secret`) |
+| `CRON_SECRET` | requis | Auth des routes `/api/cron/*` (Bearer ou ?secret=) |
+| `DISCORD_ALERT_WEBHOOK_URL` | vide | Webhook salon staff-alerts. Vide = log JSON only (fallback) |
+| `SENTRY_DSN` (worker) | vide | Sentry worker. Vide = init no-op |
+| `MEMORY_WATCH_MB` | `600` | Seuil au-dessus duquel le watchdog cron alerte panel/worker (lot 6 hotfix) |
+
 ## Helpers centralisés (lot 5)
 
 - `formatAppDate(input)` — DD/MM/YYYY HH:MM (Bruxelles)

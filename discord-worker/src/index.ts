@@ -583,11 +583,14 @@ client.once("ready", async () => {
     // Schedule periodic sync
     setInterval(() => runBanklogsAutoSyncJob(), banklogsIntervalMs);
 
-    // Health check: warn if auto-sync appears stalled
+    // Health check: warn if auto-sync appears stalled.
+    // Seuil adaptatif (avant : 120_000 ms hardcodés → bruit énorme car le sync
+    // tourne toutes les 5 min, donc l'âge dépasse 2 min normalement entre runs).
+    // intervalMs * 2 = stalled vraiment détecté seulement si on rate 2 cycles complets.
     setInterval(() => {
       const lastRun = getLastBanklogsAutoSyncAt();
       if (!lastRun) return;
-      const isStalled = Date.now() - lastRun > 120_000;
+      const isStalled = Date.now() - lastRun > banklogsIntervalMs * 2;
       if (isStalled) console.warn("[BANKLOGS_AUTO_SYNC] not running or stalled");
       trackStall("banklogs", isStalled, { lastRunIso: new Date(lastRun).toISOString() });
     }, 60_000);
