@@ -16,6 +16,10 @@ import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
 
 export function buildDisplayableMemberSql(): Prisma.Sql {
+  // Note : les "extra members" (Nutella, etc.) NE sont PAS exclus ici. On
+  // veut qu'ils apparaissent dans /staff/banklogs (vue staff des banklogs).
+  // L'exclusion s'applique uniquement aux workflows playtime/sanctions/
+  // warns/meetings via `flags.isExtraMember` côté JS.
   return Prisma.sql`
     (
       m."id" IS NULL

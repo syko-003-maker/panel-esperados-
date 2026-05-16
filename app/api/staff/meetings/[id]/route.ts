@@ -11,8 +11,9 @@ import {
   DEFAULT_MEETING_FAMILY_ID,
   isMeetingLocked,
   mapStoredMeetingDecisionToBusinessDecision,
+  MEETING_PLAYTIME_THRESHOLD_MINUTES,
 } from "@/lib/meetings";
-import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
+import { isStaffMeetingScopeMember, getMemberScopeFlags } from "@/lib/staff/member-scope";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
 import { resolveAvatarHashByDiscordId } from "@/lib/discord/avatar-hash-resolver";
 
@@ -83,6 +84,8 @@ function getSanctionTypeLabel(type: string | null | undefined) {
       return "Avertissement leger";
     case "AVERT_LOURD":
       return "Avertissement lourd";
+    case "AVERT_EM":
+      return "Averto EM";
     case "DEMOTE":
       return "Demote";
     case "BLACKLIST":
@@ -307,9 +310,27 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
   await ensureFreshFamilyPlaytime(DEFAULT_MEETING_FAMILY_ID);
 
   const familyId = await resolveFamilyId(DEFAULT_MEETING_FAMILY_ID);
+
+  // Récupère le statut + la date de la réunion pour décider si on peut
+  // encore update les playtimeMinutes / l'attendance (avant finalisation)
+  // ou si on doit figer (après).
+  const meetingMeta = await prisma.meeting.findUnique({
+    where: { id },
+    select: { status: true, meetingDate: true },
+  });
+  const meetingLocked = isMeetingLocked(meetingMeta?.status ?? null);
+  const meetingDate = meetingMeta?.meetingDate ?? null;
+
   const existingRows = await prisma.meetingRow.findMany({
     where: { meetingId: id },
-    select: { id: true, memberId: true, discordIdSnapshot: true, playtimeMinutes: true, updatedAt: true },
+    select: {
+      id: true,
+      memberId: true,
+      discordIdSnapshot: true,
+      playtimeMinutes: true,
+      attendanceStatus: true,
+      updatedAt: true,
+    },
   });
 
   const members = await prisma.member.findMany({
@@ -332,7 +353,9 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
     orderBy: { rpName: "asc" },
   });
 
-  const activeMembers = members.filter(isActiveMembersScopeMember);
+  // Filtre meeting-specific : exclut les "extra members" (Nutella, etc.)
+  // en plus des règles d'inventaire générales (actif + linké + non démote/BL/RES).
+  const activeMembers = members.filter(isStaffMeetingScopeMember);
 
   // Build active identity sets — used by buildMeetingDetail to filter visible rows
   const activeMemberIds = new Set(
@@ -385,18 +408,156 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
       .map((member) => [member.discordId as string, member])
   );
 
-  const rowsNeedingPlaytime = existingRows.filter((row) => row.playtimeMinutes <= 0);
-  for (const row of rowsNeedingPlaytime) {
-    const member =
-      (row.memberId ? memberById.get(row.memberId) : null) ??
-      (row.discordIdSnapshot ? memberByDiscordId.get(row.discordIdSnapshot) : null);
-    const nextPlaytime = typeof member?.playtime7d === "number" ? Math.max(0, Math.round(member.playtime7d)) : 0;
-    if (nextPlaytime <= 0) continue;
+  // Sync playtime sur les rows :
+  //   - Réunion verrouillée (CLOSED/FINAL/CANCELED) → on touche à RIEN, snapshot historique préservé
+  //   - Réunion en cours (DRAFT/IN_PROGRESS)        → update si playtime live > playtime actuel
+  //
+  // L'anti-régression (Math.max) sert deux cas :
+  //   1. Le staff peut éditer manuellement playtimeMinutes à une valeur plus
+  //      haute via PATCH /row → on ne veut pas écraser cet override.
+  //   2. LYG reset le compteur en début de semaine (lundi 00:00 Brussels) → si
+  //      la réunion couvre ce reset, on garde la valeur la plus haute observée
+  //      au lieu de retomber à 0.
+  if (!meetingLocked) {
+    for (const row of existingRows) {
+      const member =
+        (row.memberId ? memberById.get(row.memberId) : null) ??
+        (row.discordIdSnapshot ? memberByDiscordId.get(row.discordIdSnapshot) : null);
+      const livePlaytime =
+        typeof member?.playtime7d === "number" ? Math.max(0, Math.round(member.playtime7d)) : 0;
+      if (livePlaytime <= row.playtimeMinutes) continue; // pas de régression, pas d'écrasement
 
-    await prisma.meetingRow.update({
-      where: { id: row.id },
-      data: { playtimeMinutes: nextPlaytime },
+      await prisma.meetingRow.update({
+        where: { id: row.id },
+        data: { playtimeMinutes: livePlaytime },
+      });
+    }
+  }
+
+  // Auto-attendance complet (tant que la meeting n'est pas verrouillée) :
+  //   - Absence APPROVED couvre meetingDate     → JUSTIFIED
+  //   - Sinon, playtime ≥ MEETING_THRESHOLD_MIN → PRESENT
+  //   - Sinon                                   → ABSENT
+  //
+  // Le staff n'a plus à juger manuellement : la feuille reflète la réalité
+  // (absences validées + playtime live) en continu jusqu'à la finalisation.
+  // À la finalisation (status CLOSED/FINAL/CANCELED), le snapshot est figé.
+  //
+  // Note (override staff) : on remplace toujours par la valeur calculée
+  // automatiquement. Si un staff édite manuellement la row, sa modification
+  // sera écrasée au prochain load — c'est volontaire (demande explicite :
+  // « le staff n'a pas à réfléchir »). Pour décider en réunion, le staff
+  // utilise les colonnes Décision / Note, pas la colonne Présence.
+  if (!meetingLocked && meetingDate) {
+    const allMemberIds = existingRows
+      .map((r) => r.memberId)
+      .filter((v): v is string => typeof v === "string" && v.trim() !== "");
+    const allDiscordIds = existingRows
+      .map((r) => r.discordIdSnapshot)
+      .filter((v): v is string => typeof v === "string" && v.trim() !== "");
+
+    let justifiedMemberIds = new Set<string>();
+    let justifiedDiscordIds = new Set<string>();
+
+    if (allMemberIds.length > 0 || allDiscordIds.length > 0) {
+      const approvedAbsences = await prisma.absence.findMany({
+        where: {
+          familyId,
+          status: "APPROVED",
+          startAt: { lte: meetingDate },
+          endAt: { gte: meetingDate },
+          OR: [
+            ...(allMemberIds.length > 0 ? [{ memberId: { in: allMemberIds } }] : []),
+            ...(allDiscordIds.length > 0 ? [{ discordId: { in: allDiscordIds } }] : []),
+          ],
+        },
+        select: { memberId: true, discordId: true },
+      });
+
+      justifiedMemberIds = new Set(
+        approvedAbsences
+          .map((a) => a.memberId)
+          .filter((v): v is string => typeof v === "string" && v.trim() !== "")
+      );
+      justifiedDiscordIds = new Set(
+        approvedAbsences
+          .map((a) => a.discordId)
+          .filter((v): v is string => typeof v === "string" && v.trim() !== "")
+      );
+    }
+
+    // On relit les rows pour avoir les playtimeMinutes potentiellement
+    // mis à jour juste avant. Les selects précédents donnent l'état avant
+    // sync ; ici on veut la valeur cohérente la plus à jour.
+    const rowsForAttendance = await prisma.meetingRow.findMany({
+      where: { meetingId: id },
+      select: { id: true, memberId: true, discordIdSnapshot: true, playtimeMinutes: true, attendanceStatus: true, staffNote: true },
     });
+
+    // Détection Chef Famille / Sous Chef Famille : ils sont exclus du suivi
+    // playtime, donc on ne les marque jamais ABSENT auto. Une absence approuvée
+    // les met en JUSTIFIED, sinon ils restent en NOT_CONCERNED.
+    const chefMemberIds = new Set<string>();
+    const chefDiscordIds = new Set<string>();
+    for (const m of members) {
+      const flags = getMemberScopeFlags(m);
+      if (flags.isChefExempt) {
+        if (m.id) chefMemberIds.add(m.id);
+        if (m.discordId) chefDiscordIds.add(m.discordId);
+      }
+    }
+
+    for (const row of rowsForAttendance) {
+      const isJustified =
+        (row.memberId && justifiedMemberIds.has(row.memberId)) ||
+        (row.discordIdSnapshot && justifiedDiscordIds.has(row.discordIdSnapshot));
+      const isChefExempt =
+        (row.memberId && chefMemberIds.has(row.memberId)) ||
+        (row.discordIdSnapshot && chefDiscordIds.has(row.discordIdSnapshot));
+
+      // Calcul du statut auto :
+      //   1. Absence approuvée   → JUSTIFIED (toujours, même pour les chefs)
+      //   2. Chef/Sous-Chef      → PRESENT (exclus du playtime, considérés présents par défaut)
+      //   3. Playtime ≥ seuil    → PRESENT
+      //   4. Sinon               → ABSENT
+      let nextStatus: "PRESENT" | "ABSENT" | "JUSTIFIED";
+      if (isJustified) {
+        nextStatus = "JUSTIFIED";
+      } else if (isChefExempt) {
+        nextStatus = "PRESENT";
+      } else if (row.playtimeMinutes >= MEETING_PLAYTIME_THRESHOLD_MINUTES) {
+        nextStatus = "PRESENT";
+      } else {
+        nextStatus = "ABSENT";
+      }
+
+      // Note : on n'écrit une note auto QUE pour JUSTIFIED. Pour PRESENT /
+      // ABSENT / NOT_CONCERNED on n'ajoute aucune note (la colonne reste
+      // libre pour les commentaires staff).
+      const autoNote = nextStatus === "JUSTIFIED" ? "Absence approuvée : présence justifiée" : "";
+      const currentNote = String(row.staffNote ?? "").trim();
+      // Note "auto" = vide OU note historique générée par l'ancien code.
+      // On les écrase / vide ; on préserve toute autre note staff custom.
+      const isAutoNote =
+        currentNote === "" ||
+        currentNote.startsWith("Absence approuvée") ||
+        currentNote.startsWith("Playtime validé") ||
+        currentNote.startsWith("Playtime insuffisant");
+
+      // Idempotence : ne pas update si rien ne change.
+      const sameStatus = row.attendanceStatus === nextStatus;
+      const noteAlreadyCorrect = !isAutoNote || currentNote === autoNote;
+      if (sameStatus && noteAlreadyCorrect) continue;
+
+      await prisma.meetingRow.update({
+        where: { id: row.id },
+        data: {
+          attendanceStatus: nextStatus,
+          isJustified: nextStatus === "JUSTIFIED",
+          ...(isAutoNote ? { staffNote: autoNote } : {}),
+        },
+      });
+    }
   }
 
   return { activeMemberIds, activeDiscordIds };

@@ -72,13 +72,6 @@ let guildMembersInflightRequests = new Map<string, Promise<Map<string, string[]>
 // Prevent Discord API calls ONLY during actual build phase
 // Do NOT skip during runtime even if missing BOT_TOKEN - let it fail gracefully
 const isBuildTime = process.env.NEXT_PHASE === "phase-production-build";
-const DENIS_DEBUG_DISCORD_ID = "408937062838829056";
-
-function logTargetDiscordRoles(discordId: string, roles: string[], error?: DiscordRoleResult["error"]): void {
-  if (discordId !== DENIS_DEBUG_DISCORD_ID) return;
-  console.log({ discordId, roles, error: error ?? null });
-}
-
 export function isValidRoleId(value?: string | null): boolean {
   return typeof value === "string" && ROLE_ID_REGEX.test(value.trim());
 }
@@ -281,7 +274,6 @@ export async function getDiscordRolesForUserWithStatus(
   // Skip API calls during build time
   if (isBuildTime) {
     const result: DiscordRoleResult = { roles: [] };
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
@@ -291,7 +283,6 @@ export async function getDiscordRolesForUserWithStatus(
   if (!discordId) {
     warn("[discord-roles] Missing discordId", { discordId });
     const result: DiscordRoleResult = { roles: [], error: "CONFIG_MISSING" };
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
@@ -302,14 +293,12 @@ export async function getDiscordRolesForUserWithStatus(
       envGuildIdValue: process.env.DISCORD_GUILD_ID?.substring(0, 4) + "..." // Log prefix for privacy
     });
     const result: DiscordRoleResult = { roles: [], error: "CONFIG_MISSING" };
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
   if (!DISCORD_BOT_TOKEN) {
     error("[discord-roles] Missing DISCORD_BOT_TOKEN - cannot fetch Discord roles", { discordId });
     const result: DiscordRoleResult = { roles: [], error: "CONFIG_MISSING" };
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
@@ -321,7 +310,6 @@ export async function getDiscordRolesForUserWithStatus(
   if (cached && cached.expiresAt > now) {
     debug("[discord-roles] cache_hit", { discordId, ttlRemaining: cached.expiresAt - now });
     const result: DiscordRoleResult = { roles: cached.roles };
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
@@ -329,7 +317,6 @@ export async function getDiscordRolesForUserWithStatus(
   if (cooldown && cooldown > now) {
     debug("[discord-roles] cooldown_active", { discordId, cooldownRemaining: cooldown - now });
     const result: DiscordRoleResult = cached ? { roles: cached.roles } : { roles: [], error: "UNAVAILABLE" };
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
@@ -338,7 +325,6 @@ export async function getDiscordRolesForUserWithStatus(
   if (inflight) {
     debug("[discord-roles] inflight_join", { discordId });
     const result = await inflight;
-    logTargetDiscordRoles(discordId, result.roles, result.error);
     return result;
   }
 
@@ -437,7 +423,6 @@ export async function getDiscordRolesForUserWithStatus(
   inflightRequests.set(cacheKey, fetchPromise);
   
   const result = await fetchPromise;
-  logTargetDiscordRoles(discordId, result.roles, result.error);
   return result;
 }
 

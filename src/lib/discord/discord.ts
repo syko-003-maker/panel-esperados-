@@ -112,6 +112,32 @@ export async function enqueueMessage(params: {
   });
 }
 
+/**
+ * Enqueue la suppression d'un message Discord déjà posté.
+ * Le worker récupère le job DELETE_MESSAGE et appelle channel.messages.delete().
+ * Idempotent : skipDuplicates sur (familyId, channelId, entityId, messageId).
+ */
+export async function enqueueDeleteMessage(params: {
+  familyId: string;
+  channelId: string;
+  messageId: string;
+  entity?: string | null;
+  entityId?: string | null;
+}) {
+  return prisma.discordOutbox.create({
+    data: {
+      familyId: params.familyId,
+      type: "DELETE_MESSAGE",
+      status: "PENDING",
+      channelId: params.channelId,
+      content: "",
+      entity: params.entity ?? null,
+      entityId: params.entityId ?? null,
+      meta: { messageId: params.messageId },
+    },
+  });
+}
+
 export async function enqueueEmbedMessage(params: {
   familyId: string;
   channelId: string;

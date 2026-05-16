@@ -16,9 +16,12 @@ import {
 } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 
-const LOGS_CHANNEL_ID  = "1312846003627622522";
-const CITOYEN_ROLE_ID  = "1337795596739940372";
-const BLACKLIST_ROLE_ID = "1338901141873758288";
+const LOGS_CHANNEL_ID    = "1312846003627622522";
+const WELCOME_CHANNEL_ID = "1336727638227685426"; // 🎉 Bienvenue publique
+const RULES_CHANNEL_ID   = "1312846003358924875"; // 📜 Règlement
+const CONTACT_CHANNEL_ID = "1312846003627622524"; // 📬 Contact / recrutement
+const CITOYEN_ROLE_ID    = "1337795596739940372";
+const BLACKLIST_ROLE_ID  = "1338901141873758288";
 
 const prisma = new PrismaClient();
 
@@ -65,6 +68,63 @@ export async function sendLog(guild: Guild, embed: EmbedBuilder): Promise<void> 
     await channel.send({ embeds: [embed] });
   } catch (err) {
     console.error("[Logs] Erreur envoi :", err);
+  }
+}
+
+/**
+ * Envoie un message de bienvenue public dans le channel #bienvenue.
+ * Mentionne le membre + embed avec sa photo de profil + nb membres total.
+ */
+async function sendWelcomeMessage(member: GuildMember): Promise<void> {
+  try {
+    const channel = (await logsClient!.channels.fetch(WELCOME_CHANNEL_ID)) as TextChannel | null;
+    if (!channel || !channel.isTextBased()) {
+      console.warn("[Welcome] Channel introuvable ou non-textuel :", WELCOME_CHANNEL_ID);
+      return;
+    }
+
+    // Cherche un nom humain dans cet ordre : nickname serveur → global_name
+    // Discord → username (handle) → display name (peut être l'ID si le compte
+    // est désactivé/supprimé). Si tout est numérique (cas Discord delete user),
+    // on tombe sur "Nouveau membre" pour ne pas afficher une suite de chiffres.
+    const isJustDigits = (s: string | null | undefined) => /^\d{15,25}$/.test((s ?? "").trim());
+    const candidates = [
+      member.nickname,
+      member.user.globalName,
+      member.user.username,
+      member.displayName,
+    ];
+    let displayName = "Nouveau membre";
+    for (const c of candidates) {
+      const v = (c ?? "").trim();
+      if (v && !isJustDigits(v)) { displayName = v; break; }
+    }
+    const avatarUrl = member.user.displayAvatarURL({ size: 256, extension: "png" });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b2335) // bordeaux Los Esperados
+      .setAuthor({ name: "🎉 Un nouveau membre rejoint la famille !" })
+      .setTitle(`Bienvenue ${displayName} !`)
+      .setDescription(
+        [
+          `Salut <@${member.id}>, content de te voir parmi nous sur **Los Esperados** 🌵`,
+          ``,
+          `📜 N'oublie pas de lire le règlement → <#${RULES_CHANNEL_ID}>`,
+          `📬 Si tu souhaites rentrer en contact avec nous ou te faire recruter → <#${CONTACT_CHANNEL_ID}>`,
+        ].join("\n"),
+      )
+      .setThumbnail(avatarUrl)
+      .addFields({ name: "👤 Pseudo", value: displayName, inline: true })
+      .setFooter({ text: "Los Esperados • Discord LYG" })
+      .setTimestamp();
+
+    await channel.send({
+      content: `🎉 <@${member.id}> 🎉`,
+      embeds: [embed],
+      allowedMentions: { users: [member.id] },
+    });
+  } catch (err) {
+    console.error("[Welcome] Erreur envoi message bienvenue :", err);
   }
 }
 
@@ -145,6 +205,12 @@ export async function onMemberJoin(member: GuildMember): Promise<void> {
     .setTimestamp();
 
   sendLog(member.guild, embed);
+
+  // Message de bienvenue public — uniquement si NON blacklisté.
+  // (On ne souhaite pas la bienvenue à quelqu'un qu'on vient de re-banner.)
+  if (!isBlacklisted) {
+    await sendWelcomeMessage(member);
+  }
 }
 
 // ─── Membre parti / kick ─────────────────────────────────────────────────────

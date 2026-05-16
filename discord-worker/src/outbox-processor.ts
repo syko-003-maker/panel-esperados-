@@ -13,6 +13,7 @@ const SANCTION_LABELS: Record<string, string> = {
   AVERT_ORAL_REUNION: "Averto réunion",
   AVERT_LEGER: "Averto léger",
   AVERT_LOURD: "Averto lourd",
+  AVERT_EM: "Averto EM",
   DEMOTE: "Démote",
   RESERVISTE: "Réserviste",
   BLACKLIST: "Blacklist",
@@ -58,6 +59,7 @@ const SANCTION_ROLE_IDS = {
   AVERT_ORAL_REUNION: "1343272736331665500",
   AVERT_LEGER: "1312845999340781640",
   AVERT_LOURD: "1312845999340781641",
+  AVERT_EM: "1328483783426572428",
   DEMOTE_ROLE_ID: "1340837563753304075",
   RESERVISTE_ROLE_ID: "1312845999366209682",
   BLACKLIST_ROLE_ID: "1338901141873758288",
@@ -217,6 +219,20 @@ async function updateSanctionApplyState(
   });
 }
 
+/**
+ * Marque la sanction comme totalement traitée (discordStatus + discordAppliedAt)
+ * et renvoie true SI ET SEULEMENT SI c'est la PREMIÈRE fois.
+ *
+ * Bug fix critique : auparavant le test de dedup utilisait `discordStatus != APPLIED`,
+ * ce qui était cassé par le endpoint /api/staff/sanctions/[id]/force-applied qui
+ * positionne discordStatus="APPLIED" SANS positionner discordAppliedAt. Conséquence :
+ * si force-applied était appelé pendant que le worker traitait la sanction (race
+ * de quelques secondes), `markSanctionAppliedOnce` renvoyait false → notification
+ * Discord SKIPPÉE → annonce de sanction jamais postée.
+ *
+ * Désormais on dedup sur `discordAppliedAt = null` (vraiment "pas encore notifié")
+ * plutôt que sur le status, ce qui survit aux interventions force-applied.
+ */
 async function markSanctionAppliedOnce(
   prisma: PrismaClient,
   sanctionId: string
@@ -224,7 +240,7 @@ async function markSanctionAppliedOnce(
   const result = await prisma.sanction.updateMany({
     where: {
       id: sanctionId,
-      discordStatus: { not: "APPLIED" },
+      discordAppliedAt: null,
     },
     data: {
       discordStatus: "APPLIED",
@@ -826,6 +842,7 @@ async function handleSanctionApply(
       expiresAt: true,
       startAt: true,
       discordStatus: true,
+      discordAppliedAt: true,
       discordId: true,
       member: { select: { discordId: true, rpName: true } },
       createdBy: { select: { name: true } },
@@ -836,7 +853,11 @@ async function handleSanctionApply(
     throw new Error(`Sanction ${sanctionId} not found`);
   }
 
-  if (sanction.discordStatus === "APPLIED") {
+  // On considère qu'une sanction est "déjà totalement traitée" SI l'horodatage
+  // discordAppliedAt est posé (= notification déjà envoyée). discordStatus seul
+  // ne suffit pas car force-applied le positionne sans poser discordAppliedAt
+  // — dans ce cas on veut quand même tenter d'appliquer les rôles + notifier.
+  if (sanction.discordAppliedAt) {
     log("sanction_apply_skip_already_applied", { sanctionId: sanction.id });
     return;
   }
@@ -852,10 +873,16 @@ async function handleSanctionApply(
     sanctionType,
   });
   const { guild, member, discordId } = await fetchGuildMember(job, discordClient, "sanction_apply");
+  // Bug fix : le worker throwait dès que `member` était null (membre parti
+  // de la guild → Discord error 10007). L'embed d'annonce de sanction ne
+  // partait alors jamais. Désormais, si le membre n'est pas dans la guild,
+  // on envoie quand même l'embed (l'annonce publique reste pertinente) et
+  // on marque APPLIED — le rôle Discord est de toute façon impossible à
+  // appliquer sur un user qui a quitté.
   const memberName =
     sanction.member?.rpName?.trim() ||
     (typeof job.meta?.memberName === "string" ? job.meta.memberName.trim() : "") ||
-    member.displayName ||
+    (member?.displayName as string | undefined) ||
     "Unknown";
   const reason = typeof job.meta?.reason === "string" ? job.meta.reason : sanction.reason;
   const durationHours =
@@ -945,14 +972,77 @@ async function handleSanctionApply(
   const staffDisplayName = staffMemberRpName ?? staffRpName ?? staffName ?? "Inconnu";
 
   if (!member) {
-    throw new Error(`Member ${discordId} not found in guild (error code 10007)`);
+    // Membre parti de la guild → on ne peut pas appliquer le rôle Discord,
+    // mais on envoie quand même l'embed d'annonce (objectif principal :
+    // informer la communauté que la sanction est tombée). markSanction-
+    // AppliedOnce dédup l'embed sur retry et stoppe la chaîne.
+    const newlyApplied = await markSanctionAppliedOnce(prisma, sanction.id);
+    if (!newlyApplied) {
+      log("sanction_apply_skip_duplicate_notification", {
+        sanctionId: sanction.id,
+        jobId: job.id,
+        memberDiscordId: discordId,
+        reason: "member_not_in_guild_already_notified",
+      });
+      return;
+    }
+
+    try {
+      await sendSanctionAppliedNotification(discordClient, {
+        discordId,
+        guildId: getGuildId(job) ?? "",
+        sanctionType,
+        reason,
+        durationLabel,
+        staffDisplayName,
+        memberRpName: memberName,
+        sanctionId: sanction.id,
+        startAt: sanction.startAt ?? null,
+      });
+      log("sanction_apply_notification_sent", {
+        sanctionId: sanction.id,
+        memberDiscordId: discordId,
+        channelId: SANCTION_NOTIFICATION_CHANNEL_ID,
+        memberInGuild: false,
+      });
+    } catch (notificationError) {
+      log("sanction_apply_notification_error", {
+        sanctionId: sanction.id,
+        memberDiscordId: discordId,
+        channelId: SANCTION_NOTIFICATION_CHANNEL_ID,
+        error:
+          notificationError instanceof Error ? notificationError.message : String(notificationError),
+      });
+    }
+
+    // Note informative dans discordError pour l'UI panel : la sanction
+    // est marquée APPLIED (annonce faite) mais le rôle n'a pas été posé.
+    await prisma.sanction
+      .update({
+        where: { id: sanction.id },
+        data: {
+          discordError: `Membre absent de la guild Discord (10007) — embed envoyé, rôle non appliqué.`,
+        } as any,
+      })
+      .catch(() => {
+        /* non-bloquant */
+      });
+
+    log("sanction_apply_member_not_in_guild_announced", {
+      sanctionId: sanction.id,
+      jobId: job.id,
+      memberDiscordId: discordId,
+      sanctionType,
+    });
+    return;
   }
 
   if (
     sanctionType === "AVERT_ORAL_PLAYTIME" ||
     sanctionType === "AVERT_ORAL_REUNION" ||
     sanctionType === "AVERT_LEGER" ||
-    sanctionType === "AVERT_LOURD"
+    sanctionType === "AVERT_LOURD" ||
+    sanctionType === "AVERT_EM"
   ) {
     await ensureManageRoles(member);
     const roleId = SANCTION_ROLE_IDS[sanctionType];

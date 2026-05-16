@@ -1,11 +1,51 @@
-import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
+import { ACCESS_ROLE_IDS, BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+
+/**
+ * Role Discord d'État-Major. Re-exporté ici pour les checks de scope sanction
+ * (l'AVERT_EM ne peut être appliqué qu'à un membre EM).
+ */
+export const ETAT_MAJOR_ROLE_ID = ACCESS_ROLE_IDS.ETAT_MAJOR;
+
+/**
+ * Sanctions à scope restreint : la cible doit avoir un rôle Discord spécifique.
+ * Permet d'ajouter de futures sanctions "spéciales" sans dupliquer la logique.
+ */
+const SCOPED_SANCTION_REQUIRED_ROLES: Partial<Record<string, string>> = {
+  AVERT_EM: ETAT_MAJOR_ROLE_ID, // Averto EM réservé aux membres État-Major
+};
+
+/**
+ * Renvoie le rôle Discord requis pour appliquer cette sanction, ou `null`
+ * si la sanction n'a pas de scope restreint.
+ */
+export function getRequiredTargetRoleId(type: string | null | undefined): string | null {
+  if (!type) return null;
+  return SCOPED_SANCTION_REQUIRED_ROLES[type] ?? null;
+}
+
+/**
+ * Vérifie qu'un membre (via ses discordRoleIds) est éligible à recevoir une
+ * sanction donnée. Retourne `null` si éligible, sinon un code d'erreur
+ * machine-readable pour l'API.
+ */
+export function checkSanctionTargetEligibility(
+  type: string | null | undefined,
+  memberDiscordRoleIds: string[] | null | undefined,
+): { ok: true } | { ok: false; error: string; requiredRoleId: string } {
+  const required = getRequiredTargetRoleId(type);
+  if (!required) return { ok: true };
+  const roles = Array.isArray(memberDiscordRoleIds) ? memberDiscordRoleIds : [];
+  if (roles.includes(required)) return { ok: true };
+  return { ok: false, error: "MEMBER_NOT_ELIGIBLE_FOR_SANCTION", requiredRoleId: required };
+}
 
 export const SANCTION_TYPES = [
   "AVERT_ORAL_PLAYTIME",
   "AVERT_ORAL_REUNION",
   "AVERT_LEGER",
   "AVERT_LOURD",
+  "AVERT_EM",
   "DEMOTE",
   "RESERVISTE",
   "BLACKLIST",
@@ -18,6 +58,7 @@ export const AVERT_TYPES = [
   "AVERT_ORAL_REUNION",
   "AVERT_LEGER",
   "AVERT_LOURD",
+  "AVERT_EM",
 ] as const;
 
 export const BLOCKING_SANCTION_TYPES = ["DEMOTE", "RESERVISTE", "BLACKLIST"] as const;
@@ -27,6 +68,7 @@ export const SANCTION_LABELS: Record<SanctionTypeValue, string> = {
   AVERT_ORAL_REUNION: "Averto réunion",
   AVERT_LEGER: "Averto léger",
   AVERT_LOURD: "Averto lourd",
+  AVERT_EM: "Averto EM",
   DEMOTE: "Démote",
   RESERVISTE: "Réserviste",
   BLACKLIST: "Blacklist",
@@ -37,6 +79,7 @@ export const AVERT_ROLE_IDS: Record<(typeof AVERT_TYPES)[number], string> = {
   AVERT_ORAL_REUNION: "1343272736331665500",
   AVERT_LEGER: "1312845999340781640",
   AVERT_LOURD: "1312845999340781641",
+  AVERT_EM: "1328483783426572428",
 };
 
 export function isValidSanctionType(value: string): value is SanctionTypeValue {
@@ -63,7 +106,8 @@ export function getSanctionExpirationDate(type: string, startAt: Date): Date | n
     return new Date(startAt.getTime() + 7 * 24 * 60 * 60 * 1000);
   }
 
-  if (type === "AVERT_LOURD") {
+  // AVERT_LOURD et AVERT_EM ont la même durée (2 semaines).
+  if (type === "AVERT_LOURD" || type === "AVERT_EM") {
     return new Date(startAt.getTime() + 14 * 24 * 60 * 60 * 1000);
   }
 

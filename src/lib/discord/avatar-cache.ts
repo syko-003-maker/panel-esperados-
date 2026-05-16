@@ -22,6 +22,14 @@ const cache = new Map<string, { hash: string | null; fetchedAt: number }>();
 const TTL_HIT  = 60 * 60 * 1000; // 1 h pour les vrais hashes
 const TTL_MISS = 5  * 60 * 1000; // 5 min pour "pas d'avatar sur Discord"
 
+// Suivi des derniers fetchs RÉELS via Discord API (indépendant du cache hash).
+// Sans ça, warmAvatarCache zappait les IDs déjà présents dans le cache, même
+// quand cette entrée venait de Account.user.image (potentiellement obsolète si
+// le membre n'a jamais relancé la connexion panel — ex : Marie).
+// On force ainsi un refresh Discord API toutes les TTL_HIT, même sur cache hot.
+const lastDiscordFetch = new Map<string, number>();
+const DISCORD_REFRESH_TTL = TTL_HIT; // 1 h
+
 // ---------------------------------------------------------------------------
 // Déduplication : Promise en cours par discordId
 // ---------------------------------------------------------------------------
@@ -70,9 +78,28 @@ function fetchAndCache(discordId: string, botToken: string): Promise<string | nu
   if (existing) return existing;
 
   const promise = fetchOneHash(discordId, botToken)
-    .then((hash) => {
+    .then(async (hash) => {
       inFlight.delete(discordId);
-      cache.set(discordId, { hash, fetchedAt: Date.now() });
+      const now = Date.now();
+      cache.set(discordId, { hash, fetchedAt: now });
+      // On a réellement contacté Discord → on enregistre l'horodatage pour
+      // que warmAvatarCache n'aille pas re-fetcher avant DISCORD_REFRESH_TTL.
+      lastDiscordFetch.set(discordId, now);
+
+      // Persistance DB : on stocke le hash sur Member.discordAvatarHash pour
+      // qu'il survive aux restarts panel. updateMany car un Member peut être
+      // dans plusieurs familles dans la DB legacy.
+      try {
+        await prisma.member.updateMany({
+          where: { discordId },
+          data: {
+            discordAvatarHash: hash,
+            discordAvatarFetchedAt: new Date(now),
+          },
+        });
+      } catch {
+        // Persistence non-bloquante — si DB down, on garde au moins le cache mémoire.
+      }
       return hash;
     })
     .catch(() => {
@@ -89,9 +116,22 @@ function fetchAndCache(discordId: string, botToken: string): Promise<string | nu
 // ---------------------------------------------------------------------------
 
 /**
- * Version RAPIDE : cache mémoire + Account table uniquement.
+ * Version RAPIDE : cache mémoire + DB (Member puis Account).
  * Ne fait aucun appel Discord API. Réponse en < 100 ms.
  * Retourne null pour les IDs absents du cache.
+ *
+ * IMPORTANT — ordre de priorité après le cache mémoire :
+ *   1. Member.discordAvatarHash (PRIORITÉ HAUTE)
+ *      — actualisé en continu par warmAvatarCache via l'API Discord (cron worker),
+ *      donc TOUJOURS plus frais qu'Account.image (qui n'est mis à jour qu'au login
+ *      NextAuth, événement rare).
+ *      — fix bug Marie Bellamy : son Account.user.image contenait un vieux hash
+ *      `a5b6c0ce...` (PNG statique), alors que Member.discordAvatarHash avait le
+ *      vrai hash courant `a_3df7f9...` (GIF animé). Account "gagnait" et on
+ *      retournait un hash mort → 404 sur le CDN Discord.
+ *   2. Account.user.image (FALLBACK)
+ *      — uniquement pour les Discord IDs qui n'existent pas (ou pas encore) dans
+ *      Member (admins, staff bot non liés à la famille, etc.).
  */
 export async function getAvatarHashesFast(
   discordIds: string[]
@@ -117,20 +157,59 @@ export async function getAvatarHashesFast(
 
   if (!needFetch.length) return result;
 
-  // 2. Account table uniquement
+  // 2. Member.discordAvatarHash (source de vérité prioritaire, maintenue par
+  //    le cron warmAvatarCache → toujours plus frais qu'Account.image).
+  const members = await prisma.member.findMany({
+    where: { discordId: { in: needFetch } },
+    select: { discordId: true, discordAvatarHash: true, discordAvatarFetchedAt: true },
+  }).catch(() => []);
+
+  const memberHashById = new Map<string, { hash: string | null; fetchedAt: number }>();
+  for (const m of members) {
+    if (!m.discordId) continue;
+    memberHashById.set(m.discordId, {
+      hash: m.discordAvatarHash,
+      fetchedAt: m.discordAvatarFetchedAt?.getTime() ?? 0,
+    });
+  }
+
+  const stillMissing: string[] = [];
+  for (const id of needFetch) {
+    const m = memberHashById.get(id);
+    if (m) {
+      // Hash DB considéré valide tant que < TTL_HIT depuis le fetch
+      // (TTL_HIT 1h pour vrais hashes, TTL_MISS 5min pour "pas d'avatar").
+      const ttl = m.hash ? TTL_HIT : TTL_MISS;
+      if (now - m.fetchedAt < ttl) {
+        result.set(id, m.hash);
+        cache.set(id, { hash: m.hash, fetchedAt: m.fetchedAt });
+        lastDiscordFetch.set(id, m.fetchedAt);
+        continue;
+      }
+      // Hash DB expiré → tomber en fallback Account, puis warm async re-fetchera.
+    }
+    stillMissing.push(id);
+  }
+
+  if (!stillMissing.length) return result;
+
+  // 3. Account table (fallback : membres non présents dans Member, ou Member
+  //    avec hash expiré). Pour ces cas, warmAvatarCache déclenchera un refresh
+  //    Discord API en arrière-plan.
   const accounts = await prisma.account.findMany({
-    where: { provider: "discord", providerAccountId: { in: needFetch } },
+    where: { provider: "discord", providerAccountId: { in: stillMissing } },
     select: { providerAccountId: true, user: { select: { image: true } } },
   }).catch(() => []);
 
-  for (const id of needFetch) {
+  for (const id of stillMissing) {
     const account = accounts.find((a) => a.providerAccountId === id);
     if (account) {
       const hash = extractDiscordAvatarHash(account.user?.image);
       result.set(id, hash);
       cache.set(id, { hash, fetchedAt: now });
     }
-    // IDs non trouvés → pas dans le résultat (le caller recevra undefined)
+    // Si pas dans Account non plus → absent du résultat, warmAvatarCache fera
+    // l'appel Discord API en arrière-plan pour combler.
   }
 
   return result;
@@ -145,11 +224,21 @@ export function warmAvatarCache(discordIds: string[]): void {
   if (!botToken || !discordIds.length) return;
 
   const now         = Date.now();
+  // Bug fix Marie Bellamy : avant ce patch, warmAvatarCache se basait sur le
+  // cache mémoire (qui contenait potentiellement un hash *obsolète* venant de
+  // Account.user.image, jamais rafraîchi pour les membres qui ne se sont
+  // jamais reconnectés au panel). Résultat : l'avatar URL pointait vers un
+  // hash supprimé côté Discord → 404.
+  //
+  // On utilise désormais un tracker dédié (lastDiscordFetch) qui ne s'écrit
+  // que lors d'un VRAI appel Discord API. Tant que ce tracker est manquant ou
+  // expiré, on retourne fetcher les vrais hashes — peu importe ce que dit le
+  // cache hash. Les IDs en vol sont déjà filtrés via inFlight.
   const toFetch     = discordIds.filter((id) => {
-    const cached = cache.get(id);
-    if (!cached) return true;
-    const ttl = cached.hash ? TTL_HIT : TTL_MISS;
-    return now - cached.fetchedAt >= ttl;
+    if (inFlight.has(id)) return false;
+    const lastFetch = lastDiscordFetch.get(id);
+    if (!lastFetch) return true;
+    return now - lastFetch >= DISCORD_REFRESH_TTL;
   });
 
   if (!toFetch.length) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { PageShell } from "@/components/staff/ui/PageShell";
@@ -106,42 +106,36 @@ export default function BanklogsClient() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [lastAttemptAt, setLastAttemptAt] = useState<string | null>(null);
 
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
+  // ⚠️ État initialisé SYNCHRONEMENT depuis l'URL (pas dans un useEffect).
+  // Avant : on initialisait à "" puis un useEffect lisait l'URL et faisait
+  // setFilter…(). Le useEffect [filterSteamId] déclenchait alors `load()`
+  // DEUX FOIS : un premier appel avec filtre vide (logs généraux) et un
+  // second avec filtre rempli (logs perso). Selon la latence réseau, la
+  // réponse "logs généraux" arrivait parfois APRÈS la réponse "logs perso"
+  // et écrasait l'UI → on voyait les logs généraux au lieu du membre.
+  // Lire l'URL ici garantit qu'on n'a JAMAIS un render initial avec filtre
+  // vide quand l'URL en contient un.
+  const initialUrlSteamId = sp?.get("steamId") ?? "";
+  const initialUrlType    = sp?.get("type")    ?? "";
+  const initialUrlMember  = sp?.get("member")  ?? "";
+  const initialUrlDaysRaw = Number(sp?.get("days") ?? 0);
+  const initialUrlDays    = Number.isFinite(initialUrlDaysRaw) ? initialUrlDaysRaw : 0;
+  const initialUrlLimit   = Number(sp?.get("limit") ?? 0) || 50;
+  const initialUrlPage    = Number(sp?.get("page")  ?? 0) || 1;
 
-  const [filterType, setFilterType] = useState<string>(""); // "" = tous
-  const [filterSteamId, setFilterSteamId] = useState("");
-  const [filterMember, setFilterMember] = useState("");
+  const [page,  setPage]  = useState<number>(initialUrlPage);
+  const [limit, setLimit] = useState<number>(initialUrlLimit);
 
-  // ✅ nouveau : période
-  const [days, setDays] = useState<number>(0); // 0 = tout
+  const [filterType,    setFilterType]    = useState<string>(initialUrlType);
+  const [filterSteamId, setFilterSteamId] = useState<string>(initialUrlSteamId);
+  const [filterMember,  setFilterMember]  = useState<string>(initialUrlMember);
+  const [days,          setDays]          = useState<number>(initialUrlDays);
 
   const [data, setData] = useState<BankLogsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string>("");
   const [nowTick, setNowTick] = useState(() => Date.now());
-
-  // charge l'état depuis l'URL au 1er mount
-  useEffect(() => {
-    if (!sp) return;
-    const urlSteamId = sp.get("steamId") ?? "";
-    const urlType = sp.get("type") ?? "";
-    const urlDays = Number(sp.get("days") ?? 0);
-    const urlMember = sp.get("member") ?? "";
-    const urlLimit = Number(sp.get("limit") ?? 0);
-    const urlPage = Number(sp.get("page") ?? 0);
-
-    if (urlSteamId) setFilterSteamId(urlSteamId);
-    if (urlMember) setFilterMember(urlMember);
-    if (urlType) setFilterType(urlType);
-    if (!Number.isNaN(urlDays)) setDays(urlDays);
-
-    if (urlLimit) setLimit(urlLimit);
-    if (urlPage) setPage(urlPage);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function syncUrl(next?: Partial<{ page: number; limit: number; type: string; steamId: string; member: string; days: number }>) {
     const p = next?.page ?? page;
@@ -167,7 +161,14 @@ export default function BanklogsClient() {
     return Math.max(1, Math.ceil(total / limit));
   }, [data?.total, limit]);
 
+  // Token monotone pour ignorer les réponses obsolètes. Si l'utilisateur
+  // clique sur un membre A puis sur un membre B avant que la réponse de A
+  // n'arrive, le token de A devient < currentLoadToken et sa réponse est
+  // ignorée → on n'écrase pas les logs de B.
+  const loadTokenRef = useRef(0);
+
   async function load() {
+    const myToken = ++loadTokenRef.current;
     setLoading(true);
     setError("");
 
@@ -186,6 +187,9 @@ export default function BanklogsClient() {
       const res = await fetch(`/api/banklogs?${qs.toString()}`, { cache: "no-store" });
       const txt = await res.text();
 
+      // Réponse obsolète (un load() plus récent est parti entre-temps) → on ignore
+      if (myToken !== loadTokenRef.current) return;
+
       if (!res.ok) throw new Error(txt || `HTTP ${res.status}`);
 
       const json = JSON.parse(txt) as BankLogsResponse;
@@ -193,10 +197,13 @@ export default function BanklogsClient() {
 
       setData(json);
     } catch (e: any) {
+      // Là aussi : ne pas écraser un error/data si on est obsolète
+      if (myToken !== loadTokenRef.current) return;
       setError(String(e?.message ?? e));
       setData(null);
     } finally {
-      setLoading(false);
+      // Seul le load() le plus récent doit toggle le loading off
+      if (myToken === loadTokenRef.current) setLoading(false);
     }
   }
 

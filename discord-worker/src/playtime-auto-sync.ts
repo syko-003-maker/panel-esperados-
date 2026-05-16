@@ -1,4 +1,7 @@
-const DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
+// Avant : 1h. Maintenant : 10 min — refresh Member.playtime7d souvent pour
+// que stats / dettes / alertes inactivité soient toujours à jour. Coût LYG
+// négligeable (1 call / 10 min = ~1.5 calls / 15 min).
+const DEFAULT_INTERVAL_MS = 10 * 60 * 1000;
 
 let lastPlaytimeAutoSyncAt = 0;
 

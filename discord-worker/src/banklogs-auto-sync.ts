@@ -1,4 +1,4 @@
-const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_INTERVAL_MS = 45_000;
 
 let lastBanklogsAutoSyncAt = 0;
 

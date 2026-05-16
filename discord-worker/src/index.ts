@@ -161,6 +161,12 @@ import {
   getPlaytimeSyncIntervalMs,
   getLastPlaytimeAutoSyncAt,
 } from "./playtime-auto-sync.js";
+import {
+  runAbsencesExpireJob,
+  getAbsencesExpireIntervalMs,
+  getLastAbsencesExpireAt,
+} from "./absences-expire.js";
+import { syncHierarchyMessage } from "./features/hierarchy/hierarchyMessage.js";
 import { PrismaClient } from "@prisma/client";
 import { initSentry, captureException } from "./sentry.js";
 import { startHeartbeat } from "./heartbeat.js";
@@ -198,7 +204,7 @@ const LEGACY_TICKETS_PANEL_COMPLAINT_ID = "ticket:complaint";
 const prisma = new PrismaClient();
 
 // Sync interval (5 minutes)
-const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const SYNC_INTERVAL_MS = 3 * 60 * 1000;
 // Outbox polling interval (3 seconds)
 const OUTBOX_POLL_INTERVAL_MS = 3 * 1000;
 
@@ -622,7 +628,9 @@ client.once("ready", async () => {
     const infosIntervalMs = getInfosSyncIntervalMs();
     log("infos_auto_sync_scheduled", { intervalMs: infosIntervalMs });
     setTimeout(() => runInfosAutoSyncJob(), 30_000);
-    setInterval(() => runInfosAutoSyncJob(), 60 * 60 * 1000);
+    // Bug fix : interval respecte maintenant la valeur env-driven (avant
+    // hardcodé à 1h indépendamment de la config).
+    setInterval(() => runInfosAutoSyncJob(), infosIntervalMs);
     setInterval(() => {
       const lastRun = getLastInfosAutoSyncAt();
       if (!lastRun) return;
@@ -634,7 +642,9 @@ client.once("ready", async () => {
     const playtimeIntervalMs = getPlaytimeSyncIntervalMs();
     log("playtime_auto_sync_scheduled", { intervalMs: playtimeIntervalMs });
     setTimeout(() => runPlaytimeAutoSyncJob(), 60_000);
-    setInterval(() => runPlaytimeAutoSyncJob(), 60 * 60 * 1000);
+    // Bug fix : avant l'interval était hardcodé à 1h ignorant la valeur
+    // calculée. Maintenant on respecte playtimeIntervalMs (default 10 min).
+    setInterval(() => runPlaytimeAutoSyncJob(), playtimeIntervalMs);
     setInterval(() => {
       const lastRun = getLastPlaytimeAutoSyncAt();
       if (!lastRun) return;
@@ -642,6 +652,32 @@ client.once("ready", async () => {
       if (isStalled) console.warn("[PLAYTIME_AUTO_SYNC] not running or stalled");
       trackStall("playtime", isStalled, { lastRunIso: new Date(lastRun).toISOString() });
     }, 60_000);
+
+    // Cron : suppression auto des messages Discord d'absences expirées
+    // (endAt < now). Tourne toutes les 15 min. Backed by the panel route
+    // /api/staff/absences/expire-discord.
+    const absencesExpireIntervalMs = getAbsencesExpireIntervalMs();
+    log("absences_expire_scheduled", { intervalMs: absencesExpireIntervalMs });
+    // 1er run 90s après boot, puis périodique
+    setTimeout(() => runAbsencesExpireJob(), 90_000);
+    setInterval(() => runAbsencesExpireJob(), absencesExpireIntervalMs);
+    setInterval(() => {
+      const lastRun = getLastAbsencesExpireAt();
+      if (!lastRun) return;
+      const isStalled = Date.now() - lastRun > absencesExpireIntervalMs * 2;
+      if (isStalled) console.warn("[ABSENCES_EXPIRE] not running or stalled");
+    }, 60_000);
+
+    // Cron : sync de l'embed Hiérarchie dans #organigramme.
+    // Toutes les 1 min — sync très rapide des promotions / démotes /
+    // blacklists / arrivées. Pas d'appel LYG (que de la DB), donc le bumper
+    // est "gratuit" côté quota.
+    const hierarchyIntervalMs = 60_000;
+    log("hierarchy_scheduled", { intervalMs: hierarchyIntervalMs });
+    setTimeout(() => syncHierarchyMessage(client, prisma).catch((e) => console.error("[HIERARCHY] initial sync", e)), 60_000);
+    setInterval(() => {
+      syncHierarchyMessage(client, prisma).catch((e) => console.error("[HIERARCHY] sync", e));
+    }, hierarchyIntervalMs);
   }
 });
 

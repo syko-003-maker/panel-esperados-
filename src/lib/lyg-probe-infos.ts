@@ -8,6 +8,7 @@
 import { LygResponse } from "./lyg-client";
 import { getLygConfig } from "./lyg";
 import { debug, error as logError } from "./logger";
+import { recordLygCall, normalizeLygEndpoint } from "@/lib/lyg-stats";
 
 export interface ProbeResult {
   path: string;
@@ -84,6 +85,13 @@ export async function lygProbeInfos(
       });
 
       clearTimeout(timeoutId);
+
+      // Track le call probe (peut faire jusqu'à N hits sur le même run).
+      try {
+        recordLygCall({ ok: res.ok, status: res.status, endpoint: normalizeLygEndpoint(path) });
+      } catch {
+        /* tracking non bloquant */
+      }
 
       const contentType = res.headers.get("content-type");
       const rawText = await res.text().catch(() => "");

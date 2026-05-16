@@ -1,5 +1,6 @@
 import { debug, error as logError } from "./logger";
 import { getLygConfig } from "./lyg";
+import { recordLygCall, normalizeLygEndpoint } from "@/lib/lyg-stats";
 
 /**
  * LYG Fetch error with detailed diagnostics
@@ -108,6 +109,13 @@ async function lygFetchAttemptWithDiag<T>(
     // Always read body as text first
     const bodyText = await res.text();
     const contentType = res.headers.get("content-type");
+
+    // Track le call dans le compteur global.
+    try {
+      recordLygCall({ ok: res.ok, status: res.status, endpoint: normalizeLygEndpoint(path) });
+    } catch {
+      /* tracking non bloquant */
+    }
 
     if (!res.ok) {
       // Error response - structure it

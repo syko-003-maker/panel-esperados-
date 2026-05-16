@@ -7,6 +7,7 @@
  */
 
 import { getDiscordRolesForUserWithStatus, CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
+import { EXTRA_MEMBER_ROLE_IDS } from "@/lib/grade-colors";
 import { debug } from "@/lib/logger";
 
 // Grade role IDs from grade-colors system
@@ -31,12 +32,13 @@ const GRADE_ROLE_IDS = [
 // Family role ID
 const FAMILY_ROLE_ID = process.env.DISCORD_FAMILY_ROLE_ID ?? ""; // Los Esperados
 
-// All valid active roles
+// All valid active roles (grades + chefs + family + rôles "membre basique" type Nutella)
 const VALID_ACTIVE_ROLES = [
   ...(FAMILY_ROLE_ID ? [FAMILY_ROLE_ID] : []),
   ...(CHEF_FAMILLE_ROLE_ID ? [CHEF_FAMILLE_ROLE_ID] : []),
   ...(SOUS_CHEF_FAMILLE_ROLE_ID ? [SOUS_CHEF_FAMILLE_ROLE_ID] : []),
   ...GRADE_ROLE_IDS.filter(Boolean),
+  ...EXTRA_MEMBER_ROLE_IDS,
 ];
 
 /**

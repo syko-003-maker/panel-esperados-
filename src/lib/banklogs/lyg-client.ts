@@ -10,6 +10,7 @@
  */
 
 import { debug } from "@/lib/logger";
+import { recordLygCall, normalizeLygEndpoint } from "@/lib/lyg-stats";
 import { safeJsonParse } from "./responses";
 
 /**
@@ -77,6 +78,14 @@ export async function fetchLygJsonSafe<T = unknown>(
 
   console.log(`[LYG] <- ${res.status} ${method} ${url}`);
   debug("[LYG] <-", { status: res.status, method, url });
+
+  // Track le call dans le compteur global (page Système). Couvre toutes les
+  // routes staff banklogs UI qui passent par fetchLygJsonSafe.
+  try {
+    recordLygCall({ ok: res.ok, status: res.status, endpoint: normalizeLygEndpoint(path) });
+  } catch {
+    // tracking non bloquant
+  }
 
   const contentType = res.headers.get("content-type") || "";
   const rawText = await res.text().catch(() => "");

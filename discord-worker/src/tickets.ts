@@ -18,6 +18,7 @@ import {
 import { CUSTOM_ID, IDS, EVENT_VERSION, type ComplaintCloseStatus } from "./ids.js";
 import { ingest, getOpenCount } from "./ingest.js";
 import { safeRoleMention } from "./mentions.js";
+import { buildNickname } from "./features/rename/rules.js";
 
 // ─────────────────────────────────────────────────────────────
 // Rate limiting (anti-spam cooldown)
@@ -560,26 +561,38 @@ export async function handleRecruitmentSubmit(
   const ing = await ingestWithRetry(event, "R");
   ticketKey = event.ticketKey; // May have changed on retry
 
-  // Set Discord nickname to rpName (source of truth)
+  // Set Discord nickname to rpName (source of truth).
+  // Important : on passe par buildNickname() qui tronque à 32 chars (limite
+  // Discord API). Avant on envoyait le rpName brut → BASE_TYPE_MAX_LENGTH
+  // dès qu'un membre avait un nom long.
   if (rpName && interaction.guild) {
-    try {
-      const member = await interaction.guild.members.fetch(interaction.user.id);
-      if (member && member.manageable) {
-        await member.edit({
-          nick: rpName,
-          reason: `Recrutement ticket: ${ticketKey}`,
-        });
-        log("member_nickname_updated", { userId: interaction.user.id, newNick: rpName, ticketKey });
-      } else {
-        log("member_nickname_update_failed", {
-          userId: interaction.user.id,
-          reason: member ? "Not manageable (role hierarchy)" : "Member not found",
-          ticketKey,
-        });
+    const normalizedNick = buildNickname({ rpName });
+    if (!normalizedNick) {
+      log("member_nickname_update_failed", {
+        userId: interaction.user.id,
+        reason: "rpName_normalized_to_empty",
+        ticketKey,
+      });
+    } else {
+      try {
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        if (member && member.manageable) {
+          await member.edit({
+            nick: normalizedNick,
+            reason: `Recrutement ticket: ${ticketKey}`,
+          });
+          log("member_nickname_updated", { userId: interaction.user.id, newNick: normalizedNick, ticketKey });
+        } else {
+          log("member_nickname_update_failed", {
+            userId: interaction.user.id,
+            reason: member ? "Not manageable (role hierarchy)" : "Member not found",
+            ticketKey,
+          });
+        }
+      } catch (nickErr) {
+        const error = nickErr instanceof Error ? nickErr.message : String(nickErr);
+        log("member_nickname_update_error", { userId: interaction.user.id, error, ticketKey });
       }
-    } catch (nickErr) {
-      const error = nickErr instanceof Error ? nickErr.message : String(nickErr);
-      log("member_nickname_update_error", { userId: interaction.user.id, error, ticketKey });
     }
   }
 

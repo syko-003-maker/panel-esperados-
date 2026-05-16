@@ -71,8 +71,10 @@ discord-worker/dist/
 bin/cloudflared*
 bin/*.exe
 
-# Claude Code — données internes (ne jamais committer)
+# Outils internes — ne jamais committer
 .claude/
+.cursor/
+.aider*
 
 # Fichiers accidentels
 "ystemctl show panel-esperados -p MainPID --value)"

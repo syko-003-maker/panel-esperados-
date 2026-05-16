@@ -41,7 +41,7 @@ type Sanction = {
   memberId: string | null;
   memberDiscordId: string | null;
   memberName: string;
-  type: "AVERT_ORAL_PLAYTIME" | "AVERT_ORAL_REUNION" | "AVERT_LEGER" | "AVERT_LOURD" | "DEMOTE" | "RESERVISTE" | "BLACKLIST";
+  type: "AVERT_ORAL_PLAYTIME" | "AVERT_ORAL_REUNION" | "AVERT_LEGER" | "AVERT_LOURD" | "AVERT_EM" | "DEMOTE" | "RESERVISTE" | "BLACKLIST";
   source: "MANUAL" | "ACTIVITY" | "MEETING" | "SYSTEM";
   reason: string | null;
   status: "ACTIVE" | "EXPIRED" | "CLOSED";
@@ -80,6 +80,7 @@ const TYPES: Sanction["type"][] = [
   "AVERT_ORAL_REUNION",
   "AVERT_LEGER",
   "AVERT_LOURD",
+  "AVERT_EM",
   "DEMOTE",
   "RESERVISTE",
   "BLACKLIST",

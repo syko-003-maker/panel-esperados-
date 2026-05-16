@@ -395,15 +395,12 @@ async function lyFetch<T = any>(
     // ✅ Log the response
     console.log(`[LYG] <- ${res.status} ${method} ${resolvedUrl}`);
 
-    // ✅ Track call dans le compteur global (page Système)
+    // ✅ Track call dans le compteur global (page Système).
+    // Normalisation centralisée via normalizeLygEndpoint pour rester aligné
+    // avec les autres clients (banklogs, sync members/banklogs, playtime).
     try {
-      const { recordLygCall } = await import("@/lib/lyg-stats");
-      // Endpoint normalisé pour grouper (sans steamId variable)
-      const epNormalized = path
-        .replace(/\/\d{17}/g, "/:steamId")
-        .replace(/\/[a-f0-9-]{20,}/g, "/:id")
-        .split("?")[0];
-      recordLygCall({ ok: res.ok, status: res.status, endpoint: epNormalized });
+      const { recordLygCall, normalizeLygEndpoint } = await import("@/lib/lyg-stats");
+      recordLygCall({ ok: res.ok, status: res.status, endpoint: normalizeLygEndpoint(path) });
     } catch {
       // ignore
     }

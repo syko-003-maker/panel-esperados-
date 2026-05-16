@@ -4,51 +4,46 @@ import { sendLog } from "../logs/serverLogs.js";
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 // Flood : X messages dans la fenêtre → timeout
-const FLOOD_LIMIT  = 6;      // messages max dans la fenêtre
-const FLOOD_WINDOW = 4000;   // fenêtre en ms (4s)
+// Réglages "laxistes" — on cible uniquement le flood agressif/raid, pas la
+// conversation animée. Les anciens 6 msg / 4s déclenchaient régulièrement
+// sur des échanges normaux à plusieurs.
+const FLOOD_LIMIT  = 12;     // messages max dans la fenêtre
+const FLOOD_WINDOW = 6000;   // fenêtre en ms (6s)
 const FLOOD_MUTE   = 5;      // mute en minutes
 
-// Mention spam
-const MENTION_LIMIT = 5;     // nb de mentions max par message (était 3 → trop strict)
+// Mention spam — bumpé pour laisser passer les @ multi-roles légitimes
+const MENTION_LIMIT = 10;    // nb de mentions max par message
 const MENTION_MUTE  = 10;    // mute en minutes
 
-// Liens — système progressif
-// Offense 1 : suppression + avertissement en salon, pas de mute
-// Offense 2+ (dans LINK_STRIKE_WINDOW ms) : mute
-const LINK_MUTE          = 5;           // mute en minutes si récidive
-const LINK_STRIKE_WINDOW = 5 * 60_000; // fenêtre de récidive (5 min)
+// Liens — BLACKLIST mode (anti-phishing uniquement)
+// Avant : whitelist stricte → tout site non listé = delete + warn → trop
+// agressif sur les GIFs/médias partagés depuis sites tiers, tweets embed,
+// etc. Désormais on autorise tout par défaut et on ne bloque que des
+// domaines de scam/phishing connus.
+const LINK_MUTE          = 5;
+const LINK_STRIKE_WINDOW = 5 * 60_000;
 
-// Domaines autorisés — étendus avec tous les sites courants
-const LINK_WHITELIST = [
-  // Discord natif
-  "discord.gg", "discord.com", "discordapp.com",
-  "cdn.discordapp.com", "media.discordapp.net",
-  // GIFs
-  "tenor.com", "giphy.com", "gfycat.com",
-  // Hébergement d'images
-  "imgur.com", "i.imgur.com",
-  "prnt.sc", "prntscr.com", "gyazo.com",
-  "postimg.cc", "ibb.co",
-  // Vidéo
-  "youtube.com", "youtu.be",
-  "twitch.tv", "clips.twitch.tv",
-  "streamable.com", "medal.tv",
-  // Réseaux sociaux courants
-  "twitter.com", "x.com", "t.co",
-  "instagram.com",
-  "tiktok.com", "vm.tiktok.com",
-  "reddit.com", "redd.it",
-  "facebook.com", "fb.com",
-  // Info / médias
-  "google.com", "google.fr",
-  "wikipedia.org",
-  "github.com", "gist.github.com",
-  // Stockage / partage
-  "pastebin.com",
-  "docs.google.com", "drive.google.com",
-  // GTA RP / communauté
-  "fivem.net", "cfx.re",
-  "gta.world",
+// Patterns de domaines INTERDITS (typosquats Steam/Discord, phishing
+// classique). Match partiel sur le hostname normalisé.
+const LINK_BLACKLIST_PATTERNS: RegExp[] = [
+  // Typosquats Discord / Steam (les vrais domaines sont whitelistés implicitement
+  // en n'étant pas dans cette liste)
+  /^stearncommunity\./i,
+  /^steamcomrnunity\./i,
+  /^steam-community\./i,
+  /^steamcommunity\.[a-z]+\.[a-z]+/i,  // steamcommunity.foo.bar (subdomain abuse)
+  /^discordnitro\./i,
+  /^discord-nitro/i,
+  /^discord-gift/i,
+  /^discordapp\.[a-z]{3,}/i,  // discordapp.xyz, discordapp.club (vrai = .com)
+  /-steam-/i,                  // free-steam-gift, steam-trade-bot…
+  /-nitro-free/i,
+  /free-nitro/i,
+  // Raccourcisseurs souvent utilisés pour cacher des URLs malveillantes
+  // (ces deux services SONT légitimes en eux-mêmes mais souvent abusés —
+  // on bloque par précaution, libre à un staff de les whitelister)
+  /^bit\.ly$/i,
+  /^tinyurl\.com$/i,
 ];
 
 const LINK_REGEX = /https?:\/\/[^\s<>\"]+/gi;
@@ -125,11 +120,14 @@ async function warnAndDelete(
   } catch { /* non bloquant */ }
 }
 
-function isWhitelisted(url: string): boolean {
+function isBlacklisted(url: string): boolean {
   try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
-    return LINK_WHITELIST.some((w) => hostname === w || hostname.endsWith("." + w));
+    const hostname = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    return LINK_BLACKLIST_PATTERNS.some((p) => p.test(hostname));
   } catch {
+    // URL malformée → on laisse passer (la modération Discord native fera
+    // son taf si besoin). Avant on retournait false → considéré comme non-
+    // whitelisté → bloqué. Maintenant en mode blacklist on traite l'inverse.
     return false;
   }
 }
@@ -178,29 +176,29 @@ export async function handleAntispam(message: Message): Promise<void> {
     return;
   }
 
-  // 3. Lien non autorisé — système progressif ─────────────────────────────────
+  // 3. Lien blacklisté (phishing/scam connu) — système progressif ─────────────
+  // Mode blacklist : tout est autorisé SAUF les domaines de phishing connus.
+  // GIFs, embeds, partages média → tout passe désormais.
   const links = message.content.match(LINK_REGEX) ?? [];
-  const forbidden = links.filter((l) => !isWhitelisted(l));
+  const forbidden = links.filter((l) => isBlacklisted(l));
 
   if (forbidden.length > 0) {
     const lastStrike = linkStrikeMap.get(member.id);
     const isRecidive = lastStrike !== undefined && now - lastStrike < LINK_STRIKE_WINDOW;
 
     if (isRecidive) {
-      // 2e infraction dans la fenêtre → mute
       linkStrikeMap.delete(member.id);
       await muteAndLog(
         member,
-        `Envoi de lien non autorisé (récidive)`,
+        `Lien suspect (phishing/scam, récidive)`,
         LINK_MUTE,
         message
       );
     } else {
-      // 1ère infraction → avertissement uniquement
       linkStrikeMap.set(member.id, now);
       await warnAndDelete(
         member,
-        `Les liens vers des sites non autorisés sont interdits ici.`,
+        `Lien suspect détecté (potentiel phishing/scam).`,
         message
       );
     }

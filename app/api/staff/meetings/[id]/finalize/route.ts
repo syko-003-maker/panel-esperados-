@@ -25,6 +25,7 @@ import {
 import {
   normalizeMeetingTargetGrade,
   findRoleIdForGradeLabel,
+  isProtectedPromotionTargetGrade,
 } from "@/lib/staff/meetings/finalize/target-grade";
 import {
   findMissingPromotionTargets,
@@ -172,6 +173,19 @@ export async function POST(
           results.errors.push({
             memberDiscordId: memberDiscordId || "unknown",
             error: "TARGET_GRADE_REQUIRED",
+          });
+          continue;
+        }
+
+        // Defense-in-depth : même si une décision a réussi à se glisser
+        // avec un grade protégé (manipulation directe DB ou bug futur),
+        // on bloque ici. Une promotion Chef famille / Général / Sous-Chef
+        // famille / Consejero via une réunion est interdite. Action
+        // réservée au Chef famille hors réunion.
+        if (isProtectedPromotionTargetGrade(targetGrade)) {
+          results.errors.push({
+            memberDiscordId: memberDiscordId || "unknown",
+            error: `FORBIDDEN_TARGET_GRADE:${targetGrade}`,
           });
           continue;
         }

@@ -15,6 +15,8 @@ import {
   mapStoredMeetingDecisionToBusinessDecision,
 } from "@/lib/meetings";
 import { getDiscordGradeMappings } from "@/lib/discord-grade";
+import { checkSanctionTargetEligibility } from "@/lib/sanctions";
+import { isProtectedPromotionTargetGrade } from "@/lib/staff/meetings/finalize/target-grade";
 
 const MEETING_TARGET_GRADES = Array.from(
   new Set(
@@ -71,6 +73,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "AVERT_ORAL_REUNION",
     "AVERT_LEGER",
     "AVERT_LOURD",
+    "AVERT_EM",
     "DEMOTE",
     "BLACKLIST",
     "RESERVISTE",
@@ -152,6 +155,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "INVALID_TARGET_GRADE" }, { status: 400 });
   }
 
+  // Sécurité : interdire les promotions vers Chef famille / Général /
+  // Sous-Chef famille / Consejero via une réunion. Voir le commentaire dans
+  // src/lib/staff/meetings/finalize/target-grade.ts — la route est gardée
+  // par requireChef() qui accepte tous les EM, donc un EM pourrait sinon
+  // se promouvoir lui-même au plus haut grade.
+  if (isProtectedPromotionTargetGrade(nextTargetGrade)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "FORBIDDEN_TARGET_GRADE",
+        message: "Ce grade ne peut pas être attribué via une réunion (action réservée au Chef famille).",
+      },
+      { status: 403 },
+    );
+  }
+
   if (nextStatusInput === null && nextNote === null && nextDecisionType === null && mappedBusinessDecision === null && nextSanctionTypeRaw === null && nextSanctionReason === null && nextPlaytime === null && nextJustified === null && nextTargetGradeInput === null) {
     return NextResponse.json({ ok: false, error: "NO_FIELDS" }, { status: 400 });
   }
@@ -220,6 +239,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       : nextSanctionTypeRaw !== null
         ? nextSanctionType
         : row.sanctionType;
+
+  // Sanctions à scope restreint (AVERT_EM ⇒ membre EM uniquement).
+  // On bloque ici aussi (en plus de la route /api/staff/sanctions) car les
+  // décisions de réunion finalisent ensuite en sanctions réelles via
+  // finalize → si on laissait passer une décision AVERT_EM sur un non-EM,
+  // la finalize se planterait silencieusement.
+  if (resolvedSanctionType && memberDiscordId) {
+    const familyId = await resolveFamilyId(DEFAULT_MEETING_FAMILY_ID);
+    const targetMember = await prisma.member.findFirst({
+      where: { familyId, discordId: memberDiscordId },
+      select: { discordRoleIds: true, rpName: true },
+    });
+    const eligibility = checkSanctionTargetEligibility(
+      resolvedSanctionType,
+      targetMember?.discordRoleIds ?? null,
+    );
+    if (!eligibility.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: eligibility.error,
+          requiredRoleId: eligibility.requiredRoleId,
+          message:
+            resolvedSanctionType === "AVERT_EM"
+              ? "L'Averto EM ne peut être appliqué qu'à un membre de l'État-Major."
+              : "Ce type de sanction n'est pas applicable à ce membre.",
+        },
+        { status: 400 },
+      );
+    }
+  }
   const resolvedDecisionType =
     mappedBusinessDecision !== null
       ? mappedBusinessDecision.decisionType

@@ -164,6 +164,10 @@ model Member {
   discordRolesUpdatedAt   DateTime?  // Last successful Discord sync
   discordLastError        String?    // Last error during Discord sync (if any)
 
+  // Avatar Discord (persisté pour survivre aux restarts panel)
+  discordAvatarHash       String?    // Hash CDN Discord (null = pas de photo perso)
+  discordAvatarFetchedAt  DateTime?  // Dernier fetch live Discord API
+
   // 7-day playtime from LYG
   playtime7d              Int        @default(0)
   playtime7dUpdatedAt     DateTime?
@@ -285,6 +289,7 @@ enum SanctionType {
   AVERT_ORAL_REUNION
   AVERT_LEGER
   AVERT_LOURD
+  AVERT_EM
   DEMOTE
   RESERVISTE
   BLACKLIST
@@ -923,6 +928,8 @@ model DiscordConfig {
   dmNotificationsEnabled      Boolean  @default(false)
   dmSanctionsEnabled          Boolean  @default(false)
   dmGradeChangesEnabled       Boolean  @default(false)
+  // Auto-sync embed hiérarchie : stocke l'ID du message à éditer
+  hierarchyMessageId          String?
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 }
@@ -1310,4 +1317,20 @@ model LygWarn {
   @@index([memberId])
   @@index([steamId])
   @@index([warnDate])
+}
+
+/// Persistance des appels API LYG pour la page /staff/system.
+/// Avant : compteur en mémoire process panel → wipe à chaque restart.
+/// Maintenant : 1 row par call (panel/worker/kitty), reads agrégés sur 15 min.
+/// Cleanup périodique (>1h purgé) pour garder la table petite.
+model LygCall {
+  id        String   @id @default(cuid())
+  service   String   // "panel" | "worker" | "kitty"
+  endpoint  String
+  ok        Boolean
+  status    Int
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([service, createdAt])
 }

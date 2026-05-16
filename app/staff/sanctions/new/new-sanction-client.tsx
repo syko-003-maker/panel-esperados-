@@ -16,11 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { getSanctionLabel } from "@/lib/sanctions";
 
-const TYPES = ["AVERT_ORAL_PLAYTIME", "AVERT_ORAL_REUNION", "AVERT_LEGER", "AVERT_LOURD", "DEMOTE", "RESERVISTE", "BLACKLIST"] as const;
+const TYPES = ["AVERT_ORAL_PLAYTIME", "AVERT_ORAL_REUNION", "AVERT_LEGER", "AVERT_LOURD", "AVERT_EM", "DEMOTE", "RESERVISTE", "BLACKLIST"] as const;
+
+// Suffixes visibles dans le picker pour indiquer un scope restreint.
+// La validation finale est server-side, mais on prévient avant le submit.
+const SANCTION_TYPE_HINTS: Partial<Record<(typeof TYPES)[number], string>> = {
+  AVERT_EM: "État-Major uniquement",
+};
 
 const SANCTION_TYPE_OPTIONS = TYPES.map((value) => ({
   value,
   label: getSanctionLabel(value),
+  hint: SANCTION_TYPE_HINTS[value] ?? null,
 }));
 
 type SanctionType = (typeof TYPES)[number];
@@ -95,11 +102,23 @@ export default function NewSanctionClient() {
                 value={option.value}
                 className="rounded-md py-2.5 text-sm text-slate-100 focus:bg-[#7a1f2b]/30 focus:text-white"
               >
-                {option.label}
+                <span className="flex items-center gap-2">
+                  {option.label}
+                  {option.hint ? (
+                    <span className="text-[10px] uppercase tracking-wider text-amber-300/80">
+                      · {option.hint}
+                    </span>
+                  ) : null}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {form.type === "AVERT_EM" ? (
+          <p className="text-xs text-amber-300/80">
+            ⓘ L'Averto EM est réservé aux membres de l'État-Major. Le serveur refusera la création si la cible n'a pas le rôle EM.
+          </p>
+        ) : null}
       </label>
 
       <label className="block space-y-2 text-sm">

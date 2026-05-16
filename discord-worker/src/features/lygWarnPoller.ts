@@ -11,6 +11,7 @@
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
 import type { PrismaClient } from "@prisma/client";
 import { IDS } from "../ids.js";
+import { parseLygWarnDate } from "../utils/parseLygWarnDate.js";
 
 const LYG_BASE_URL = process.env.LYG_BASE_URL ?? "https://api.lyg.fr/api";
 const LYG_TOKEN    = process.env.LYG_TOKEN ?? "";
@@ -26,9 +27,17 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+// Bug fix : avant on récupérait `limit=10`, ce qui plafonnait l'ingestion DB
+// à 10 warns/membre. Pour des membres avec un long historique (ex Alexei
+// 44 warns LYG, Moha 27, Warren 26), la grosse majorité de leurs warns
+// n'étaient JAMAIS écrits en DB → page /staff/warns vide ou tronquée.
+// 50 = couvre 95% des cas observés (max actuel = 44). Au-delà on perd
+// vraiment l'utilité d'avoir des warns 2018 archivés.
+const POLLER_FETCH_LIMIT = 50;
+
 async function fetchWarnsFromLyg(steamId: string): Promise<{ total: number; warns: LygWarnRaw[] } | null | "rate_limited"> {
   try {
-    const res = await fetch(`${LYG_BASE_URL}/warns/${steamId}?limit=10&page=1`, {
+    const res = await fetch(`${LYG_BASE_URL}/warns/${steamId}?limit=${POLLER_FETCH_LIMIT}&page=1`, {
       headers: { Authorization: `Bearer ${LYG_TOKEN}`, Accept: "application/json" },
       signal: AbortSignal.timeout(7_000),
     } as RequestInit);
@@ -62,6 +71,33 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
   const CHEF_ROLE_ID      = IDS.CHEF_FAMILLE_ROLE_ID      as string | null;
   const SOUS_CHEF_ROLE_ID = IDS.SOUS_CHEF_FAMILLE_ROLE_ID as string | null;
 
+  // Liste des rôles de grade Famille (= membres "actifs" éligibles au poll).
+  // On filtre via discordRoleIds, source de vérité, plutôt que par
+  // Member.gradeLevel — ce dernier n'est pas re-syncé après un retrait de
+  // DEMOTE ou un legacy import sans grade. Bug observé : Tony, Alexei, Karim
+  // et autres membres actifs restaient invisibles au poller alors qu'ils
+  // recevaient des warns IG.
+  // (Réserviste exclu plus bas via NOT, on ne l'inclut donc pas ici.)
+  const ACTIVE_GRADE_ROLE_IDS = [
+    "1429607761720770623", // Chef famille
+    "1312845999739375710", // Général
+    "1312845999366209686", // Consejero
+    "1312845999366209685", // Comandante
+    "1312845999366209684", // Coronel
+    "1408485173527445627", // Mayor
+    "1312845999366209681", // Capitan
+    "1312845999366209680", // Teniente
+    "1312845999366209679", // Subteniente
+    "1312845999366209678", // Veterano
+    "1312845999366209677", // Caporal
+    "1312845999340781649", // Asesino
+    "1312845999340781648", // Guardia
+    "1312845999340781647", // Soldato
+    "1408492476351778836", // Novato
+    // Pas de rôles "membre basique" (Nutella, etc.) : ces membres ne sont
+    // pas soumis aux règles warns/sanctions, on ne poll pas leurs warns IG.
+  ];
+
   // Construire les filtres d'exclusion dynamiquement (chef/sous-chef peuvent être null si non configurés)
   const excludeRoles = [
     { discordRoleIds: { has: DEMOTE_ROLE_ID    } },
@@ -75,10 +111,14 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
     where: {
       steamId: { not: null },
       isActive: true,
-      gradeLevel: { gt: 0 },
+      discordRoleIds: { hasSome: ACTIVE_GRADE_ROLE_IDS },
       NOT: excludeRoles,
     },
-    select: { id: true, steamId: true, rpName: true, discordId: true, grade: true },
+    // createdAt = date d'arrivée du membre dans NOTRE DB (recrutement / 1ère
+    // sync). Tout warn ANTÉRIEUR à cette date a été pris avant qu'il soit
+    // chez nous → on ne notifie pas (mais on stocke quand même en DB pour
+    // garder l'historique consultable côté /staff/warns).
+    select: { id: true, steamId: true, rpName: true, discordId: true, grade: true, createdAt: true },
   });
 
   const siteBase = process.env.NEXTAUTH_URL ?? "https://losesperados.fr";
@@ -96,9 +136,11 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
 
     // Upsert chaque warn en DB, récupérer les nouveaux
     for (const w of result.warns) {
-      let warnDate: Date;
-      try { warnDate = new Date(w.date); } catch { continue; }
-      if (isNaN(warnDate.getTime())) continue;
+      // Parse via le helper pour corriger le bug LYG (suffixe Z abusif sur
+      // du Brussels local). Sans ça, les warnDate sont stockés avec +1h ou
+      // +2h selon DST, ce qui décale les embeds Discord et les vues panel.
+      const warnDate = parseLygWarnDate(w.date);
+      if (!warnDate) continue;
 
       const existing = await prisma.lygWarn.findUnique({
         where: {
@@ -112,8 +154,16 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
       });
 
       if (!existing) {
-        // Warn récent = moins de 7 jours → notifier, sinon juste stocker silencieusement
-        const isRecent = (Date.now() - warnDate.getTime()) < 7 * 24 * 60 * 60 * 1000;
+        // Critère de notification : le warn doit être POSTÉRIEUR à l'arrivée
+        // du membre dans notre DB (createdAt = recrutement / 1ère sync).
+        // Tous les warns pris IG AVANT son recrutement sont stockés en DB
+        // pour l'historique mais ne déclenchent PAS de notification Discord
+        // — sinon à chaque recrutement on spamme le salon avec d'éventuels
+        // warns datant d'avant l'arrivée du mec dans la famille.
+        // Marge de 5 min pour absorber le décalage entre warn LYG et write
+        // côté DB.
+        const isAfterJoin =
+          warnDate.getTime() >= member.createdAt.getTime() - 5 * 60_000;
 
         await prisma.lygWarn.create({
           data: {
@@ -123,12 +173,12 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
             type: w.type,
             warnDate,
             expired: w.expired,
-            notified: !isRecent, // anciens warns marqués notified=true d'emblée
+            notified: !isAfterJoin, // warns pré-recrutement = notifié d'emblée (= jamais notifier)
           },
         });
 
-        // Envoyer notification Discord uniquement pour les warns récents
-        if (logsChannelId && isRecent) {
+        // Envoyer notification Discord uniquement pour les warns post-recrutement
+        if (logsChannelId && isAfterJoin) {
           try {
             const channel = await client.channels.fetch(logsChannelId).catch(() => null);
             if (channel?.isTextBased?.()) {

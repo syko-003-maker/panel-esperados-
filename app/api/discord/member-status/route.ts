@@ -18,7 +18,7 @@
 
 import { NextResponse } from "next/server";
 import { getDiscordRolesForUserWithStatus, CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
-import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
+import { EXTRA_MEMBER_ROLE_IDS, GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 import { debug } from "@/lib/logger";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 
@@ -27,9 +27,11 @@ const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKE
 const GUILD_ID = (process.env.GUILD_ID ?? process.env.DISCORD_GUILD_ID ?? "").trim();
 
 // Valid role IDs that indicate "active" membership
+// (grades hiérarchiques + Chef Famille + rôles "membre basique" type Nutella)
 const VALID_ACTIVE_ROLES = new Set([
   ...(CHEF_FAMILLE_ROLE_ID ? [CHEF_FAMILLE_ROLE_ID] : []),
   ...GRADE_ROLE_IDS_ORDERED,
+  ...EXTRA_MEMBER_ROLE_IDS,
 ].filter(Boolean));
 
 export type MemberStatusResult = {

@@ -1,4 +1,5 @@
 import { debug } from "./logger";
+import { recordLygCall, normalizeLygEndpoint } from "@/lib/lyg-stats";
 
 /**
  * LYG API Configuration
@@ -155,6 +156,13 @@ async function lygFetchAttempt<T>(
       data = raw ? JSON.parse(raw) : null;
     } catch {
       data = raw;
+    }
+
+    // Track le call (lygFetch est utilisé par family-resolver, activity-fetch).
+    try {
+      recordLygCall({ ok: res.ok, status: res.status, endpoint: normalizeLygEndpoint(path) });
+    } catch {
+      /* tracking non bloquant */
     }
 
     if (!res.ok) {

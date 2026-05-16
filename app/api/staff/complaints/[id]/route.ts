@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { getSession } from "@/auth";
+import { enqueueComplaintDecision } from "@/lib/discord/discord";
 
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 
@@ -11,6 +12,16 @@ const STATUS_MAP: Record<string, string> = {
   REFUSE: "REJECTED",
   IN_REVIEW: "IN_REVIEW",
   CLOSED: "CLOSED",
+};
+
+// Mapping vers les décisions Discord (utilisées par l'outbox COMPLAINT_DECISION).
+// IN_REVIEW n'est PAS une décision finale → pas d'enqueue Discord.
+const DISCORD_DECISION_MAP: Record<string, "APPROVED" | "REJECTED" | "DISMISSED" | null> = {
+  TRAITE: "APPROVED",
+  NON_RESOLUE: "REJECTED",
+  REFUSE: "DISMISSED",
+  IN_REVIEW: null,
+  CLOSED: null,
 };
 
 function pickDisplayName(values: Array<string | null | undefined>) {
@@ -113,7 +124,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const complaint = await prisma.complaint.findFirst({
     where: { id, familyId: FAMILY_ID },
-    select: { id: true, status: true, closedAt: true },
+    select: {
+      id: true,
+      status: true,
+      closedAt: true,
+      title: true,
+      authorDiscordId: true,
+      targetName: true,
+    },
   });
   if (!complaint) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
@@ -144,6 +162,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       closeReason: isClosed ? decisionRaw : undefined,
     },
   });
+
+  // Enqueue notification Discord pour les décisions FINALES (TRAITE/NON_RESOLUE/
+  // REFUSE). Le worker poste un embed dans le channel staff-logs résumant la
+  // décision. Sans ça, cliquer sur les boutons panel ne produisait AUCUN effet
+  // visible côté Discord (d'où le ressenti "ça ne fais rien").
+  const discordDecision = DISCORD_DECISION_MAP[decisionRaw];
+  const session2 = await getSession();
+  const userId = (session2?.user as any)?.id ?? (session2 as any)?.userId ?? null;
+  if (discordDecision && userId) {
+    try {
+      await enqueueComplaintDecision({
+        familyId: FAMILY_ID,
+        complaintId: updated.id,
+        decision: discordDecision,
+        complaintTitle: updated.title ?? "Plainte sans titre",
+        authorDiscordId: complaint.authorDiscordId ?? null,
+        targetDiscordId: complaint.targetName ?? null,
+        decidedByUserId: userId,
+      });
+    } catch (err) {
+      // Non-bloquant : la décision est sauvegardée en DB, l'enqueue Discord
+      // n'est qu'une notification secondaire.
+      console.error("[complaint PATCH] enqueueComplaintDecision failed:", err);
+    }
+  }
 
   const payload = (updated.payload as Record<string, unknown>) ?? {};
   const closedByDisplayName = await resolveClosedByDisplayName(updated.closedByDiscordId ?? null, FAMILY_ID);

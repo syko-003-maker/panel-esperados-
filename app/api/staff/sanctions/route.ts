@@ -11,12 +11,14 @@ import type { SanctionType } from "@prisma/client";
 import { enqueueRemoveRole, enqueueSanctionApply } from "@/lib/discord/discord";
 import {
   BLOCKING_SANCTION_TYPES,
+  checkSanctionTargetEligibility,
   getAvertRoleId,
   getSanctionExpirationDate,
   isValidSanctionType,
   SANCTION_TYPES,
 } from "@/lib/sanctions";
 import { getEffectiveSanctionStatus } from "@/lib/sanction-status-labels";
+import { getMemberScopeFlags } from "@/lib/staff/member-scope";
 
 const STATUSES = ["ACTIVE", "EXPIRED", "CLOSED"] as const;
 const DISCORD_STATUSES = ["PENDING", "APPLIED", "FAILED"] as const;
@@ -346,11 +348,11 @@ export async function POST(req: Request) {
   const member = memberId
     ? await prisma.member.findFirst({
         where: { id: memberId, familyId },
-        select: { id: true, discordId: true, rpName: true, isActive: true, isGhost: true },
+        select: { id: true, discordId: true, rpName: true, isActive: true, isGhost: true, discordRoleIds: true },
       })
     : await prisma.member.findUnique({
         where: { familyId_discordId: { familyId, discordId: memberDiscordId! } },
-        select: { id: true, discordId: true, rpName: true, isActive: true, isGhost: true },
+        select: { id: true, discordId: true, rpName: true, isActive: true, isGhost: true, discordRoleIds: true },
       });
 
   if (!member || !member.discordId) {
@@ -361,6 +363,49 @@ export async function POST(req: Request) {
   if (!member.isActive || member.isGhost) {
     logWarn("sanction_create_member_not_active", { requestId, memberId: member.id, rpName: member.rpName });
     return NextResponse.json({ ok: false, error: "MEMBER_NOT_ACTIVE", requestId }, { status: 400 });
+  }
+
+  // Membres à statut "extra" (Nutella, etc.) : pas soumis aux règles de
+  // sanction. Ils ont un accès basique au panel mais pas de warns/démote/
+  // blacklist/etc. Le staff ne peut pas leur appliquer de sanction.
+  const scopeFlags = getMemberScopeFlags(member);
+  if (scopeFlags.isExtraMember) {
+    logWarn("sanction_create_member_extra", { requestId, memberId: member.id, rpName: member.rpName });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "MEMBER_NOT_SANCTIONABLE",
+        message: "Ce membre n'est pas soumis aux règles de sanction (rôle membre basique).",
+        requestId,
+      },
+      { status: 400 },
+    );
+  }
+
+  // Sanctions à scope restreint (ex: AVERT_EM réservé à l'État-Major).
+  // On bloque côté serveur même si l'UI le filtre déjà — defensive.
+  const eligibility = checkSanctionTargetEligibility(typeRaw, member.discordRoleIds);
+  if (!eligibility.ok) {
+    logWarn("sanction_create_target_not_eligible", {
+      requestId,
+      memberId: member.id,
+      rpName: member.rpName,
+      type: typeRaw,
+      requiredRoleId: eligibility.requiredRoleId,
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: eligibility.error,
+        requiredRoleId: eligibility.requiredRoleId,
+        message:
+          typeRaw === "AVERT_EM"
+            ? "L'Averto EM ne peut être appliqué qu'à un membre de l'État-Major."
+            : "Ce type de sanction n'est pas applicable à ce membre.",
+        requestId,
+      },
+      { status: 400 },
+    );
   }
 
   const blockingSanction = await prisma.sanction.findFirst({

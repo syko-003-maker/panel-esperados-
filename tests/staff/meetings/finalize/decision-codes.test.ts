@@ -170,8 +170,9 @@ describe("isPromotionDecision", () => {
 });
 
 describe("SANCTION_TYPES — verrouille la liste exhaustive", () => {
-  it("contient EXACTEMENT 7 types Prisma", () => {
+  it("contient EXACTEMENT 8 types Prisma", () => {
     expect([...SANCTION_TYPES].sort()).toEqual([
+      "AVERT_EM",
       "AVERT_LEGER",
       "AVERT_LOURD",
       "AVERT_ORAL_PLAYTIME",

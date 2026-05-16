@@ -23,6 +23,7 @@ import {
 } from "discord.js";
 import { IDS } from "./ids.js";
 import { buildLinkPanelEmbed } from "./link-embed.js";
+import { renameMemberIfPossible } from "./features/rename/renameMember.js";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -1079,12 +1080,57 @@ export async function handleLinkModalSubmission(
       });
     }
 
+    // Rename Discord du membre lié au nouveau rpName.
+    // Avant ce patch, /link mettait à jour la DB mais ne touchait jamais au
+    // pseudo Discord → l'admin devait renommer à la main. Désormais on déclenche
+    // un rename via renameMemberIfPossible (tronque à 32 chars, gère hiérarchie
+    // de rôles, log les skip propres). Non bloquant : si le rename échoue, la
+    // liaison reste enregistrée.
+    let renameNote = "";
+    if (result.rpName && interaction.guild) {
+      try {
+        const renameResult = await renameMemberIfPossible(
+          client,
+          interaction.guild.id,
+          targetId,
+          result.rpName,
+          `Liaison /link par ${interaction.user.tag}`
+        );
+        log("link_submit_rename", {
+          targetId,
+          rpName: result.rpName,
+          ok: renameResult.ok,
+          skipped: renameResult.skipped,
+          error: renameResult.error,
+        });
+        if (renameResult.ok && !renameResult.skipped) {
+          renameNote = `\nPseudo Discord mis à jour → **${renameResult.nickname}**.`;
+        } else if (renameResult.skipped === "ALREADY_OK") {
+          // déjà bon, pas de note
+        } else if (renameResult.skipped === "ROLE_HIERARCHY") {
+          renameNote = `\n⚠️ Le pseudo Discord n'a pas pu être changé (rôle du bot pas assez haut).`;
+        } else if (renameResult.skipped === "NO_PERMISSION") {
+          renameNote = `\n⚠️ Le pseudo Discord n'a pas pu être changé (permission ManageNicknames manquante).`;
+        } else if (renameResult.skipped === "MEMBER_NOT_FOUND") {
+          renameNote = `\n⚠️ Membre absent du serveur Discord, pseudo non mis à jour.`;
+        } else if (renameResult.error) {
+          renameNote = `\n⚠️ Pseudo Discord non mis à jour : ${renameResult.error}`;
+        }
+      } catch (renameErr) {
+        log("link_submit_rename_error", {
+          targetId,
+          error: renameErr instanceof Error ? renameErr.message : String(renameErr),
+        });
+        renameNote = `\n⚠️ Erreur lors du rename Discord.`;
+      }
+    }
+
     // Success
     await interaction.editReply({
       embeds: [
         createSuccessEmbed(
           "Liaison Enregistrée",
-          `✅ <@${targetId}> est maintenant lié avec le SteamID \`${steamId}\` et le nom RP **${rpName ?? "Non défini"}**.`
+          `✅ <@${targetId}> est maintenant lié avec le SteamID \`${steamId}\` et le nom RP **${rpName ?? "Non défini"}**.${renameNote}`
         ),
       ],
     });

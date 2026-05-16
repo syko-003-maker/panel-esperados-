@@ -4,6 +4,7 @@ import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
 import { getSession } from "@/auth";
 import type { MeetingDecisionAction } from "@prisma/client";
 import { isMeetingLocked } from "@/lib/meetings";
+import { isProtectedPromotionTargetGrade } from "@/lib/staff/meetings/finalize/target-grade";
 
 type DecisionInput = {
   memberDiscordId: string;
@@ -117,6 +118,17 @@ export async function POST(
       results.errors.push({
         memberDiscordId: decision.memberDiscordId,
         error: `Invalid action: ${decision.action}`,
+      });
+      continue;
+    }
+
+    // Sécurité : interdire les promotions vers Chef famille / Général /
+    // Sous-Chef famille / Consejero via une réunion. Cf. commentaire dans
+    // src/lib/staff/meetings/finalize/target-grade.ts.
+    if (isProtectedPromotionTargetGrade(decision.newGrade)) {
+      results.errors.push({
+        memberDiscordId: decision.memberDiscordId,
+        error: "FORBIDDEN_TARGET_GRADE — réservé au Chef famille (hors réunion)",
       });
       continue;
     }

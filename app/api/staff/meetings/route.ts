@@ -11,7 +11,7 @@ import {
   DEFAULT_MEETING_FAMILY_ID,
   isMeetingLocked,
 } from "@/lib/meetings";
-import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
+import { isStaffMeetingScopeMember } from "@/lib/staff/member-scope";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
 
 function buildMeetingListItem(meeting: {
@@ -167,7 +167,7 @@ export async function POST(req: Request) {
     orderBy: { rpName: "asc" },
   });
 
-  const activeMembers = members.filter(isActiveMembersScopeMember);
+  const activeMembers = members.filter(isStaffMeetingScopeMember);
   const rowSnapshots = activeMembers.map((member, index) => ({
     ...buildMeetingRowSnapshot(member),
     attendanceStatus: "NOT_CONCERNED" as const,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
+import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 
 export async function GET() {
   const guard = await requireChefOrEtatMajor();
@@ -10,12 +11,26 @@ export async function GET() {
   const BLACKLIST_ROLE_ID  = "1338901141873758288";
   const RESERVIST_ROLE_ID  = "1312845999366209682";
 
-  // Membres actifs avec warns, avec un grade valide, en excluant démotés, blacklistés et réservistes
+  // Liste des grades "actifs" éligibles à warns : tous les grades Famille
+  // sauf Réserviste (déjà exclu plus bas via NOT).
+  // Les rôles "membre basique" (Nutella, etc.) ne sont PAS inclus : ces
+  // membres ne sont pas soumis aux règles de warns/sanctions.
+  // On filtre sur discordRoleIds plutôt que sur Member.gradeLevel car ce
+  // dernier est rarement re-syncé après un changement de rôle Discord
+  // (ex : retrait du DEMOTE → gradeLevel reste à 0 même si le membre a
+  // récupéré son rôle Novato). discordRoleIds est la source de vérité,
+  // mise à jour par le worker Discord.
+  const ACTIVE_GRADE_ROLE_IDS = GRADE_ROLE_IDS_ORDERED.filter(
+    (rid) => rid !== RESERVIST_ROLE_ID
+  );
+
+  // Membres actifs avec warns, avec au moins un rôle de grade Famille,
+  // en excluant démotés, blacklistés et réservistes.
   const members = await prisma.member.findMany({
     where: {
       isActive: true,
-      gradeLevel: { gt: 0 },
       lygWarns: { some: {} },
+      discordRoleIds: { hasSome: [...ACTIVE_GRADE_ROLE_IDS] },
       NOT: [
         { discordRoleIds: { has: DEMOTE_ROLE_ID    } },
         { discordRoleIds: { has: BLACKLIST_ROLE_ID } },

@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { makeRequestId, logInfo, logWarn, logError } from "@/lib/obs";
-import { enqueueRecruitmentDecision, enqueueAssignRole } from "@/lib/discord/discord";
+import {
+  enqueueRecruitmentDecision,
+  enqueueAssignRole,
+  enqueueRemoveRole,
+} from "@/lib/discord/discord";
 import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { GRADE_ROLE_IDS_ORDERED, GRADE_LABEL_BY_ROLE_ID, getGradeLevelNumber } from "@/lib/grade-colors";
+import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
+import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+
+// Constantes du grade attribué automatiquement par un recrutement accepté.
+// Source de vérité : grade-colors. On les calcule au module load pour rester
+// alignés avec les helpers utilisés ailleurs.
+const NOVATO_ROLE_ID = "1408492476351778836";
+const NOVATO_LABEL = GRADE_LABEL_BY_ROLE_ID[NOVATO_ROLE_ID] ?? "Novato";
+const NOVATO_GRADE_LEVEL = getGradeLevelNumber(NOVATO_ROLE_ID);
 
 const FAMILY_ID = "esperados";
 const GUILD_ID = process.env.GUILD_ID ?? "1312845998753710151";
@@ -17,6 +31,23 @@ const RECRUITMENT_ACCEPT_ROLE_IDS = [
   "1408484776708673686", // Homme de rang
   "1325929087079813232", // Sans spé
 ] as const;
+
+// Rôles à RETIRER lors de l'acceptation d'un recrutement, s'ils sont présents
+// sur le membre (ex: ré-acceptation après démote/blacklist/réserviste, ou
+// un ancien grade qu'il faut nettoyer avant d'attribuer Novato).
+//
+// Bug fix : avant ce patch, un membre démote qu'on re-recrutait gardait son
+// rôle Demote → le panel le classait toujours en démote au lieu d'actif.
+const RECRUITMENT_ACCEPT_ROLES_TO_REMOVE = new Set<string>([
+  DEMOTE_ROLE_ID,
+  BLACKLIST_ROLE_ID,
+  RESERVIST_ROLE_ID,
+  // Tous les anciens rôles de grade Famille (sauf Novato qui sera ré-assigné)
+  ...GRADE_ROLE_IDS_ORDERED.filter(
+    (rid) => rid !== "1408492476351778836" && // Novato (assigné)
+             !RECRUITMENT_ACCEPT_ROLE_IDS.includes(rid as any)
+  ),
+]);
 
 /**
  * POST /api/discord/recruitment/decide
@@ -189,6 +220,50 @@ export async function POST(req: Request) {
       const candidateDiscordId = (updated.discordId ?? "").trim();
       const isValidDiscordId = /^\d{17,20}$/.test(candidateDiscordId);
       if (isValidDiscordId) {
+        // 1. NETTOYAGE : retirer les rôles incompatibles présents sur le membre
+        //    (Demote / Blacklist / Réserviste / anciens grades Famille).
+        //    Sans ce nettoyage, un re-recrutement laissait l'ancien Demote
+        //    en place → membre classé toujours en démote côté panel.
+        const memberForCleanup = await prisma.member.findFirst({
+          where: { familyId: family.id, discordId: candidateDiscordId },
+          select: { id: true, discordRoleIds: true, grade: true, gradeLevel: true, roleDiscordId: true },
+        }).catch(() => null);
+
+        const currentRoles = Array.isArray(memberForCleanup?.discordRoleIds)
+          ? memberForCleanup!.discordRoleIds
+          : [];
+        const rolesToRemove = currentRoles.filter((rid) =>
+          RECRUITMENT_ACCEPT_ROLES_TO_REMOVE.has(rid)
+        );
+
+        if (rolesToRemove.length > 0) {
+          logInfo("recruitment_decide_cleanup_roles", {
+            requestId,
+            ticketKey,
+            candidateDiscordId,
+            rolesToRemove,
+          });
+          await Promise.all(
+            rolesToRemove.map((roleId) =>
+              enqueueRemoveRole({
+                familyId: FAMILY_ID,
+                guildId: GUILD_ID,
+                userDiscordId: candidateDiscordId,
+                roleId,
+                entity: "recruitment_ticket",
+                entityId: updated.id,
+              }).catch((err) => {
+                logError(
+                  "recruitment_decide_remove_role_failed",
+                  { requestId, ticketKey, roleId, candidateDiscordId },
+                  err as Error
+                );
+              })
+            )
+          );
+        }
+
+        // 2. Attribuer les nouveaux rôles standards de novato.
         await Promise.all(
           RECRUITMENT_ACCEPT_ROLE_IDS.map((roleId) =>
             enqueueAssignRole({
@@ -203,6 +278,65 @@ export async function POST(req: Request) {
             })
           )
         );
+
+        // 3. Sync DB Member.grade : sans ça le panel reste désynchro
+        //    (Member.gradeLevel à 0 → exclu de /staff/warns, /staff/members
+        //    onglet par grade, etc.) tant que personne ne fait un PATCH
+        //    manuel /api/members/:discordId. Ex : Alexei avait gradeLevel=0
+        //    après cleanup DEMOTE alors qu'il avait bien le rôle Novato.
+        //
+        //    On ne touche que si le membre existe déjà en base — la création
+        //    Member est gérée ailleurs (worker outbox / sync Discord).
+        if (memberForCleanup) {
+          const needsGradeUpdate =
+            memberForCleanup.grade !== NOVATO_LABEL ||
+            memberForCleanup.gradeLevel !== NOVATO_GRADE_LEVEL ||
+            memberForCleanup.roleDiscordId !== NOVATO_ROLE_ID;
+
+          if (needsGradeUpdate) {
+            try {
+              await prisma.$transaction([
+                prisma.member.update({
+                  where: { id: memberForCleanup.id },
+                  data: {
+                    grade: NOVATO_LABEL,
+                    gradeLevel: NOVATO_GRADE_LEVEL,
+                    roleDiscordId: NOVATO_ROLE_ID,
+                    isActive: true,
+                  },
+                }),
+                prisma.gradeHistory.create({
+                  data: {
+                    memberId: memberForCleanup.id,
+                    oldGrade: memberForCleanup.grade,
+                    oldGradeLevel: memberForCleanup.gradeLevel,
+                    newGrade: NOVATO_LABEL,
+                    newGradeLevel: NOVATO_GRADE_LEVEL,
+                    changedBy: staffDiscordId,
+                    source: "SYNC",
+                    notes: `Recrutement accepté (ticket ${ticketKey})`,
+                  },
+                }),
+              ]);
+              logInfo("recruitment_decide_grade_synced", {
+                requestId,
+                ticketKey,
+                memberId: memberForCleanup.id,
+                candidateDiscordId,
+                oldGrade: memberForCleanup.grade,
+                oldGradeLevel: memberForCleanup.gradeLevel,
+                newGrade: NOVATO_LABEL,
+                newGradeLevel: NOVATO_GRADE_LEVEL,
+              });
+            } catch (gradeErr) {
+              logError(
+                "recruitment_decide_grade_sync_failed",
+                { requestId, ticketKey, memberId: memberForCleanup.id, candidateDiscordId },
+                gradeErr as Error
+              );
+            }
+          }
+        }
       }
     }
     

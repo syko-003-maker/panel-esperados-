@@ -17,13 +17,20 @@ interface SectionCardProps {
  *  - halos radial bordeaux (top-right) et ambre (bottom-left) en couches
  *  - icon container en gradient bordeaux + glow + inner highlight
  *  - titre légèrement plus grand avec text-shadow subtil
- *  - hover via .premium-card (translateY + scale + glow famille)
+ *
+ * NOTE : SectionCard est un conteneur passif (pas cliquable). On NE met
+ * PAS `premium-card`/`premium-card-bordeaux` ici car ces classes appliquent
+ * un `transform: translate3d(0,-4px,0)` au survol → quand l'utilisateur
+ * passe la souris sur un élément interactif à l'intérieur (ligne, bouton…),
+ * le whole card se soulève, le texte se ré-rastérise en subpixel → effet
+ * de "flou" perçu pendant les 220ms d'animation. Seul `premium-surface-
+ * elevated` reste : il ne fait que poser un backdrop-blur statique.
  */
 export function SectionCard({ title, description, icon: Icon, actions, children, className }: SectionCardProps) {
   return (
     <MotionCard
       className={cn(
-        "premium-card premium-card-bordeaux premium-surface-elevated relative overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.72),rgba(10,3,5,0.84))] shadow-[0_28px_64px_-32px_rgba(2,0,1,0.85),0_0_0_1px_rgba(255,255,255,0.03)]",
+        "premium-surface-elevated relative overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.72),rgba(10,3,5,0.84))] shadow-[0_28px_64px_-32px_rgba(2,0,1,0.85),0_0_0_1px_rgba(255,255,255,0.03)]",
         className
       )}
     >

@@ -1,3 +1,5 @@
+import { recordLygCall } from "@/lib/lyg-stats";
+
 export type FamilyPlaytimeEntry = {
   steamId: string;
   playtime7d: number;
@@ -61,9 +63,13 @@ export function getMinutesSinceWeekStart(
 
 export async function fetchFamilyPlaytimes7d(
   token: string,
-  options?: { timeoutMs?: number },
+  options?: { timeoutMs?: number; timeMinutes?: number },
 ): Promise<FamilyPlaytimeEntry[]> {
-  const { timeoutMs = 30_000 } = options ?? {};
+  // `timeMinutes` permet d'override la fenêtre. Si non fourni, on utilise
+  // les minutes depuis le lundi 00:00 Brussels (cumulé semaine en cours).
+  // Pour un poll court "qui est en métier famille là maintenant", passer
+  // timeMinutes: 3 (= playtime dans les 3 dernières minutes).
+  const { timeoutMs = 30_000, timeMinutes } = options ?? {};
   let base = process.env.LYG_BASE_URL?.trim();
   if (!base) {
     throw new Error("LYG_BASE_URL is missing");
@@ -86,6 +92,10 @@ export async function fetchFamilyPlaytimes7d(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+  // Endpoint normalisé pour le tracking (tous les appels passent par la même
+  // route LYG — un seul bucket dans la box "Par endpoint").
+  const trackedEndpoint = "/darkrp/familles/playtimes";
+
   let res: Response;
   try {
     res = await fetch(endpoint, {
@@ -97,24 +107,36 @@ export async function fetchFamilyPlaytimes7d(
       },
       body: JSON.stringify({
         token,
-        // ✅ FIX: Use minutes elapsed since Monday 00:00 Brussels time so the LYG query
-        // returns data for the CURRENT week only (not a rolling 7-day window).
-        // Previously hardcoded to 10080 (7 days), which kept last week's playtime
-        // visible all through the new week — members who stopped playing were never
-        // absent from the snapshot and therefore never reset to 0.
-        // getMinutesSinceWeekStart() was defined here but never wired up — now it is.
-        time: Math.max(1, getMinutesSinceWeekStart().minutes),
+        // Si timeMinutes est passé explicitement → fenêtre courte (ex: 3 min
+        // pour le poll "in-family"). Sinon → minutes depuis lundi 00:00
+        // Brussels = cumulé semaine en cours (cas 7d sync historique).
+        time: typeof timeMinutes === "number" && Number.isFinite(timeMinutes) && timeMinutes > 0
+          ? Math.max(1, Math.floor(timeMinutes))
+          : Math.max(1, getMinutesSinceWeekStart().minutes),
       }),
       cache: "no-store",
       signal: controller.signal,
     });
   } catch (err: any) {
+    // Track les network errors (status=0) pour aligner avec le compteur global.
+    try {
+      recordLygCall({ ok: false, status: 0, endpoint: trackedEndpoint });
+    } catch {
+      /* ignore */
+    }
     if (err?.name === "AbortError") {
       throw new Error(`LYG playtime request timed out after ${timeoutMs}ms`);
     }
     throw new Error(`LYG playtime network error: ${err?.message ?? String(err)}`);
   } finally {
     clearTimeout(timeout);
+  }
+
+  // Track le call (cron playtime auto-sync, 1×/heure).
+  try {
+    recordLygCall({ ok: res.ok, status: res.status, endpoint: trackedEndpoint });
+  } catch {
+    /* tracking non bloquant */
   }
 
   if (!res.ok) {

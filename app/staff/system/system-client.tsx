@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 
@@ -239,6 +239,22 @@ function LogsViewer() {
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
+  // Auto-scroll en bas (live tail style) :
+  // - Au load initial → on scroll en bas pour voir les logs les plus récents
+  // - À chaque refresh, si l'utilisateur est encore "collé" au bas → on suit
+  // - Si l'utilisateur a scrollé vers le haut pour relire → on garde sa position
+  // Stocké dans un ref pour éviter un re-render à chaque scroll event.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickyBottomRef = useRef(true);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // Tolérance 24px : on considère "en bas" même si pas pixel-perfect (zoom, flex gap, etc.)
+    stickyBottomRef.current = distanceFromBottom < 24;
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -257,6 +273,23 @@ function LogsViewer() {
     const interval = setInterval(() => void load(), 30_000);
     return () => clearInterval(interval);
   }, [load, autoRefresh]);
+
+  // Quand l'utilisateur change de source ou de filtre, on remet le scroll en
+  // mode "stick to bottom" — c'est une nouvelle vue, naturel de partir du
+  // plus récent.
+  useEffect(() => {
+    stickyBottomRef.current = true;
+  }, [source, filter]);
+
+  // Après chaque mise à jour des logs (load initial OU refresh auto), on
+  // scroll en bas SI l'utilisateur n'a pas remonté volontairement.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || logs.length === 0) return;
+    if (stickyBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [logs]);
 
   return (
     <SectionCard
@@ -314,7 +347,11 @@ function LogsViewer() {
         </div>
 
         {/* Logs */}
-        <div className="max-h-[500px] overflow-y-auto rounded-lg border border-white/8 bg-black/40 p-3 font-mono text-xs">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="max-h-[500px] overflow-y-auto rounded-lg border border-white/8 bg-black/40 p-3 font-mono text-xs"
+        >
           {logs.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">Aucun log à afficher.</p>
           ) : (

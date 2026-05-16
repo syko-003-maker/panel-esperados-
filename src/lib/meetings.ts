@@ -1,7 +1,11 @@
 export const DEFAULT_MEETING_FAMILY_ID = "esperados";
-export const MEETING_PLAYTIME_THRESHOLD_MINUTES = 100;
+// Seuil de validation du playtime hebdomadaire (Brussels lundi 00:00 → réunion).
+// Au-dessus de ce seuil, un membre est considéré "présent" automatiquement
+// dans la feuille de réunion. En-dessous (et sans absence approuvée), il est
+// marqué absent. Source : convention Los Esperados.
+export const MEETING_PLAYTIME_THRESHOLD_MINUTES = 300;
 
-import { GRADE_LABEL_BY_ROLE_ID } from "@/lib/grade-colors";
+import { GRADE_LABEL_BY_ROLE_ID, GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 
 type Nullable<T> = T | null | undefined;
 
@@ -211,24 +215,55 @@ function businessDecisionLabel(decision: string) {
   }
 }
 
+/**
+ * Résout le grade d'un membre depuis ses rôles Discord.
+ *
+ * Itère sur GRADE_ROLE_IDS_ORDERED (ordre hiérarchique : du plus haut au
+ * plus bas) et renvoie le label du PREMIER rôle trouvé. Ça gère le cas
+ * d'un membre avec plusieurs rôles grade (legacy Chef famille + nouveau
+ * Coronel par ex.) — on prend le plus haut comme source de vérité.
+ */
 function resolveGradeFromRoles(discordRoleIds: unknown): string | null {
-  const roles = Array.isArray(discordRoleIds)
-    ? discordRoleIds.map((r) => String(r ?? "").trim()).filter(Boolean)
-    : [];
-  for (const roleId of roles) {
-    const label = GRADE_LABEL_BY_ROLE_ID[roleId];
-    if (label) return label;
+  const roles = new Set(
+    Array.isArray(discordRoleIds)
+      ? discordRoleIds.map((r) => String(r ?? "").trim()).filter(Boolean)
+      : [],
+  );
+  if (roles.size === 0) return null;
+  for (const roleId of GRADE_ROLE_IDS_ORDERED) {
+    if (roles.has(roleId)) {
+      const label = GRADE_LABEL_BY_ROLE_ID[roleId];
+      if (label) return label;
+    }
   }
   return null;
 }
 
+/**
+ * Construit le snapshot d'une ligne de réunion.
+ *
+ * IMPORTANT — priorité Discord > DB :
+ *   Member.discordRoleIds est le mirror live des rôles Discord, mis à jour
+ *   toutes les 3 min par le worker. C'est la SOURCE DE VÉRITÉ. Les champs
+ *   Member.rankLabel / Member.grade sont des caches DB qui ne sont PAS
+ *   re-synchronisés quand un staff change manuellement un rôle Discord →
+ *   ils peuvent être obsolètes pendant longtemps.
+ *
+ *   Avant ce fix : on prenait rankLabel/grade en priorité → si un staff
+ *   promouvait quelqu'un manuellement sur Discord et créait la feuille
+ *   ensuite, le snapshot avait l'ancien grade.
+ *
+ *   Maintenant : on résout depuis discordRoleIds en priorité, et on tombe
+ *   sur rankLabel/grade seulement comme fallback (membres sans Discord
+ *   linkés, etc.).
+ */
 export function buildMeetingRowSnapshot(member: MeetingMemberSnapshotSource) {
+  const gradeFromRoles = resolveGradeFromRoles(member.discordRoleIds);
   const gradeFromDb = normalizeText(member.rankLabel ?? member.grade);
-  const gradeFromRoles = gradeFromDb ? null : resolveGradeFromRoles(member.discordRoleIds);
   return {
     memberId: member.id ?? null,
     rpNameSnapshot: normalizeText(member.rpName) ?? "Membre inconnu",
-    gradeSnapshot: gradeFromDb ?? gradeFromRoles,
+    gradeSnapshot: gradeFromRoles ?? gradeFromDb,
     steamIdSnapshot: normalizeText(member.steamId),
     discordIdSnapshot: normalizeText(member.discordId),
     playtimeMinutes: normalizeMinutes(member.playtime7d),
@@ -282,7 +317,13 @@ export function mapSanctionTypeToDecisionType(sanctionType: Nullable<string>): S
   if (normalized === "DEMOTE") return "DEMOTE";
   if (normalized === "BLACKLIST" || normalized === "EXCLUDE") return "EXCLUDE";
   if (normalized === "AVERT_ORAL_PLAYTIME" || normalized === "AVERT_ORAL_REUNION") return "WARNING_ORAL";
-  if (normalized === "AVERT_LEGER" || normalized === "AVERT_LOURD" || normalized === "WARN_LIGHT" || normalized === "WARN_HEAVY") {
+  if (
+    normalized === "AVERT_LEGER" ||
+    normalized === "AVERT_LOURD" ||
+    normalized === "AVERT_EM" ||
+    normalized === "WARN_LIGHT" ||
+    normalized === "WARN_HEAVY"
+  ) {
     return "WARNING";
   }
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppBackground } from "@/components/app-background";
@@ -14,17 +14,51 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://losesperados.fr"),
   title: "Los Esperados | Panel Interne",
-  description: "Panel de gestion interne Los Esperados - Membres, Sanctions, Banque, Staff",
+  description: "Famille Los Esperados",
   icons: {
+    // Favicon multi-tailles généré depuis branding/los-esperados.png
+    // (16/32/48/64/128/256). On NE référence PLUS /logo-icon.svg car ce
+    // fichier contenait un placeholder "LE" hérité, et Chrome préférant le
+    // SVG, l'onglet affichait "LE" au lieu du vrai logo Los Esperados.
     icon: [
       { url: "/favicon.ico", sizes: "any" },
       { url: "/branding/los-esperados.png", type: "image/png", sizes: "256x256" },
-      { url: "/logo-icon.svg", type: "image/svg+xml" },
     ],
     apple: "/branding/los-esperados.png",
     shortcut: "/favicon.ico",
   },
+  // Open Graph — utilisé par Discord/Slack/Twitter pour le preview de lien.
+  openGraph: {
+    type: "website",
+    locale: "fr_FR",
+    url: "https://losesperados.fr",
+    siteName: "Los Esperados",
+    title: "🏛️ Los Esperados — Panel Interne",
+    description: "Famille Los Esperados",
+    images: [
+      {
+        url: "/branding/los-esperados.png",
+        width: 1024,
+        height: 1024,
+        alt: "Los Esperados",
+      },
+    ],
+  },
+  // Twitter card — Discord lit aussi ces tags pour décider du type de
+  // preview (summary_large_image = grosse image, summary = mini-thumb).
+  twitter: {
+    card: "summary_large_image",
+    title: "🏛️ Los Esperados — Panel Interne",
+    description: "Famille Los Esperados",
+    images: ["/branding/los-esperados.png"],
+  },
+};
+
+// Couleur de la barre verticale de l'embed Discord (rouge bordeaux famille).
+export const viewport: Viewport = {
+  themeColor: "#9b2335",
 };
 
 export default function RootLayout({

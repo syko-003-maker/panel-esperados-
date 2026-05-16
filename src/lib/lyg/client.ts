@@ -1,4 +1,5 @@
 import { getLygConfig } from "@/lib/lyg";
+import { recordLygCall, normalizeLygEndpoint } from "@/lib/lyg-stats";
 
 export type LygMember = {
   steamId64: string;
@@ -152,6 +153,14 @@ async function request<T = unknown>(path: string, timeoutMs = 15_000): Promise<L
     const text = await res.text().catch(() => "");
     const durationMs = Date.now() - startedAt;
 
+    // Track : on compte tous les calls LYG passant par ce client (auto-sync
+    // members + banklogs). Sans ça la box Système ignorait les crons.
+    try {
+      recordLygCall({ ok: res.ok, status: res.status, endpoint: normalizeLygEndpoint(path) });
+    } catch {
+      // tracking non bloquant
+    }
+
     if (!res.ok) {
       const mapped = mapError(res.status);
       console.error("[LYG_SYNC][HTTP] error", {
@@ -190,6 +199,12 @@ async function request<T = unknown>(path: string, timeoutMs = 15_000): Promise<L
     const durationMs = Date.now() - startedAt;
     const error = err?.name === "AbortError" ? "LYG indisponible (timeout)" : String(err?.message ?? err);
     console.error("[LYG_SYNC][HTTP] exception", { url, error, durationMs });
+    // Track aussi les exceptions (timeout / network) — status=0 pour les distinguer.
+    try {
+      recordLygCall({ ok: false, status: 0, endpoint: normalizeLygEndpoint(path) });
+    } catch {
+      // ignore
+    }
     return {
       ok: false,
       status: 0,

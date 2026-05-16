@@ -1,6 +1,16 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
+
+    // Démarrer le loop "in-family" dès le boot du panel, sans attendre
+    // qu'un utilisateur ouvre /staff. Garantit qu'on a tout de suite des
+    // données fraîches sur qui est actif en métier famille.
+    try {
+      const { ensureInFamilyLoopStarted } = await import("@/lib/in-family-loop");
+      ensureInFamilyLoopStarted();
+    } catch (err) {
+      console.error("[instrumentation] failed to start in-family loop:", err);
+    }
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

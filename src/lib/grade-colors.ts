@@ -1,9 +1,22 @@
 /**
  * Discord Grade System with Colors
- * 
+ *
  * Maps role IDs to grade labels and Tailwind badge colors
  * Prioritized by hierarchy: Chef famille highest, Réserviste lowest
  */
+
+/**
+ * Rôles Discord qui accordent un accès "membre" au panel SANS être un grade
+ * Famille hiérarchique. Les porteurs de ces rôles sont reconnus actifs par
+ * le poller LYG, /staff/warns, /api/discord/member-status, etc., comme un
+ * Novato lambda — mais ils ne sont pas listés dans la hiérarchie des grades.
+ *
+ * Ajouter un rôle ici = équivalent fonctionnel d'un membre basique pour les
+ * checks d'activité, sans toucher à GRADE_ROLE_IDS_ORDERED.
+ */
+export const EXTRA_MEMBER_ROLE_IDS: readonly string[] = [
+  "1465415073425133598", // Nutella — accès membre basique
+];
 
 // Role IDs in priority order (highest to lowest)
 export const GRADE_ROLE_IDS_ORDERED: readonly string[] = [

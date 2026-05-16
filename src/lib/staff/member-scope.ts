@@ -1,6 +1,7 @@
 import { BLACKLIST_ROLE_ID, getDiscordGrade, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
 import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
+import { EXTRA_MEMBER_ROLE_IDS } from "@/lib/grade-colors";
 
 type MemberScopeInput = {
   discordId?: string | null;
@@ -82,6 +83,12 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     (SOUS_CHEF_FAMILLE_ROLE_ID && roleSet.has(SOUS_CHEF_FAMILLE_ROLE_ID)) ||
     statusHints.includes("chef");
 
+  // "Extra members" (rôles type Nutella) : reconnus comme membres pour
+  // /me, /bank, banklogs persos — mais EXCLUS du staff scope (pas dans
+  // /staff/warns, /staff/meetings, /staff/sanctions, /staff/banklogs, etc.)
+  // Pas de promotion grade non plus.
+  const isExtraMember = EXTRA_MEMBER_ROLE_IDS.some((rid) => roleSet.has(rid));
+
   const hasDiscordGrade = Boolean(gradeInfo.grade);
 
   return {
@@ -94,6 +101,7 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     isBlacklisted,
     isReservist,
     isChefExempt,
+    isExtraMember,
     isOutOfDiscord,
   };
 }
@@ -114,6 +122,24 @@ export function isDisplayableStaffMember(member: MemberScopeInput): boolean {
   // isDemoted already includes isOutOfDiscord → they fall into the demote scope
   if (flags.isDemoted || flags.isBlacklisted || flags.isReservist) return false;
 
+  // Nota : les "extra members" (Nutella, etc.) RESTENT displayable ici. On
+  // veut les voir dans /staff/members et /staff/banklogs. L'exclusion des
+  // workflows playtime/sanctions/warns/meetings se fait explicitement dans
+  // les routes concernées via `flags.isExtraMember`.
+  return true;
+}
+
+/**
+ * Variante "métier" : actif + linké + PAS extra-member. À utiliser pour les
+ * workflows playtime / sanctions / warns / meetings où les rôles "membre
+ * basique" (Nutella, etc.) ne doivent pas apparaître. Pour les vues
+ * d'inventaire générales (members list, banklogs staff), utiliser
+ * `isActiveMembersScopeMember` qui les inclut.
+ */
+export function isStaffMeetingScopeMember(member: MemberScopeInput): boolean {
+  if (!isActiveMembersScopeMember(member)) return false;
+  const flags = getMemberScopeFlags(member);
+  if (flags.isExtraMember) return false;
   return true;
 }
 

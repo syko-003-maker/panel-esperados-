@@ -4,6 +4,7 @@ import { requirePrivileged } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { AbsenceStatus } from "@prisma/client";
+import { enqueueDeleteMessage, getOrCreateDiscordConfig } from "@/lib/discord/discord";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 const ABSENCE_TYPES = ["MEETING", "GENERAL"] as const;
@@ -152,6 +153,25 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ ok: false, error: "NOT_FOUND", requestId }, { status: 404 });
     }
 
+    // Si un message Discord existe, on l'enqueue pour suppression AVANT de
+    // delete la row (sinon on perd le messageId). Idempotent côté worker.
+    if (existing.discordMessageId) {
+      try {
+        const config = await getOrCreateDiscordConfig("esperados");
+        if (config.absencesChannelId) {
+          await enqueueDeleteMessage({
+            familyId: existing.familyId,
+            channelId: config.absencesChannelId,
+            messageId: existing.discordMessageId,
+            entity: "Absence",
+            entityId: existing.id,
+          });
+        }
+      } catch (err) {
+        logWarn("absence_delete_discord_delete_failed", { requestId, id, error: String(err) });
+      }
+    }
+
     await prisma.absence.delete({ where: { id } });
 
     await prisma.auditLog.create({
@@ -248,6 +268,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         meta: { oldStatus: existing.status, newStatus: updated.status },
       },
     });
+
+    // Si REJECTED : on supprime le message Discord d'absence (plus valide).
+    // APPROVED garde le message visible jusqu'à expire-discord (endAt passé).
+    if (value === "REJECTED" && existing.discordMessageId) {
+      try {
+        const config = await getOrCreateDiscordConfig("esperados");
+        if (config.absencesChannelId) {
+          await enqueueDeleteMessage({
+            familyId: existing.familyId,
+            channelId: config.absencesChannelId,
+            messageId: existing.discordMessageId,
+            entity: "Absence",
+            entityId: existing.id,
+          });
+          await prisma.absence.update({
+            where: { id: existing.id },
+            data: { discordMessageId: null },
+          });
+        }
+      } catch (err) {
+        logWarn("absence_rejected_discord_delete_failed", { requestId, id, error: String(err) });
+      }
+    }
 
     logInfo("absence_decided", { requestId, id, status: updated.status });
     return NextResponse.json({ ok: true, requestId, data: toResponseAbsence(updated) });
