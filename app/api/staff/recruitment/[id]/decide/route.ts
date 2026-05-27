@@ -6,6 +6,8 @@ import { enqueueAssignRole, enqueueRecruitmentDecision } from "@/lib/discord/dis
 import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
+import { lygFamilyAdd } from "@/lib/lyg/family-admin";
+import { createAuditLog } from "@/lib/audit";
 
 const DECISIONS = ["ACCEPT", "REJECT"] as const;
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
@@ -153,6 +155,60 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const recruiterId = updatedNotes.claimedById ?? userId;
   const totals = computeRecruitmentTotals(evaluation.scoresJson);
 
+  // ── Auto-add WL famille LYG (synchrone, AVANT enqueue Discord) ────────
+  // On veut connaître le résultat avant d'envoyer l'embed Discord, pour
+  // qu'il reflète l'état réel : "✅ Auto-WL OK" ou "⚠️ À ajouter manuellement".
+  // Non-bloquant : si le cookie n'est pas configuré ou expiré, on log
+  // et on continue. Le chef peut re-tenter via /staff/family.
+  let lygAutoAdd: "ok" | "failed" | "skipped" | undefined;
+  let lygAutoAddError: string | null = null;
+  if (decisionRaw === "ACCEPT") {
+    if (steamId && /^\d{17}$/.test(steamId)) {
+      try {
+        const lygResult = await lygFamilyAdd(steamId);
+        if (lygResult.ok) {
+          lygAutoAdd = "ok";
+          logInfo("recruitment_decide_lyg_add_ok", { requestId, recruitmentId: id, steamId, tookMs: lygResult.tookMs });
+          await createAuditLog({
+            actorType: "staff",
+            actorId: userId,
+            action: "LYG_FAMILY_ADD_AUTO",
+            entity: "Recruitment",
+            entityId: updated.id,
+            entityName: updated.rpName,
+            meta: { steamId, source: "recruitment_accept", tookMs: lygResult.tookMs },
+          });
+        } else {
+          lygAutoAdd = "failed";
+          lygAutoAddError = lygResult.error;
+          logWarn("recruitment_decide_lyg_add_failed", {
+            requestId, recruitmentId: id, steamId,
+            error: lygResult.error, expired: lygResult.expired,
+          });
+          await createAuditLog({
+            actorType: "staff",
+            actorId: userId,
+            action: "LYG_FAMILY_ADD_AUTO_FAILED",
+            entity: "Recruitment",
+            entityId: updated.id,
+            entityName: updated.rpName,
+            meta: { steamId, source: "recruitment_accept", error: lygResult.error, expired: lygResult.expired },
+          });
+        }
+      } catch (err) {
+        // Pas de cookie configuré ou autre erreur "système" — non-fatal.
+        lygAutoAdd = "skipped";
+        lygAutoAddError = err instanceof Error ? err.message : String(err);
+        logWarn("recruitment_decide_lyg_add_skipped", {
+          requestId, recruitmentId: id, steamId, reason: lygAutoAddError,
+        });
+      }
+    } else {
+      lygAutoAdd = "skipped";
+      lygAutoAddError = "steamId invalide ou manquant";
+    }
+  }
+
   // Notification Discord — non bloquante : une panne Discord ne doit pas faire échouer la décision
   try {
     await enqueueRecruitmentDecision({
@@ -166,6 +222,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       totalPoints: totals.totalPoints,
       claimedByUserId: recruiterId,
       discordThreadId: updated.discordThreadId ?? null,
+      lygAutoAdd,
+      lygAutoAddError,
     });
   } catch (discordErr) {
     logError("recruitment_decide_enqueue_failed", { requestId, recruitmentId: id, decision: decisionRaw }, discordErr);

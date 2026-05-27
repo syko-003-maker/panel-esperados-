@@ -81,7 +81,7 @@ export type AbsenceMeta = {
 };
 
 export type StoredAttendanceUpdate = {
-  attendanceStatus: "PRESENT" | "ABSENT" | "JUSTIFIED" | "NOT_CONCERNED";
+  attendanceStatus: "PRESENT" | "ABSENT" | "JUSTIFIED" | "EXCUSED" | "LATE" | "NOT_CONCERNED";
   isJustified: boolean;
 };
 
@@ -144,6 +144,10 @@ function toLegacyAttendanceStatus(value: Nullable<string>):
   switch (normalizeStoredAttendance(value)) {
     case "PRESENT":
       return "PRESENT";
+    case "LATE":
+      return "LATE";
+    case "EXCUSED":
+      return "EXCUSED";
     case "JUSTIFIED":
       return "ABSENT_JUSTIFIED";
     case "ABSENT":
@@ -278,6 +282,8 @@ export function isMeetingLocked(status: Nullable<string>) {
 export function mapAttendanceStatusToLegacy(value: Nullable<string>) {
   const normalized = normalizeStoredAttendance(value);
   if (normalized === "PRESENT") return "PRESENT" as const;
+  if (normalized === "LATE") return "LATE" as const;
+  if (normalized === "EXCUSED") return "EXCUSED" as const;
   if (normalized === "JUSTIFIED") return "ABSENT_JUSTIFIED" as const;
   if (normalized === "ABSENT") return "ABSENT_UNJUSTIFIED" as const;
   return "UNKNOWN" as const;
@@ -285,8 +291,10 @@ export function mapAttendanceStatusToLegacy(value: Nullable<string>) {
 
 export function mapLegacyStatusToAttendance(value: Nullable<string>) {
   const normalized = normalizeLegacyAttendance(value);
-  if (normalized === "PRESENT" || normalized === "LATE") return "PRESENT";
-  if (normalized === "EXCUSED" || normalized === "ABSENT_JUSTIFIED" || normalized === "JUSTIFIED") return "JUSTIFIED";
+  if (normalized === "PRESENT") return "PRESENT";
+  if (normalized === "LATE") return "LATE";
+  if (normalized === "EXCUSED") return "EXCUSED";
+  if (normalized === "ABSENT_JUSTIFIED" || normalized === "JUSTIFIED") return "JUSTIFIED";
   if (normalized === "ABSENT_UNJUSTIFIED" || normalized === "ABSENT") return "ABSENT";
   return "NOT_CONCERNED";
 }
@@ -294,10 +302,18 @@ export function mapLegacyStatusToAttendance(value: Nullable<string>) {
 export function mapLegacyStatusToStored(value: Nullable<string>): StoredAttendanceUpdate | null {
   const normalized = normalizeLegacyAttendance(value);
 
-  if (normalized === "PRESENT" || normalized === "LATE") {
+  if (normalized === "PRESENT") {
     return { attendanceStatus: "PRESENT", isJustified: false };
   }
-  if (normalized === "EXCUSED" || normalized === "ABSENT_JUSTIFIED" || normalized === "JUSTIFIED") {
+  if (normalized === "LATE") {
+    return { attendanceStatus: "LATE", isJustified: false };
+  }
+  if (normalized === "EXCUSED") {
+    // Excusé = absent prévenu / motif accepté → on garde isJustified=true,
+    // mais on conserve la distinction côté UI (EXCUSED vs ABSENT_JUSTIFIED).
+    return { attendanceStatus: "EXCUSED", isJustified: true };
+  }
+  if (normalized === "ABSENT_JUSTIFIED" || normalized === "JUSTIFIED") {
     return { attendanceStatus: "JUSTIFIED", isJustified: true };
   }
   if (normalized === "ABSENT_UNJUSTIFIED" || normalized === "ABSENT") {
@@ -433,6 +449,8 @@ export function computeMeetingCounts(rows: MeetingRowLike[]): MeetingCounts {
   for (const row of rows) {
     const legacy = resolveLegacyAttendanceFromRow(row);
     if (legacy === "PRESENT") counts.present += 1;
+    else if (legacy === "LATE") counts.late += 1;
+    else if (legacy === "EXCUSED") counts.excused += 1;
     else if (legacy === "ABSENT_JUSTIFIED") counts.absentJustified += 1;
     else if (legacy === "ABSENT_UNJUSTIFIED") counts.absentUnjustified += 1;
     else counts.unknown += 1;
@@ -468,7 +486,10 @@ export function computeMeetingSummary(
     const decisionType = normalizeDecisionType(row.decisionType);
     const playtimeMinutes = normalizeMinutes(row.playtimeMinutes);
     const legacyAttendance = resolveLegacyAttendanceFromRow(row);
-    const justified = row.isJustified === true || legacyAttendance === "ABSENT_JUSTIFIED";
+    const justified =
+      row.isJustified === true ||
+      legacyAttendance === "ABSENT_JUSTIFIED" ||
+      legacyAttendance === "EXCUSED";
 
     if (justified) justifiedCount += 1;
     if (playtimeMinutes < MEETING_PLAYTIME_THRESHOLD_MINUTES) underThresholdCount += 1;

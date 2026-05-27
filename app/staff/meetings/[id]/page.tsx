@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireChefOrEtatMajor } from "@/lib/guards";
+import { isCurrentSessionFullWriter } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { MeetingDecisionsClient } from "./meeting-decisions-client";
 import { PageShell } from "@/components/staff/ui/PageShell";
@@ -23,6 +24,11 @@ export default async function MeetingSheetPage({ params }: { params: Promise<{ i
     redirect("/staff/meetings");
   }
 
+  // Encadrant : peut consulter mais les actions (finaliser, save decisions,
+  // promote) doivent être masquées côté UI. Le serveur bloque déjà via les
+  // guards, mais on évite le 403 désagréable en cachant les boutons.
+  const canWrite = await isCurrentSessionFullWriter();
+
   return (
     <PageShell
       title={meeting.title || "Réunion staff"}
@@ -32,6 +38,7 @@ export default async function MeetingSheetPage({ params }: { params: Promise<{ i
       <MeetingDecisionsClient
         meetingId={id}
         meetingStatus={meeting.status}
+        canWrite={canWrite}
       />
     </PageShell>
   );

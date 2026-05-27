@@ -697,6 +697,13 @@ async function handleRecruitmentDecision(
   await channel.send({ embeds: [embed] });
 
   // 2. Embed whitelist (uniquement sur ACCEPT)
+  //
+  // Comportement adapté selon lygAutoAdd (passé par la panel) :
+  //   "ok"      → embed compact "✅ WL ajoutée automatiquement" (traçabilité)
+  //   "failed"  → embed classique "📋 Demande de Whitelist" + raison de l'échec
+  //              (le staff doit l'ajouter à la main sur families.lyg.fr)
+  //   "skipped" → embed classique (cookie pas configuré → comportement legacy)
+  //   undefined → idem skipped (compat : ancienne route ou outbox ré-essayée)
   if (decision === "ACCEPT") {
     try {
       let recruiterLabel = "Non renseigné";
@@ -730,19 +737,59 @@ async function handleRecruitmentDecision(
         }
       }
 
+      const lygAutoAdd = (job.meta.lygAutoAdd ?? null) as
+        | "ok"
+        | "failed"
+        | "skipped"
+        | null;
+      const lygAutoAddError = (job.meta.lygAutoAddError ?? null) as string | null;
+      const candidateName = String(candidateRpName || "Non renseigné").trim() || "Non renseigné";
+      const steamLabel = String(job.meta.candidateSteamId || "Non renseigné").trim() || "Non renseigné";
+
       const wlChannel = await discordClient.channels.fetch(WHITELIST_CHANNEL_ID);
       if (wlChannel?.isTextBased()) {
-        const wlEmbed = new EmbedBuilder()
-          .setTitle("📋 Demande de Whitelist")
-          .setColor(0x10b981)
-          .addFields(
-            { name: "👤 Nom", value: String(candidateRpName || "Non renseigné").trim() || "Non renseigné", inline: true },
-            { name: "🎮 SteamID", value: String(job.meta.candidateSteamId || "Non renseigné").trim() || "Non renseigné", inline: true },
-            { name: "👨‍💼 Recruté par", value: recruiterLabel, inline: true },
-          )
-          .setTimestamp();
+        let wlEmbed: EmbedBuilder;
+        if (lygAutoAdd === "ok") {
+          // Auto-add réussi → embed compact de confirmation. Sert juste de
+          // log dans le channel WL pour que le chef voie passer l'info.
+          wlEmbed = new EmbedBuilder()
+            .setTitle("✅ Whitelist ajoutée automatiquement")
+            .setColor(0x10b981)
+            .setDescription(
+              `Le candidat **${candidateName}** a été ajouté à la famille via le panel — aucune action manuelle requise.`,
+            )
+            .addFields(
+              { name: "🎮 SteamID", value: steamLabel, inline: true },
+              { name: "👨‍💼 Recruté par", value: recruiterLabel, inline: true },
+            )
+            .setTimestamp();
+        } else {
+          // Auto-add échoué / sauté → embed legacy "demande à faire manuellement".
+          // On précise la raison pour que le chef sache si c'est juste à
+          // refaire ou s'il faut investiguer (cookie expiré par ex).
+          const failureReason =
+            lygAutoAdd === "failed"
+              ? `⚠️ Échec auto-WL : ${lygAutoAddError ?? "erreur inconnue"}`
+              : "ℹ️ Auto-WL non tentée (cookie LYG non configuré)";
+
+          wlEmbed = new EmbedBuilder()
+            .setTitle("📋 Demande de Whitelist")
+            .setColor(0xf59e0b)
+            .setDescription(failureReason)
+            .addFields(
+              { name: "👤 Nom", value: candidateName, inline: true },
+              { name: "🎮 SteamID", value: steamLabel, inline: true },
+              { name: "👨‍💼 Recruté par", value: recruiterLabel, inline: true },
+            )
+            .setTimestamp();
+        }
+
         await (wlChannel as TextChannel).send({ embeds: [wlEmbed] });
-        log("RECRUITMENT_WHITELIST_EMBED_SENT", { candidateRpName, recruiterLabel });
+        log("RECRUITMENT_WHITELIST_EMBED_SENT", {
+          candidateRpName,
+          recruiterLabel,
+          lygAutoAdd: lygAutoAdd ?? "unknown",
+        });
       } else {
         log("RECRUITMENT_WHITELIST_CHANNEL_NOT_FOUND", { channelId: WHITELIST_CHANNEL_ID });
       }
@@ -844,7 +891,7 @@ async function handleSanctionApply(
       discordStatus: true,
       discordAppliedAt: true,
       discordId: true,
-      member: { select: { discordId: true, rpName: true } },
+      member: { select: { discordId: true, rpName: true, steamId: true } },
       createdBy: { select: { name: true } },
     },
   });
@@ -1170,6 +1217,72 @@ async function handleSanctionApply(
     rolesToRemove: rolePlan.rolesToRemove,
     rolesToAdd: rolePlan.rolesToAdd,
   });
+
+  // ── Auto-remove WL famille LYG via proxy panel ────────────────────────
+  // Pour DEMOTE et BLACKLIST, on retire aussi le membre de la famille
+  // LYG en plus des rôles Discord. Le panel héberge le cookie chiffré,
+  // donc on fait un appel interne sécurisé (x-ingest-secret) côté panel.
+  // Non-bloquant : si le proxy échoue, le rôle Discord reste appliqué.
+  if (sanctionType === "DEMOTE" || sanctionType === "BLACKLIST") {
+    const memberSteamId = sanction.member?.steamId?.trim() ?? "";
+    if (/^\d{17}$/.test(memberSteamId)) {
+      try {
+        const base = (process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+        const secret = process.env.INGEST_SECRET ?? "";
+        if (base && secret) {
+          const res = await fetch(`${base}/api/internal/lyg/family-remove`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-ingest-secret": secret },
+            body: JSON.stringify({
+              steamId: memberSteamId,
+              source: sanctionType === "DEMOTE" ? "sanction_demote" : "sanction_blacklist",
+              sanctionId: sanction.id,
+            }),
+            signal: AbortSignal.timeout(20_000),
+          });
+          const json = (await res.json().catch(() => ({}))) as any;
+          if (res.ok && json?.ok && json?.applied) {
+            log("sanction_apply_lyg_remove_ok", {
+              sanctionId: sanction.id,
+              sanctionType,
+              steamId: memberSteamId,
+              tookMs: json.tookMs,
+            });
+          } else if (res.ok && json?.ok && !json?.applied) {
+            log("sanction_apply_lyg_remove_skipped", {
+              sanctionId: sanction.id,
+              steamId: memberSteamId,
+              reason: json?.reason ?? "unknown",
+            });
+          } else {
+            log("sanction_apply_lyg_remove_failed", {
+              sanctionId: sanction.id,
+              steamId: memberSteamId,
+              status: res.status,
+              error: json?.error ?? "unknown",
+              expired: json?.expired ?? false,
+            });
+          }
+        } else {
+          log("sanction_apply_lyg_remove_no_ingest_config", {
+            sanctionId: sanction.id,
+            steamId: memberSteamId,
+          });
+        }
+      } catch (err) {
+        log("sanction_apply_lyg_remove_exception", {
+          sanctionId: sanction.id,
+          steamId: memberSteamId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } else {
+      log("sanction_apply_lyg_remove_no_steamid", {
+        sanctionId: sanction.id,
+        sanctionType,
+      });
+    }
+  }
 
   await persistMemberDiscordMirror(prisma, member, discordId);
 

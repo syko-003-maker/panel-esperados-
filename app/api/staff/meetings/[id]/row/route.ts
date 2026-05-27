@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged } from "@/lib/guards";
+import { requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { resolveFamilyId } from "@/lib/family";
 import type { MeetingRowDecisionType } from "@prisma/client";
 import {
@@ -35,12 +35,30 @@ function normalizeMeetingTargetGrade(value: string | null | undefined) {
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Lecture du body d'abord pour décider du niveau de guard nécessaire.
+  // requirePrivileged() est suffisant pour : marquer présence / note /
+  // playtime (Encadrant peut le faire pendant une réunion).
+  // requireFullWriter() est requis pour : enregistrer une décision (sanction,
+  // promotion, démote, grade cible) → bloque l'Encadrant.
   const guard = await requirePrivileged();
   if (guard instanceof Response) return guard;
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
+  }
+
+  // Détection "écriture sensible" : si le body touche aux décisions, on
+  // exige le tier writer (EM/Chef). Sinon (juste status/note/playtime),
+  // requirePrivileged() est suffisant — Encadrant OK.
+  const touchesDecision =
+    "decisionType" in body ||
+    "sanctionType" in body ||
+    "sanctionReason" in body ||
+    "targetGrade" in body;
+  if (touchesDecision) {
+    const writerGuard = await requireFullWriter();
+    if (writerGuard instanceof Response) return writerGuard;
   }
 
   const discordId = String((body as any).discordId ?? "").trim();
@@ -290,6 +308,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "TARGET_GRADE_REQUIRED" }, { status: 400 });
   }
 
+  // Si le staff modifie manuellement le statut de présence (ou le flag
+  // isJustified), on verrouille la ligne pour que la boucle auto-attendance
+  // (GET /meetings/[id]) ne l'écrase plus. Le staff peut toujours revenir
+  // sur sa décision en repassant par cette même route.
+  const staffEditedAttendance = nextStatus !== null || nextJustified !== null;
+
   await prisma.meetingRow.update({
     where: { id: row.id },
     data: {
@@ -305,6 +329,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           : nextStatus !== null
             ? nextStatus.isJustified
             : row.isJustified,
+      ...(staffEditedAttendance ? { attendanceLockedByStaff: true } : {}),
     },
   });
 

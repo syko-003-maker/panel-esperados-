@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireFullWriter } from "@/lib/guards";
 import { BLACKLIST_ROLE_ID } from "@/lib/discord-grade";
 
 /**
@@ -12,7 +12,8 @@ import { BLACKLIST_ROLE_ID } from "@/lib/discord-grade";
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : forcer APPLIED. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const sanction = await prisma.sanction.findUnique({

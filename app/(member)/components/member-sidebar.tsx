@@ -10,23 +10,50 @@ import {
   Scale,
   Briefcase,
   LogOut,
+  Hammer,
+  Handshake,
+  Car,
+  GraduationCap,
 } from "lucide-react";
 
-type NavItem = { href: string; label: string; Icon: React.ElementType };
+type NavItem = { href: string; label: string; Icon: React.ElementType; external?: boolean };
+type NavSection = { title: string; items: NavItem[] };
 
-function getNavItems(isLinked: boolean, isRecruiter: boolean): NavItem[] {
+function getSections(isLinked: boolean, isRecruiter: boolean): NavSection[] {
   if (!isLinked) {
-    return [{ href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard }];
+    return [
+      {
+        title: "Mon espace",
+        items: [{ href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard }],
+      },
+    ];
   }
-  return [
-    { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
-    { href: "/banque", label: "Banque", Icon: Banknote },
-    { href: "/justificatifs/absence", label: "Justifier une absence", Icon: CalendarOff },
-    { href: "/justificatifs/sanction", label: "Justifier une sanction", Icon: Scale },
-    ...(isRecruiter
-      ? [{ href: "/recrutement", label: "Recrutement", Icon: Briefcase }]
-      : []),
+
+  const sections: NavSection[] = [
+    {
+      title: "Mon espace",
+      items: [
+        { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+        { href: "/banque", label: "Banque", Icon: Banknote },
+        { href: "/justificatifs/absence", label: "Justifier une absence", Icon: CalendarOff },
+        { href: "/justificatifs/sanction", label: "Justifier une sanction", Icon: Scale },
+      ],
+    },
+    {
+      title: "Spécialisations",
+      items: [
+        { href: "/guide/build", label: "Construction", Icon: Hammer },
+        { href: "/guide/negociation", label: "Négociation", Icon: Handshake },
+        { href: "/guide/conduite", label: "Conduite", Icon: Car },
+      ],
+    },
   ];
+
+  if (isRecruiter) {
+    sections[0].items.push({ href: "/recrutement", label: "Recrutement", Icon: Briefcase });
+  }
+
+  return sections;
 }
 
 export function MemberSidebar({
@@ -39,40 +66,59 @@ export function MemberSidebar({
   onClose?: () => void;
 }) {
   const pathname = usePathname() || "";
-  const navItems = getNavItems(isLinked, isRecruiter);
+  const sections = getSections(isLinked, isRecruiter);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <nav className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-3 py-6 space-y-1">
-        {navItems.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <div key={item.href}>
-              <Link
-                href={item.href}
-                prefetch={false}
-                onClick={onClose}
-                className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-all duration-200 ease-in-out ${
-                  active
-                    ? "border-[#7a1f2b]/35 bg-[#7a1f2b]/18 text-slate-50 shadow-[0_14px_32px_-26px_rgba(122,31,43,0.60)]"
-                    : "border-transparent text-foreground/80 hover:border-white/8 hover:bg-white/[0.04] hover:text-foreground"
-                }`}
-              >
-                <item.Icon
-                  className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${
-                    active
-                      ? "text-amber-300 opacity-100"
-                      : "opacity-70 group-hover:opacity-100"
-                  }`}
-                />
-                <span className="truncate text-sm font-medium">{item.label}</span>
-              </Link>
-            </div>
-          );
-        })}
+    <nav className="flex h-full flex-col">
+      <div className="flex-1 overflow-y-auto px-3 py-6 space-y-5">
+        {sections.map((section, idx) => (
+          <div key={section.title}>
+            {idx > 0 && (
+              // Séparateur dégradé bordeaux entre sections — cohérent avec la
+              // sidebar staff.
+              <div className="mb-4 h-px bg-gradient-to-r from-transparent via-[#7a1f2b]/35 to-transparent" />
+            )}
+            <h3 className="flex items-center gap-2 px-3 pb-2 pt-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/55">
+              <span
+                aria-hidden
+                className="h-1 w-1 rounded-full bg-[#c42a43]/70"
+                style={{ boxShadow: "0 0 6px 0 rgba(196,42,67,0.55)" }}
+              />
+              {section.title}
+            </h3>
+            <ul className="space-y-1">
+              {section.items.map((item) => {
+                const active = isActive(item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      prefetch={false}
+                      onClick={onClose}
+                      className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-all duration-200 ease-in-out ${
+                        active
+                          ? "border-[#7a1f2b]/35 bg-[#7a1f2b]/18 text-slate-50 shadow-[0_14px_32px_-26px_rgba(122,31,43,0.60)]"
+                          : "border-transparent text-foreground/80 hover:border-white/8 hover:bg-white/[0.04] hover:text-foreground"
+                      }`}
+                    >
+                      <item.Icon
+                        className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${
+                          active
+                            ? "text-amber-300 opacity-100"
+                            : "opacity-70 group-hover:opacity-100"
+                        }`}
+                      />
+                      <span className="truncate text-sm font-medium">{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
 
       {!isLinked && (

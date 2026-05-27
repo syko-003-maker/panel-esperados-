@@ -297,7 +297,7 @@ export async function canAccessStaffPanel(
   // Same source used by requireRecruiterOrAbove() → consistent, reliable
   if (discordId) {
     try {
-      const { isStaffFull, isRecruiter } = await import("@/lib/discord-roles");
+      const { isStaffFull, isRecruiter, isEncadrant, isFullWriter } = await import("@/lib/discord-roles");
       const resolvedFamily = isCuid(familyId) ? familyId : await resolveFamilyId(familyId);
       const memberRecord = await prisma.member.findUnique({
         where: { familyId_discordId: { familyId: resolvedFamily, discordId } },
@@ -307,10 +307,17 @@ export async function canAccessStaffPanel(
         const roles = Array.isArray(memberRecord.discordRoleIds) ? (memberRecord.discordRoleIds as string[]) : [];
         if (roles.length > 0) {
           if (isStaffFull(roles)) {
+            // Distinguer ENCADRANT (lecture seule) vs DISCORD_STAFF (EM/Chef avec write).
+            // isFullWriter = EM/Chef/Sous-Chef ; pas Encadrant.
+            // → si writer  : roleCode "DISCORD_STAFF"
+            // → sinon      : roleCode "ENCADRANT" (visibilité full mais write bloqué)
+            const isWriter = isFullWriter(roles);
+            const roleCode = isWriter ? "DISCORD_STAFF" : (isEncadrant(roles) ? "ENCADRANT" : "DISCORD_STAFF");
+            const roleName = roleCode === "ENCADRANT" ? "Encadrant" : "Discord Staff";
             return {
               canAccess: true,
               source: "DB_RBAC",
-              staffUser: { id: "db-mirror", familyId, userId: null, discordId, roleId: "db-mirror", roleCode: "DISCORD_STAFF", roleName: "Discord Staff", rolePriority: 0, isActive: true, permissions: [] },
+              staffUser: { id: "db-mirror", familyId, userId: null, discordId, roleId: "db-mirror", roleCode, roleName, rolePriority: 0, isActive: true, permissions: [] },
             };
           }
           if (isRecruiter(roles)) {
@@ -330,9 +337,13 @@ export async function canAccessStaffPanel(
   // 3. Try live Discord roles (fallback — requires Discord API + BOT_TOKEN)
   if (discordId) {
     try {
-      const { getDiscordRolesForUser, isStaffFull, isRecruiter } = await import("@/lib/discord-roles");
+      const { getDiscordRolesForUser, isStaffFull, isRecruiter, isEncadrant, isFullWriter } = await import("@/lib/discord-roles");
       const roles = await getDiscordRolesForUser(discordId);
       if (isStaffFull(roles)) {
+        // Même logique qu'en DB mirror : distinguer Encadrant des writers.
+        const isWriter = isFullWriter(roles);
+        const roleCode = isWriter ? "DISCORD_STAFF" : (isEncadrant(roles) ? "ENCADRANT" : "DISCORD_STAFF");
+        const roleName = roleCode === "ENCADRANT" ? "Encadrant" : "Discord Staff";
         return {
           canAccess: true,
           source: "DISCORD_ROLES",
@@ -342,8 +353,8 @@ export async function canAccessStaffPanel(
             userId: null,
             discordId,
             roleId: "discord-only",
-            roleCode: "DISCORD_STAFF",
-            roleName: "Discord Staff",
+            roleCode,
+            roleName,
             rolePriority: 0,
             isActive: true,
             permissions: [],
@@ -742,4 +753,106 @@ export async function getPermissions() {
   return prisma.staffPermission.findMany({
     orderBy: [{ category: "asc" }, { code: "asc" }],
   });
+}
+
+/**
+ * Helper côté server pour les pages staff : indique si l'utilisateur
+ * courant peut exécuter les actions sensibles (créer sanction, trancher
+ * plainte, finaliser réunion, promouvoir/démoter).
+ *
+ * Renvoie true pour Chef Famille, Sous-Chef Famille, État-Major, Owner
+ * et Admin. Renvoie false pour Encadrant et Recruteur.
+ *
+ * Pattern d'usage dans une page server-side :
+ *   const canWrite = await isCurrentSessionFullWriter();
+ *   return <Client canWrite={canWrite} ... />;
+ */
+export async function isCurrentSessionFullWriter(): Promise<boolean> {
+  try {
+    const { getSession } = await import("@/auth");
+    const session = await getSession();
+    if (!session) return false;
+
+    const discordId = extractDiscordId(session);
+    if (!discordId) return false;
+
+    // Override owner / admin (env-based) — toujours writer
+    const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+    if (ownerDiscordId && discordId === ownerDiscordId) return true;
+    const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (adminIds.includes(discordId)) return true;
+
+    const { isFullWriter, getDiscordRolesForUser } = await import("@/lib/discord-roles");
+
+    // 1. DB mirror (rapide)
+    const resolvedFamily = await resolveFamilyId(DEFAULT_FAMILY_ID);
+    const memberRecord = await prisma.member.findUnique({
+      where: { familyId_discordId: { familyId: resolvedFamily, discordId } },
+      select: { discordRoleIds: true, discordInGuild: true, discordLastError: true },
+    });
+    if (memberRecord && !memberRecord.discordLastError && memberRecord.discordInGuild) {
+      const roles = Array.isArray(memberRecord.discordRoleIds) ? (memberRecord.discordRoleIds as string[]) : [];
+      if (roles.length > 0) return isFullWriter(roles);
+    }
+
+    // 2. Discord live fallback
+    const roles = await getDiscordRolesForUser(discordId);
+    return isFullWriter(roles);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Variante stricte : true SEULEMENT pour Chef Famille + Sous-Chef Famille.
+ * Refuse explicitement État-Major. Sert pour les actions très sensibles
+ * réservées à la direction (ex: gérer les rangs WL).
+ *
+ * Owner / Admin (env) toujours acceptés.
+ */
+export async function isCurrentSessionChefFamille(): Promise<boolean> {
+  try {
+    const { getSession } = await import("@/auth");
+    const session = await getSession();
+    if (!session) return false;
+
+    const discordId = extractDiscordId(session);
+    if (!discordId) return false;
+
+    // Override owner / admin
+    const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+    if (ownerDiscordId && discordId === ownerDiscordId) return true;
+    const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (adminIds.includes(discordId)) return true;
+
+    const { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, getDiscordRolesForUser } =
+      await import("@/lib/discord-roles");
+
+    const chefRoles = [CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID].filter(Boolean);
+
+    // 1. DB mirror
+    const resolvedFamily = await resolveFamilyId(DEFAULT_FAMILY_ID);
+    const memberRecord = await prisma.member.findUnique({
+      where: { familyId_discordId: { familyId: resolvedFamily, discordId } },
+      select: { discordRoleIds: true, discordInGuild: true, discordLastError: true },
+    });
+    if (memberRecord && !memberRecord.discordLastError && memberRecord.discordInGuild) {
+      const roles = Array.isArray(memberRecord.discordRoleIds) ? (memberRecord.discordRoleIds as string[]) : [];
+      if (roles.length > 0) {
+        return roles.some((r) => chefRoles.includes(r));
+      }
+    }
+
+    // 2. Discord live fallback
+    const roles = await getDiscordRolesForUser(discordId);
+    return roles.some((r) => chefRoles.includes(r));
+  } catch {
+    return false;
+  }
 }

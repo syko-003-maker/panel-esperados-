@@ -118,9 +118,12 @@ function TxIcon({ type }: { type: number }) {
 }
 
 function txColor(type: number) {
-  if (type === 1) return "text-emerald-300";
-  if (type === 0) return "text-red-300";
-  return "text-slate-300";
+  // Couleurs plus claires + drop-shadow léger pour mieux ressortir sur le
+  // fond bordeaux sombre du panel. text-emerald-200/red-200 sont plus
+  // visibles que -300 sur des cartes white/[0.03].
+  if (type === 1) return "text-emerald-200 drop-shadow-[0_0_6px_rgba(52,211,153,0.35)]";
+  if (type === 0) return "text-red-200 drop-shadow-[0_0_6px_rgba(248,113,113,0.40)]";
+  return "text-slate-200";
 }
 
 export default function DashboardClient() {
@@ -326,20 +329,22 @@ export default function DashboardClient() {
         if (isDeficit) {
           return (
             <div
-              className="rounded-2xl border border-red-500/30 bg-red-500/[0.08] backdrop-blur-sm p-5 flex items-center gap-4"
-             
+              className="flex items-center gap-4 rounded-2xl border border-red-500/55 bg-gradient-to-br from-red-500/25 via-red-500/15 to-red-500/10 p-5 shadow-[0_18px_40px_-18px_rgba(239,68,68,0.45)] backdrop-blur-sm"
             >
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/15">
-                <TrendingDown className="h-5 w-5 text-red-400" />
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-red-500/55 bg-red-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <TrendingDown className="h-5 w-5 text-red-200 drop-shadow-[0_0_6px_rgba(248,113,113,0.55)]" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-red-200/80 sm:text-xs">
                   Déficit bancaire
                 </p>
-                <p className="text-2xl font-bold text-red-300 mt-0.5 tabular-nums tracking-tight">
-                  −{formatAmount(debt.deficitAmount)}
+                <p
+                  className="mt-0.5 text-2xl font-extrabold tracking-tight text-red-100 tabular-nums sm:text-3xl"
+                  style={{ textShadow: "0 0 18px rgba(248,113,113,0.45)" }}
+                >
+                  −{formatAmount(debt.deficitAmount)} €
                 </p>
-                <p className="text-xs text-red-400/70 mt-0.5">
+                <p className="mt-0.5 text-xs font-medium text-red-200/85">
                   À régulariser auprès de l'État-Major
                 </p>
               </div>
@@ -350,20 +355,19 @@ export default function DashboardClient() {
         if (isNeutral) {
           return (
             <div
-              className="rounded-2xl border border-slate-500/20 bg-slate-500/[0.06] backdrop-blur-sm p-5 flex items-center gap-4"
-             
+              className="flex items-center gap-4 rounded-2xl border border-slate-500/30 bg-slate-500/[0.10] p-5 backdrop-blur-sm"
             >
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-500/20 bg-slate-500/10">
-                <Wallet className="h-5 w-5 text-slate-400" />
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-slate-500/30 bg-slate-500/15">
+                <Wallet className="h-5 w-5 text-slate-300" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 sm:text-xs">
                   Solde bancaire
                 </p>
-                <p className="text-2xl font-bold text-slate-300 mt-0.5 tracking-tight">
+                <p className="mt-0.5 text-2xl font-bold tracking-tight text-slate-100 sm:text-3xl">
                   À l'équilibre
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">Aucun déficit en cours</p>
+                <p className="mt-0.5 text-xs text-slate-400">Aucun déficit en cours</p>
               </div>
             </div>
           );
@@ -372,20 +376,24 @@ export default function DashboardClient() {
         // Positif
         return (
           <div
-            className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.07] backdrop-blur-sm p-5 flex items-center gap-4"
-           
+            className="flex items-center gap-4 rounded-2xl border border-emerald-500/55 bg-gradient-to-br from-emerald-500/20 via-emerald-500/12 to-emerald-500/8 p-5 shadow-[0_18px_40px_-18px_rgba(16,185,129,0.40)] backdrop-blur-sm"
           >
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/12">
-              <TrendingUp className="h-5 w-5 text-emerald-400" />
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-500/55 bg-emerald-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <TrendingUp className="h-5 w-5 text-emerald-200 drop-shadow-[0_0_6px_rgba(52,211,153,0.55)]" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200/80 sm:text-xs">
                 Solde bancaire
               </p>
-              <p className="text-2xl font-bold text-emerald-300 mt-0.5 tabular-nums tracking-tight">
-                +{formatAmount(debt.net)}
+              <p
+                className="mt-0.5 text-2xl font-extrabold tracking-tight text-emerald-100 tabular-nums sm:text-3xl"
+                style={{ textShadow: "0 0 18px rgba(52,211,153,0.40)" }}
+              >
+                +{formatAmount(debt.net)} €
               </p>
-              <p className="text-xs text-emerald-500/70 mt-0.5">Solde positif</p>
+              <p className="mt-0.5 text-xs font-medium text-emerald-200/85">
+                Solde positif
+              </p>
             </div>
           </div>
         );

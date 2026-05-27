@@ -23,6 +23,7 @@ import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion"
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
+import { useConfirm } from "@/components/staff/ui/use-confirm";
 
 type MeetingItem = {
   id: string;
@@ -67,6 +68,7 @@ import { formatAppDateOnly as fmtDate, formatAppDate as fmtDateTime } from "@/li
 
 export default function MeetingsClient() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [items, setItems] = useState<MeetingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -191,8 +193,13 @@ export default function MeetingsClient() {
   }
 
   async function onDelete(meeting: MeetingItem) {
-    const confirmed = window.confirm("Supprimer cette réunion ? Cette action est irréversible.");
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: "Supprimer cette réunion ?",
+      description: <p>La réunion <strong className="text-amber-200">{meeting.title || meeting.weekKey}</strong> sera supprimée <strong className="text-[#ff8a99]">définitivement</strong>.</p>,
+      confirmLabel: "Supprimer",
+      tone: "danger",
+    });
+    if (!ok) return;
 
     setError(null);
     try {
@@ -207,6 +214,7 @@ export default function MeetingsClient() {
 
   return (
     <div className="grid gap-5">
+      {confirmDialog}
       <SectionCard
         title="Créer une réunion"
         description="Planifiez une nouvelle réunion staff puis ouvrez-la pour saisir présences et décisions."

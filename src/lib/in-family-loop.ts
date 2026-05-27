@@ -17,22 +17,24 @@ import { setLygPauseUntil } from "@/lib/lyg-stats";
  * remplace les ~22 calls/cycle de l'ancien per-player loop.
  */
 
-const POLL_INTERVAL_MS = 60_000;   // 1 poll par minute (15 calls/15min)
-const WINDOW_MINUTES   = 2;        // fenêtre LYG : playtime des 2 dernières min
+const POLL_INTERVAL_MS = 30_000;   // 1 poll toutes les 30s (30 calls/15min)
+const WINDOW_MINUTES   = 4;        // fenêtre LYG : playtime des 4 dernières min
 // Maths du système :
 //   L'API LYG renvoie le CUMUL de playtime dans la fenêtre (arrondi à la min
 //   entière). Donc un joueur qui s'arrête met `WINDOW_MINUTES` min à sortir
 //   de la réponse (le cumul ne descend à 0 qu'une fois sa playtime sortie
 //   complètement de la fenêtre). Plus la fenêtre est courte, plus la
-//   disparition est rapide.
+//   disparition est rapide ; plus elle est large, plus on tolère les
+//   micro-pauses (switch citoyen 30s, etc.).
 //
-//   Avec WINDOW=2 :
-//     - Joueur qui rejoint : visible dès qu'il a 1 min cumulée (~60-90s)
-//     - Joueur qui s'arrête : disparaît du cache LYG après 2 min
-//     - + STALE_AFTER_MS_NORMAL (1 min grace) = total ~3 min max après arrêt
+//   Avec WINDOW=4, POLL=30s :
+//     - Joueur qui rejoint : visible dès qu'il a 1 min cumulée (~30-90s)
+//     - Joueur qui s'arrête : disparaît du cache LYG après ~4 min
+//     - + STALE_AFTER_MS_NORMAL (5 min) = total ~5 min max après arrêt
 //
-//   Avant : WINDOW=10 + STALE=15min → jusqu'à 25 min de fantôme online
-const STALE_AFTER_MS_NORMAL = 3 * 60 * 1000;  // 3 min en fonctionnement normal
+//   Trade-off : plus rapide à détecter online, légèrement plus tolérant aux
+//   pauses, coût LYG x2 (30/15min vs 15/15min, budget largement OK).
+const STALE_AFTER_MS_NORMAL = 5 * 60 * 1000;  // 5 min en fonctionnement normal
 const STALE_AFTER_MS_PAUSED = 20 * 60 * 1000; // 20 min pendant un 429 pour
 // ne pas vider l'UI pendant le backoff (le pause LYG peut durer jusqu'à 15 min).
 

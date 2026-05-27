@@ -370,7 +370,8 @@ async function lyFetch<T = any>(
     const res = await fetch(resolvedUrl, {
       method,
       headers: {
-        Authorization: `Bearer ${config.token}`,
+        // LYG a basculé son auth de Bearer vers X-API-Token (printemps 2026).
+        "X-API-Token": config.token,
         "Content-Type": "application/json",
         Accept: "application/json",
       },

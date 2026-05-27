@@ -18,6 +18,7 @@ import { IDS } from "./ids.js";
 import { runManualSync } from "./syncRoles.js";
 import { postLinkPanel } from "./contactPanel.js";
 import { handleReglementPost } from "./features/reglement/reglementRole.js";
+import { logAdminCommand } from "./lib/admin-command-log.js";
 import {
   buildModerationCommands,
   handleBan, handleKick, handleMute,
@@ -395,8 +396,20 @@ export async function handleCommand(
       return handleSyncNameCommand(interaction, client);
     case "bank":
       return handleBankCommand(interaction);
-    case "reglement-post":
-      return handleReglementPost(interaction);
+    case "reglement-post": {
+      await handleReglementPost(interaction);
+      // Audit : on log même si la commande échoue silencieusement — l'intention
+      // de poster un règlement reste traçable. Le détail success/error est
+      // visible dans les logs JSON du worker.
+      await logAdminCommand({
+        interaction,
+        action: "DISCORD_REGLEMENT_POSTED",
+        label: "Message de règlement (re)posté",
+        targetChannelId: interaction.options.getChannel("salon")?.id ?? interaction.channelId ?? null,
+        entityId: "reglement-post",
+      });
+      return;
+    }
     case "ban":
       return handleBan(interaction);
     case "kick":
@@ -503,6 +516,15 @@ async function handleLinkPanelCommand(
     await interaction.editReply({
       content: `✅ Panneau de liaison posté dans <#${IDS.BOTS_FAMILLE_CHANNEL_ID}> (message ${result.messageId}).`,
     });
+    // Audit : trace dans logs Discord + DB panel
+    await logAdminCommand({
+      interaction,
+      action: "DISCORD_LINKPANEL_POSTED",
+      label: "Panneau de liaison Discord posté",
+      detail: result.messageId ? `Message ID : \`${result.messageId}\`` : undefined,
+      targetChannelId: IDS.BOTS_FAMILLE_CHANNEL_ID,
+      entityId: "linkpanel",
+    });
     return;
   }
 
@@ -558,6 +580,17 @@ async function handleRecruitmentAnnouncementCommand(
       userId: interaction.user.id,
       guildId: interaction.guildId,
       channelId: RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID,
+    });
+
+    // Trace dans #logs Discord + AuditLog panel — pour savoir qui a posté
+    // l'annonce sans avoir à fouiller les logs JSON du worker.
+    await logAdminCommand({
+      interaction,
+      action: "DISCORD_ANNOUNCEMENT_POSTED",
+      label: "Annonce de recrutement publiée",
+      detail: "Embed de recrutement posté dans le salon des annonces.",
+      targetChannelId: RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID,
+      entityId: "annonce-recrutement",
     });
   } catch (e) {
     log("recruitment_announcement_command_error", {

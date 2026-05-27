@@ -10,6 +10,8 @@ import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { GRADE_ROLE_IDS_ORDERED, GRADE_LABEL_BY_ROLE_ID, getGradeLevelNumber } from "@/lib/grade-colors";
 import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+import { lygFamilyAdd } from "@/lib/lyg/family-admin";
+import { createAuditLog } from "@/lib/audit";
 
 // Constantes du grade attribué automatiquement par un recrutement accepté.
 // Source de vérité : grade-colors. On les calcule au module load pour rester
@@ -197,6 +199,56 @@ export async function POST(req: Request) {
       claimedByUserId = staffAccount?.userId ?? "";
     }
 
+    // ── Auto-add WL famille LYG AVANT l'enqueue de la décision ─────────
+    // Le résultat sera passé dans la meta de l'outbox → l'embed Discord
+    // de demande de WL ne sera envoyé que si l'auto-add a échoué.
+    let lygAutoAdd: "ok" | "failed" | "skipped" | undefined;
+    let lygAutoAddError: string | null = null;
+    const steamIdForLyg = (updated.steamId ?? "").trim();
+    if (decision === "APPROVE") {
+      if (steamIdForLyg && /^\d{17}$/.test(steamIdForLyg)) {
+        try {
+          const lygResult = await lygFamilyAdd(steamIdForLyg);
+          if (lygResult.ok) {
+            lygAutoAdd = "ok";
+            logInfo("recruitment_decide_lyg_add_ok", { requestId, ticketKey, steamId: steamIdForLyg, tookMs: lygResult.tookMs });
+            await createAuditLog({
+              actorType: "staff",
+              actorId: staffDiscordId,
+              action: "LYG_FAMILY_ADD_AUTO",
+              entity: "Recruitment",
+              entityId: updated.id,
+              entityName: updated.rpName,
+              meta: { steamId: steamIdForLyg, source: "discord_button_accept", tookMs: lygResult.tookMs },
+            });
+          } else {
+            lygAutoAdd = "failed";
+            lygAutoAddError = lygResult.error;
+            logWarn("recruitment_decide_lyg_add_failed", {
+              requestId, ticketKey, steamId: steamIdForLyg,
+              error: lygResult.error, expired: lygResult.expired,
+            });
+            await createAuditLog({
+              actorType: "staff",
+              actorId: staffDiscordId,
+              action: "LYG_FAMILY_ADD_AUTO_FAILED",
+              entity: "Recruitment",
+              entityId: updated.id,
+              entityName: updated.rpName,
+              meta: { steamId: steamIdForLyg, source: "discord_button_accept", error: lygResult.error, expired: lygResult.expired },
+            });
+          }
+        } catch (err) {
+          lygAutoAdd = "skipped";
+          lygAutoAddError = err instanceof Error ? err.message : String(err);
+          logWarn("recruitment_decide_lyg_add_skipped", { requestId, ticketKey, steamId: steamIdForLyg, reason: lygAutoAddError });
+        }
+      } else {
+        lygAutoAdd = "skipped";
+        lygAutoAddError = "steamId invalide ou manquant";
+      }
+    }
+
     // Enqueue outbox job for log + whitelist + ticket close (unified path)
     // liveChannelId = the actual Discord channel where the button was clicked
     const liveChannelId = channelId || null;
@@ -210,6 +262,8 @@ export async function POST(req: Request) {
         candidateSteamId: updated.steamId ?? undefined,
         claimedByUserId,
         discordThreadId: liveChannelId || updated.discordThreadId || null,
+        lygAutoAdd,
+        lygAutoAddError,
       });
     } catch (enqueueErr) {
       logError("recruitment_decide_enqueue_failed", { requestId, ticketKey }, enqueueErr as Error);
@@ -337,9 +391,12 @@ export async function POST(req: Request) {
             }
           }
         }
+
+        // (Auto-add WL famille LYG est maintenant fait AVANT l'enqueue ci-dessus,
+        // afin que l'embed Discord puisse refléter le résultat dans son contenu.)
       }
     }
-    
+
     return NextResponse.json({
       ok: true,
       recruitment: {

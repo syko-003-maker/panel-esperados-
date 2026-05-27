@@ -103,7 +103,14 @@ function getCloseReasonLabel(value: string | null) {
 
 const GUILD_ID = "1312845998753710151";
 
-export default function ComplaintDetailClient({ ticketId }: { ticketId: string }) {
+export default function ComplaintDetailClient({
+  ticketId,
+  canWrite = true,
+}: {
+  ticketId: string;
+  /** false pour Encadrant : on cache la section "Actions staff" (Trancher). */
+  canWrite?: boolean;
+}) {
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -365,8 +372,8 @@ export default function ComplaintDetailClient({ ticketId }: { ticketId: string }
             <div className="text-xs text-muted-foreground">Chargement des messages...</div>
           )}
 
-          {/* Actions */}
-          {!isClosed && !confirmDecision && (
+          {/* Actions — bloc masqué pour Encadrant (lecture seule). */}
+          {!isClosed && !confirmDecision && canWrite && (
             <SectionCard title="Actions staff" description="Décision de traitement et escalade éventuelle" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">Choisissez une décision pour clôturer cette plainte.</p>

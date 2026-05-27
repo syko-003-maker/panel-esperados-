@@ -67,7 +67,11 @@ const STATUS_DOT: Record<Complaint["status"], string> = {
 // fmtDate centralisé via @/lib/app-date-formatter
 import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
-export default function ComplaintsClient() {
+// canWrite : false pour Encadrant, true pour Chef/Sous-Chef/EM.
+// Sur la liste (pas de bouton "Trancher" directement ici), on accepte la prop
+// pour cohérence ; le vrai blocage UI est sur la page de détail [id]/page.tsx.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export default function ComplaintsClient({ canWrite = true }: { canWrite?: boolean }) {
   const [items, setItems] = useState<Complaint[]>([]);
   const [statusFilter, setStatusFilter] = useState<"" | Complaint["status"]>("");
   const [q, setQ] = useState("");

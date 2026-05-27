@@ -11,6 +11,16 @@ export async function register() {
     } catch (err) {
       console.error("[instrumentation] failed to start in-family loop:", err);
     }
+
+    // Keep-alive du cookie families.lyg.fr : ping dashboard.php toutes les
+    // 10 min pour maintenir la session PHP active. Évite au Chef famille
+    // de re-coller le cookie périodiquement.
+    try {
+      const { ensureLygKeepaliveStarted } = await import("@/lib/lyg/family-keepalive");
+      ensureLygKeepaliveStarted();
+    } catch (err) {
+      console.error("[instrumentation] failed to start lyg keepalive:", err);
+    }
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

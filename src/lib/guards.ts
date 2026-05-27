@@ -383,7 +383,11 @@ export async function requireStaffFull(): Promise<GuardResult> {
 
   const userRoles = rolesResult.roles ?? [];
   
-  // Build list of full-staff role IDs: CHEF_FAMILLE + SOUS_CHEF_FAMILLE + ETAT_MAJOR + HAUT_GRADE + JEFE_DE_JEFES + EL_PADRINO + DISCORD_STAFF_FULL_ROLE_IDS
+  // Build list of full-staff role IDs: CHEF_FAMILLE + SOUS_CHEF_FAMILLE + ETAT_MAJOR + HAUT_GRADE + JEFE_DE_JEFES + EL_PADRINO + ENCADRANT + DISCORD_STAFF_FULL_ROLE_IDS
+  //
+  // Encadrant inclus car il a accès en VISIBILITÉ à toutes les pages staff.
+  // Les actions sensibles (sanction, plainte, finalize meeting, grade) sont
+  // gardées séparément par requireFullWriter() — pas ici.
   const fullStaffRoleIds = [
     CHEF_FAMILLE_ROLE_ID,
     SOUS_CHEF_FAMILLE_ROLE_ID,
@@ -391,6 +395,7 @@ export async function requireStaffFull(): Promise<GuardResult> {
     process.env.HAUT_GRADE_ROLE_ID ?? "",
     process.env.JEFE_DE_JEFES_ROLE_ID ?? "",
     process.env.EL_PADRINO_ROLE_ID ?? "",
+    process.env.ENCADRANT_ROLE_ID ?? "1497293700831903774",
     ...getStaffFullRoleIds(),
   ].filter(Boolean);
   
@@ -725,4 +730,132 @@ export async function requireLinkAccess(): Promise<GuardResult> {
       _auth: { hasChefRole, hasEtatMajorRole },
     },
   };
+}
+
+/**
+ * Guard pour les actions D'ÉCRITURE SENSIBLES sur les ressources staff :
+ *   - Créer / clôturer une sanction
+ *   - Trancher une plainte (approve/reject)
+ *   - Finaliser une réunion
+ *   - Appliquer une promotion ou démote via le panel
+ *   - Modifier les paramètres système
+ *
+ * Accepte : Owner, Admin, Chef Famille, Sous-Chef Famille, État-Major.
+ * Refuse  : Encadrant (lecture seule), Recruteur, tout autre.
+ *
+ * Différence avec requireStaffFull() : ce guard EXCLUT volontairement
+ * l'Encadrant, qui doit pouvoir CONSULTER ces pages mais pas y écrire.
+ *
+ * Usage : sur les routes API qui POST/PATCH/DELETE sur ces ressources.
+ *   const guard = await requireFullWriter();
+ *   if (guard instanceof Response) return guard;
+ */
+export async function requireFullWriter(): Promise<GuardResult> {
+  logDiscordRoleConfig("requireFullWriter");
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) return jsonError(403, "Missing discordId");
+
+  // Override owner / admin (env-based)
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  if (ownerDiscordId && discordId === ownerDiscordId) {
+    return { session: { ...session, discordId, _auth: { isOwner: true } as any } };
+  }
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (adminIds.includes(discordId)) {
+    return { session: { ...session, discordId, _auth: { isAdmin: true } as any } };
+  }
+
+  // Vérifie les rôles Discord, et applique isFullWriter (= EM/Chef sans Encadrant).
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+
+  const { isFullWriter } = await import("@/lib/discord-roles");
+  const ok = isFullWriter(rolesResult.roles ?? []);
+  if (!ok) {
+    // Audit log dédié pour tracer les tentatives Encadrant → actions bloquées.
+    const path = await getRequestPath();
+    const denyKey = `WRITER_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        action: "WRITER_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "staff/write",
+        meta: { reason: "encadrant_or_below", path },
+      });
+    }
+    return jsonError(403, "FORBIDDEN_ACTION");
+  }
+
+  return { session: { ...session, discordId } };
+}
+
+/**
+ * Guard ultra-restrictif : SEULEMENT Chef Famille + Sous-Chef Famille.
+ *
+ * Exclut explicitement État-Major (qui passe `requireFullWriter`), Encadrant
+ * et Recruteur. Réservé aux ressources de très haute sensibilité comme le
+ * cookie de session admin LYG (qui permet d'éditer la famille en temps réel).
+ *
+ * Override owner / admin (env-based) toujours accepté.
+ */
+export async function requireChefFamille(): Promise<GuardResult> {
+  logDiscordRoleConfig("requireChefFamille");
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) return jsonError(403, "Missing discordId");
+
+  // Override owner / admin
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  if (ownerDiscordId && discordId === ownerDiscordId) {
+    return { session: { ...session, discordId } };
+  }
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (adminIds.includes(discordId)) {
+    return { session: { ...session, discordId } };
+  }
+
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+
+  const hasChefRole = hasAnyRole(rolesResult.roles, [
+    CHEF_FAMILLE_ROLE_ID,
+    SOUS_CHEF_FAMILLE_ROLE_ID,
+  ]);
+
+  if (!hasChefRole) {
+    const path = await getRequestPath();
+    const denyKey = `CHEF_FAMILLE_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        action: "CHEF_FAMILLE_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "staff/chef-famille",
+        meta: { reason: "not_chef_nor_sous_chef", path },
+      });
+    }
+    return jsonError(403, "CHEF_FAMILLE_REQUIRED");
+  }
+
+  return { session: { ...session, discordId } };
 }

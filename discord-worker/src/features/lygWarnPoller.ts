@@ -38,7 +38,8 @@ const POLLER_FETCH_LIMIT = 50;
 async function fetchWarnsFromLyg(steamId: string): Promise<{ total: number; warns: LygWarnRaw[] } | null | "rate_limited"> {
   try {
     const res = await fetch(`${LYG_BASE_URL}/warns/${steamId}?limit=${POLLER_FETCH_LIMIT}&page=1`, {
-      headers: { Authorization: `Bearer ${LYG_TOKEN}`, Accept: "application/json" },
+      // LYG a basculé son auth de Bearer vers X-API-Token (printemps 2026).
+      headers: { "X-API-Token": LYG_TOKEN, Accept: "application/json" },
       signal: AbortSignal.timeout(7_000),
     } as RequestInit);
 
@@ -185,34 +186,65 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
               const memberMention = member.discordId ? `<@${member.discordId}>` : `**${member.rpName ?? "Inconnu"}**`;
               const profileUrl = `${siteBase}/staff/members/by-discord/${member.discordId}`;
               // Timestamp Discord natif — s'affiche dans le fuseau horaire de chaque utilisateur
-              const warnDate_str = `<t:${Math.floor(warnDate.getTime() / 1000)}:f>`;
+              const warnDateRelative = `<t:${Math.floor(warnDate.getTime() / 1000)}:R>`;
+              const warnDateFull     = `<t:${Math.floor(warnDate.getTime() / 1000)}:f>`;
 
               const typeLower = w.type.toLowerCase();
               const isBan  = typeLower.includes("ban");
               const isKick = typeLower.includes("kick");
 
-              const typeColor = isBan ? 0xe53935 : isKick ? 0xfb8c00 : 0xf59e0b;
+              // Palette : rouge vif ban, orange kick, ambre warn.
+              const typeColor = isBan ? 0xdc2626 : isKick ? 0xea580c : 0xf59e0b;
               const typeEmoji = isBan ? "🔨" : isKick ? "👢" : "⚠️";
-              const typeLabel = isBan ? "Bannissement" : isKick ? "Kick" : "Avertissement";
+              const typeLabel = isBan ? "BANNISSEMENT" : isKick ? "KICK" : "AVERTISSEMENT";
 
               const totalWarns = await prisma.lygWarn.count({
                 where: { memberId: member.id },
               });
 
-              const warnSeverity =
-                totalWarns >= 5 ? "🔴 Critique" :
-                totalWarns >= 3 ? "🟠 Élevé"   :
-                totalWarns >= 2 ? "🟡 Modéré"  :
+              // Indicateur visuel de gravité — barre de 5 cases qui se remplit
+              // au fil des warns. Plus parlant qu'un simple "1 — Premier warn".
+              const sevDots = (n: number) => {
+                const filled = Math.min(5, n);
+                return "●".repeat(filled) + "○".repeat(5 - filled);
+              };
+              const sevLabel =
+                totalWarns >= 5 ? "🔴 Critique"   :
+                totalWarns >= 3 ? "🟠 Élevé"      :
+                totalWarns >= 2 ? "🟡 Modéré"     :
                                   "🟢 Premier warn";
+              const severityField = `\`${sevDots(totalWarns)}\` **${totalWarns}**\n${sevLabel}`;
 
-              // Récupérer la photo de profil Discord
+              // Récupérer la photo de profil Discord ; on saute la default
+              // avatar Discord (URL contient /embed/avatars/), qui rend mal
+              // dans l'embed — on préfère le logo Los Esperados en fallback.
               let avatarUrl: string | null = null;
               if (member.discordId) {
                 try {
                   const discordUser = await client.users.fetch(member.discordId);
-                  avatarUrl = discordUser.displayAvatarURL({ size: 128 });
+                  const url = discordUser.displayAvatarURL({ size: 128 });
+                  if (url && !/\/embed\/avatars\//.test(url)) {
+                    avatarUrl = url;
+                  }
                 } catch { /* ignore si l'utilisateur est introuvable */ }
               }
+              // Fallback : logo Los Esperados servi depuis le panel public.
+              const thumbUrl = avatarUrl ?? `${siteBase}/branding/los-esperados.png`;
+
+              // Bloc raison surligné — bloc code ANSI Discord pour mettre la
+              // raison en évidence avec une couleur (jaune gras pour les warns,
+              // rouge pour les bans/kicks).
+              // Escape les backticks éventuels (rare mais possible dans une raison).
+              const safeReason = String(w.reason ?? "—").replace(/`/g, "ˋ");
+              const ansiColor = isBan || isKick ? "[1;31m" : "[1;33m"; // 31 rouge / 33 jaune
+              const reasonBlock =
+                "```ansi\n" +
+                `${ansiColor}${safeReason}[0m\n` +
+                "```";
+
+              // Type IG brut (Jail / Ban24H / Kick / etc.) — utile pour
+              // distinguer un Ban24H d'un Ban perm dans les logs.
+              const typeIG = String(w.type ?? "—");
 
               const embed = new EmbedBuilder()
                 .setColor(typeColor)
@@ -220,26 +252,28 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
                   name: member.rpName ?? "Membre inconnu",
                   iconURL: avatarUrl ?? undefined,
                 })
-                .setTitle(`${typeEmoji} Nouveau warn — ${typeLabel}`)
+                .setTitle(`${typeEmoji}  ${typeLabel}`)
+                .setURL(member.discordId ? profileUrl : null)
                 .setDescription(
-                  `${memberMention}\n` +
-                  `> 🎖️ **Grade :** ${member.grade ?? "—"}\n` +
-                  `> 📋 **Raison :** ${w.reason}`
+                  `${memberMention}  •  ${warnDateRelative}\n\n` +
+                  `**📋  Raison**\n${reasonBlock}`
                 )
                 .addFields(
-                  { name: "🏷️ Type",          value: w.type,        inline: true },
-                  { name: "📅 Date",           value: warnDate_str,  inline: true },
-                  { name: "📊 Total warns",    value: `**${totalWarns}** — ${warnSeverity}`, inline: false },
+                  { name: "🎖️  Grade",     value: member.grade ?? "—", inline: true },
+                  { name: "🔧  Type IG",   value: `\`${typeIG}\``,     inline: true },
+                  { name: "​",        value: "​",            inline: true }, // spacer pour aligner
+                  { name: "📅  Date",      value: warnDateFull,        inline: true },
+                  { name: "📊  Sévérité",  value: severityField,       inline: true },
+                  { name: "​",        value: "​",            inline: true },
                 )
+                .setThumbnail(thumbUrl)
                 .setTimestamp()
-                .setFooter({ text: "Los Esperados • Système de sanctions" });
-
-              if (avatarUrl) embed.setThumbnail(avatarUrl);
+                .setFooter({ text: "Los Esperados  •  Sanction IG (LYG)" });
 
               if (member.discordId) {
                 embed.addFields({
-                  name: "🔗 Fiche membre",
-                  value: `[Voir le profil](${profileUrl})`,
+                  name: "​",
+                  value: `▸ [**Ouvrir la fiche staff →**](${profileUrl})`,
                   inline: false,
                 });
               }

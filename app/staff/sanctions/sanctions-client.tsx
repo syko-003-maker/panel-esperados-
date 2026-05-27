@@ -117,9 +117,11 @@ const DISCORD_BADGE_TONES: Record<Sanction["discordStatus"], "warning" | "succes
 
 // fmtDate centralisé (date seule) via @/lib/app-date-formatter
 import { formatAppDateOnly as fmtDate } from "@/lib/app-date-formatter";
+import { useConfirm } from "@/components/staff/ui/use-confirm";
 
-export default function SanctionsClient() {
+export default function SanctionsClient({ canWrite = true }: { canWrite?: boolean }) {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [items, setItems] = useState<Sanction[]>([]);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
@@ -260,7 +262,13 @@ export default function SanctionsClient() {
   }
 
   async function deleteSanction(item: Sanction) {
-    if (!confirm("Supprimer cette sanction ? Cette action est irréversible.")) return;
+    const ok = await confirm({
+      title: "Supprimer cette sanction ?",
+      description: <p>Cette action est <strong className="text-[#ff8a99]">irréversible</strong>.</p>,
+      confirmLabel: "Supprimer",
+      tone: "danger",
+    });
+    if (!ok) return;
 
     setDeletingId(item.id);
     setError(null);
@@ -300,10 +308,15 @@ export default function SanctionsClient() {
 
   async function clearSanction(item: Sanction) {
     const isReserviste = item.type === "RESERVISTE";
-    const confirmMessage = isReserviste
-      ? "Retirer l'état Réserviste ? Cette action retirera le rôle Réserviste sur Discord."
-      : "Supprimer la sanction appliquée ? Cette action retirera son effet Discord.";
-    if (!confirm(confirmMessage)) return;
+    const ok = await confirm({
+      title: isReserviste ? "Retirer l'état Réserviste ?" : "Supprimer la sanction appliquée ?",
+      description: isReserviste
+        ? "Le rôle Réserviste sera retiré sur Discord."
+        : "L'effet de la sanction sera retiré sur Discord.",
+      confirmLabel: "Confirmer",
+      tone: "warning",
+    });
+    if (!ok) return;
 
     setClearingId(item.id);
     setError(null);
@@ -322,7 +335,13 @@ export default function SanctionsClient() {
   }
 
   async function forceApplied(item: Sanction) {
-    if (!confirm("Forcer la sanction comme appliquée ? À utiliser si le membre est banni ou a définitivement quitté le Discord.")) return;
+    const ok = await confirm({
+      title: "Forcer la sanction comme appliquée ?",
+      description: "À utiliser uniquement si le membre est banni ou a définitivement quitté le Discord — l'effet ne sera pas appliqué techniquement.",
+      confirmLabel: "Forcer",
+      tone: "warning",
+    });
+    if (!ok) return;
     setForcingAppliedId(item.id);
     setError(null);
     try {
@@ -390,6 +409,7 @@ export default function SanctionsClient() {
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div className="flex justify-end">
         <MotionButtonFrame>
         <Button onClick={syncNow} disabled={syncing} variant="outline" size="sm" className="rounded-2xl border-white/10 bg-white/[0.04]">
@@ -405,7 +425,10 @@ export default function SanctionsClient() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,420px),minmax(0,1fr)]">{/* Left: Create Form */}
+      {/* Layout : sur Encadrant on retire la colonne "Créer" et on passe en
+          pleine largeur sur la liste, puisque la création est interdite. */}
+      <div className={canWrite ? "grid gap-6 lg:grid-cols-[minmax(0,420px),minmax(0,1fr)]" : "grid gap-6"}>
+        {canWrite ? (<>
       <SectionCard
         title="Créer une sanction"
         description="Attribuer rapidement une sanction avec des libellés métier clairs et un formulaire plus lisible."
@@ -552,6 +575,7 @@ export default function SanctionsClient() {
           </DialogContent>
         </Dialog>
       </SectionCard>
+        </>) : null}
 
       {/* Right: Filters + List */}
       <div className="space-y-6">

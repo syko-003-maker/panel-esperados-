@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { reason, from, to } = body ?? {};
+    const { reason, from, to, type: rawType, meetingDate: rawMeetingDate } = body ?? {};
     const trimmedReason = typeof reason === "string" ? reason.trim() : "";
 
     if (!trimmedReason || trimmedReason.length < 10) {
@@ -58,20 +58,60 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const fromDate = parseDate(typeof from === "string" ? from : undefined);
-    const toDate = parseDate(typeof to === "string" ? to : undefined);
+    // Type d'absence : MEETING (réunion dominicale) ou GENERAL (période libre).
+    // Fallback GENERAL si absent → compat avec anciens appels qui ne passaient
+    // pas le champ.
+    const type: "MEETING" | "GENERAL" =
+      rawType === "MEETING" ? "MEETING" : "GENERAL";
 
-    if ((from && !fromDate) || (to && !toDate)) {
-      return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
+    let startAt: Date;
+    let endAt: Date;
+    let meetingDateIso: string | null = null;
+
+    if (type === "MEETING") {
+      // Réunion : on attend juste la date du dimanche concerné (YYYY-MM-DD).
+      // On normalise à minuit UTC pour avoir un point d'ancrage stable
+      // (le staff finalize la réunion sur cette même clé).
+      const meetingDate = parseDate(
+        typeof rawMeetingDate === "string" ? rawMeetingDate : undefined,
+      );
+      if (!meetingDate) {
+        return NextResponse.json(
+          { error: "meetingDate requis pour une absence réunion" },
+          { status: 400 },
+        );
+      }
+      // Le pattern attendu côté staff/meeting est T00:00:00.000Z (UTC).
+      const utc = new Date(`${rawMeetingDate.slice(0, 10)}T00:00:00.000Z`);
+      startAt = utc;
+      endAt = utc;
+      meetingDateIso = utc.toISOString();
+    } else {
+      // Général : période libre, dates optionnelles → fallback aujourd'hui.
+      const fromDate = parseDate(typeof from === "string" ? from : undefined);
+      const toDate = parseDate(typeof to === "string" ? to : undefined);
+
+      if ((from && !fromDate) || (to && !toDate)) {
+        return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      startAt = fromDate ?? today;
+      const endAtRaw = toDate ?? fromDate ?? today;
+      endAt = new Date(endAtRaw);
+      endAt.setHours(23, 59, 59, 999);
+
+      // Garde-fou : limite à 2 mois (60 jours) comme côté staff.
+      const diffMs = endAt.getTime() - startAt.getTime();
+      const SIXTY_DAYS = 60 * 24 * 60 * 60 * 1000;
+      if (diffMs > SIXTY_DAYS) {
+        return NextResponse.json(
+          { error: "La période ne peut pas excéder 2 mois" },
+          { status: 400 },
+        );
+      }
     }
-
-    // Dates obligatoires en DB : fallback sur aujourd'hui
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startAt = fromDate ?? today;
-    const endAtRaw = toDate ?? fromDate ?? today;
-    const endAt = new Date(endAtRaw);
-    endAt.setHours(23, 59, 59, 999);
 
     const { discordId, memberId, rpName } = linkedMember;
 
@@ -104,8 +144,8 @@ export async function POST(req: NextRequest) {
         reason: trimmedReason,
         notes: JSON.stringify({
           v: 1,
-          type: "GENERAL",
-          meetingDate: null,
+          type,
+          meetingDate: meetingDateIso,
           memberNotes: trimmedReason,
           rejectionReason: null,
           rejectedById: null,
@@ -120,26 +160,32 @@ export async function POST(req: NextRequest) {
 
     logger.debug("api:absence", `Absence created in DB: ${absence.id} for ${discordId}`);
 
-    // 2. Construire la période affichée
+    // 2. Construire la période affichée selon le type
     const periodeLabel = (() => {
-      if (fromDate && toDate)
-        return `Du ${formatDateFr(fromDate)} au ${formatDateFr(toDate)}`;
-      if (fromDate)
-        return `Depuis le ${formatDateFr(fromDate)}`;
-      if (toDate)
-        return `Jusqu'au ${formatDateFr(toDate)}`;
-      return "Non précisée";
+      if (type === "MEETING") {
+        return `Réunion du ${formatDateFr(startAt)}`;
+      }
+      // GENERAL
+      const startStr = formatDateFr(startAt);
+      const endStr = formatDateFr(endAt);
+      if (startStr === endStr) return `Le ${startStr}`;
+      return `Du ${startStr} au ${endStr}`;
     })();
 
     // 3. Envoyer l'embed Discord
+    const isMeeting = type === "MEETING";
     const embed = {
-      title: "📌 Justification d'absence",
+      title: isMeeting ? "📅 Absence — Réunion" : "📌 Absence — Période générale",
       description: "Nouvelle demande envoyée depuis l'espace membre.",
-      color: 0xf59e0b, // amber
+      color: isMeeting ? 0xf59e0b /* amber */ : 0x9b2335 /* bordeaux */,
       fields: [
         { name: "👤 Membre", value: rpName || "Inconnu", inline: true },
         { name: "🆔 Discord ID", value: discordId || "N/A", inline: true },
-        { name: "📅 Période concernée", value: periodeLabel, inline: false },
+        {
+          name: isMeeting ? "📅 Réunion concernée" : "📅 Période concernée",
+          value: periodeLabel,
+          inline: false,
+        },
         { name: "📝 Motif communiqué", value: trimmedReason, inline: false },
       ],
       footer: { text: "Panel Los Esperados" },

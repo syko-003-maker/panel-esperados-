@@ -662,13 +662,25 @@ function MemberAvatar({ member, size = "md" }: { member: MemberItem; size?: "md"
   const fallback = (member.rpName ?? "?").trim().charAt(0).toUpperCase() || "?";
   const sizeClass = size === "lg" ? "h-12 w-12 text-base" : "h-10 w-10 text-sm";
 
+  // Reset l'état d'échec quand l'URL change. Sans ça, un échec transitoire
+  // (network blip au mount, timeout lazy-loading) restait coincé pour
+  // toujours → l'utilisateur voyait la lettre fallback même après refresh
+  // du hash côté backend. La clé `loading="eager"` aide aussi pour ne pas
+  // dépendre de l'IntersectionObserver qui parfois rate les avatars en
+  // scroll rapide.
+  useEffect(() => {
+    setImgFailed(false);
+  }, [avatarUrl]);
+
   if (avatarUrl && !imgFailed) {
     return (
       <img
+        key={avatarUrl}
         src={avatarUrl}
         alt={member.rpName ?? "Avatar Discord"}
         className={`${sizeClass} shrink-0 rounded-full border border-white/10 object-cover`}
-        loading="lazy"
+        loading="eager"
+        decoding="async"
         referrerPolicy="no-referrer"
         onError={() => setImgFailed(true)}
       />

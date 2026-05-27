@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueComplaintDecision } from "@/lib/discord/discord";
 
@@ -116,7 +116,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : trancher une plainte. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

@@ -20,7 +20,7 @@ export function StaffLayout({
   user,
 }: {
   children: React.ReactNode;
-  accessLevel?: "full" | "recruiter";
+  accessLevel?: "full" | "encadrant" | "recruiter";
   user?: { name?: string | null; image?: string | null };
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);

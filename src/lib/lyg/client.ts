@@ -141,7 +141,9 @@ async function request<T = unknown>(path: string, timeoutMs = 15_000): Promise<L
     const res = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${cfg.token}`,
+        // LYG a basculé son auth de Bearer vers X-API-Token (printemps 2026).
+        // Voir doc : "Toutes les routes nécessitent un header X-API-Token ou ?token="
+        "X-API-Token": cfg.token,
         Accept: "application/json",
         "Content-Type": "application/json",
         "User-Agent": "los-esperados-panel-sync/1.0",
@@ -219,7 +221,10 @@ async function request<T = unknown>(path: string, timeoutMs = 15_000): Promise<L
 
 export async function fetchMembersPage(): Promise<LygHttpResult<LygMember[]>> {
   const familySlug = "esperados";
-  const path = `/api/darkrp/familles/${familySlug}/members`;
+  // LYG paginate par défaut à 20 — on demande 150 (max constaté) pour
+  // récupérer toute la famille en un seul call. Si la famille grossit
+  // au-delà de 150, il faudra paginer (voir totalPages dans la réponse).
+  const path = `/api/darkrp/familles/${familySlug}/members?limit=150`;
   const res = await request<any>(path, 60_000);
 
   if (!res.ok || !res.data) {

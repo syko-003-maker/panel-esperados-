@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueSanctionNotify } from "@/lib/discord/discord";
 
@@ -19,7 +19,8 @@ function mapTypeToApi(type: string) {
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : clôturer une sanction. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

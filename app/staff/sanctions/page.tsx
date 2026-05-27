@@ -1,4 +1,5 @@
 import { requireChefOrEtatMajor } from "@/lib/guards";
+import { isCurrentSessionFullWriter } from "@/lib/rbac";
 import SanctionsClient from "./sanctions-client";
 import { redirect } from "next/navigation";
 import { PageShell } from "@/components/staff/ui";
@@ -11,13 +12,15 @@ export default async function StaffSanctionsPage() {
     redirect(location);
   }
 
+  const canWrite = await isCurrentSessionFullWriter();
+
   return (
     <PageShell
       title="Sanctions"
       description="Pilotage des sanctions staff, création rapide et suivi des statuts Discord associés."
       icon={Ban}
     >
-      <SanctionsClient />
+      <SanctionsClient canWrite={canWrite} />
     </PageShell>
   );
 }

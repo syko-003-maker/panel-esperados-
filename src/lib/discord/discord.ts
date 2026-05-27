@@ -385,6 +385,16 @@ export async function enqueueRecruitmentDecision(params: {
   totalPoints?: number | null;
   claimedByUserId: string;
   discordThreadId?: string | null;
+  /**
+   * Résultat de l'auto-add WL via proxy LYG côté panel.
+   *   "ok"      : ajouté avec succès → l'embed Discord affiche "✅ Auto-WL OK"
+   *   "failed"  : tentative faite mais échouée → embed garde sa version classique
+   *               "à ajouter manuellement" (avec raison de l'échec)
+   *   "skipped" : pas de tentative (cookie absent / pas de steamId)
+   *   undefined : on n'a pas l'info, l'embed reste générique
+   */
+  lygAutoAdd?: "ok" | "failed" | "skipped";
+  lygAutoAddError?: string | null;
   client?: PrismaClientLike;
 }) {
   const jobType = "RECRUITMENT_DECISION";
@@ -401,6 +411,8 @@ export async function enqueueRecruitmentDecision(params: {
     totalPoints: params.totalPoints ?? null,
     claimedByUserId: params.claimedByUserId,
     discordThreadId: params.discordThreadId ?? null,
+    lygAutoAdd: params.lygAutoAdd ?? null,
+    lygAutoAddError: params.lygAutoAddError ?? null,
   };
 
   return createOutboxJob(client, {

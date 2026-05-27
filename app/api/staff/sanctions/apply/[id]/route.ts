@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueSanctionApply } from "@/lib/discord/discord";
 
@@ -16,7 +16,8 @@ const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : appliquer la sanction sur Discord. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

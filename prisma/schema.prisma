@@ -92,9 +92,10 @@ model Family {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members    Member[]
-  staffUsers StaffUser[]
-  bankLogs   BankLog[]
+  members        Member[]
+  staffUsers     StaffUser[]
+  bankLogs       BankLog[]
+  lygCredential  LygCredential?
 }
 
 model BankLog {
@@ -171,6 +172,24 @@ model Member {
   // 7-day playtime from LYG
   playtime7d              Int        @default(0)
   playtime7dUpdatedAt     DateTime?
+
+  // ─── Famille WL (miroir LYG + intent panel) ─────────────────────────────
+  // LYG expose member.class (rang WL 1=Chef … 5=plus bas) et member.owner
+  // (Chef famille game-side). On stocke les deux versions :
+  //
+  //   wlClass / wlOwner             = état RÉEL synchronisé depuis LYG
+  //   wlClassIntent / wlOwnerIntent = ce que le chef veut côté panel
+  //                                   (= "à appliquer sur families.lyg.fr")
+  //
+  // Le diff (intent ≠ réel) indique au chef quoi appliquer côté admin LYG.
+  // L'API publique LYG n'expose PAS de write endpoint pour ces champs, donc
+  // notre panel reste un outil de PLANIFICATION/SUIVI, pas d'écriture directe.
+  wlClass                 Int?       // 1..5 (lecture LYG)
+  wlOwner                 Boolean    @default(false) // owner flag LYG (chef famille game)
+  wlClassIntent           Int?       // 1..5 (planifié panel) — null = retirer
+  wlOwnerIntent           Boolean    @default(false)
+  wlIntentUpdatedAt       DateTime?  // Dernière modif d'intent côté panel
+  wlIntentBy              String?    // discordId du staff qui a changé l'intent
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -529,6 +548,8 @@ enum MeetingRowAttendanceStatus {
   PRESENT
   ABSENT
   JUSTIFIED
+  EXCUSED
+  LATE
   NOT_CONCERNED
 }
 
@@ -584,6 +605,33 @@ model Meeting {
   @@index([familyId, status])
 }
 
+/// Credential pour le bot famille families.lyg.fr.
+///
+/// Comme l'API publique LYG n'expose pas d'endpoint write famille, on agit
+/// en proxy via le site admin (families.lyg.fr) en utilisant un cookie de
+/// session PHP fourni par le Chef famille.
+///
+/// Sécurité :
+///   - 1 seule ligne par famille (id = familyId, on stocke en plain via PK)
+///   - cookieCiphertext chiffré AES-256-GCM (clé env LYG_COOKIE_ENCRYPTION_KEY)
+///   - ownerDiscordId = qui a fourni le cookie. Seul lui peut déclencher
+///     des actions LYG en proxy (les autres staff voient l'état lecture seule)
+///   - expired = true dès qu'une requête redirige vers /login → on bloque
+///     les appels et on demande au chef de re-coller un nouveau cookie
+model LygCredential {
+  familyId         String   @id
+  family           Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  cookieCiphertext String   // AES-256-GCM ciphertext, base64
+  ownerDiscordId   String   // Discord ID du staff qui a fourni le cookie
+  ownerName        String?  // Nom (pour audit / UI)
+  expired          Boolean  @default(false)
+  lastVerifiedAt   DateTime? // Dernier test réussi (GET dashboard)
+  lastUsedAt       DateTime? // Dernière requête réelle effectuée
+  lastError        String?  // Dernier message d'erreur (si expired)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
 model MeetingRow {
   id                String                     @id @default(cuid())
   meetingId         String
@@ -594,6 +642,7 @@ model MeetingRow {
   discordIdSnapshot String?
   playtimeMinutes   Int                        @default(0)
   attendanceStatus  MeetingRowAttendanceStatus @default(NOT_CONCERNED)
+  attendanceLockedByStaff Boolean              @default(false)
   decisionType      MeetingRowDecisionType     @default(NONE)
   sanctionType      String?
   sanctionReason    String?

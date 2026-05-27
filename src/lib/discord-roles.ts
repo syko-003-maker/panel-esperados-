@@ -13,6 +13,11 @@ const DEFAULT_ROLE_IDS = {
   SOUS_CHEF_FAMILLE_ROLE_ID: "1488610892282335314",
   ETAT_MAJOR_ROLE_ID:        "1312845999366209683",
   RECRUTEUR_ROLE_ID:         "1312845999215214618",
+  // Encadrant : tier intermédiaire entre Recruteur et EM.
+  // Voit tout le panel staff comme un EM, MAIS ne peut pas effectuer
+  // les actions sensibles (créer sanction, trancher plainte, finaliser
+  // réunion, promouvoir/démoter). Cf. isFullWriter().
+  ENCADRANT_ROLE_ID:         "1497293700831903774",
 } as const;
 
 // ─────────────────────────────────────────────────────────────
@@ -115,6 +120,10 @@ export const ETAT_MAJOR_ROLE_ID = resolveRoleId(
 export const RECRUTEUR_ROLE_ID = resolveRoleId(
   "RECRUTEUR_ROLE_ID",
   process.env.RECRUTEUR_ROLE_ID
+);
+export const ENCADRANT_ROLE_ID = resolveRoleId(
+  "ENCADRANT_ROLE_ID",
+  process.env.ENCADRANT_ROLE_ID
 );
 
 const DISCORD_GUILD_ID = (process.env.DISCORD_GUILD_ID ?? "").trim();
@@ -486,11 +495,52 @@ export function isRecruiter(roles: string[]): boolean {
 }
 
 /**
- * Check if user has staff full role
+ * Check if user has staff full role.
+ *
+ * Inclut ENCADRANT : un Encadrant voit toute la sidebar staff (mêmes
+ * pages que l'EM en visibilité). Les restrictions d'écriture sont
+ * gérées séparément par isFullWriter() — appelé sur les routes qui
+ * effectuent une action (sanction, plainte, réunion, promotion).
  */
 export function isStaffFull(roles: string[]): boolean {
-  // Include hardcoded CHEF_FAMILLE + SOUS_CHEF_FAMILLE + ETAT_MAJOR as fallback alongside env var
-  const ids = [...getStaffFullRoleIds(), CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, ETAT_MAJOR_ROLE_ID].filter(isValidRoleId);
+  const ids = [
+    ...getStaffFullRoleIds(),
+    CHEF_FAMILLE_ROLE_ID,
+    SOUS_CHEF_FAMILLE_ROLE_ID,
+    ETAT_MAJOR_ROLE_ID,
+    ENCADRANT_ROLE_ID,
+  ].filter(isValidRoleId);
+  return hasAnyRole(roles, ids) && !isDemoted(roles);
+}
+
+/**
+ * Check if user has the Encadrant role specifically.
+ *
+ * Encadrant = tier intermédiaire. Accès lecture comme l'EM, mais pas
+ * d'actions sensibles (cf. isFullWriter ci-dessous).
+ */
+export function isEncadrant(roles: string[]): boolean {
+  return ENCADRANT_ROLE_ID ? roles.includes(ENCADRANT_ROLE_ID) : false;
+}
+
+/**
+ * Check if user can perform WRITE actions on sensitive resources :
+ * créer une sanction, trancher une plainte, finaliser une réunion,
+ * appliquer une promotion / démote, modifier les paramètres.
+ *
+ * Autorisé : Chef Famille, Sous-Chef Famille, État-Major.
+ * Refusé   : Encadrant (lecture seule), Recruteur (sidebar limitée),
+ *            Démoté (déjà bloqué par isStaffFull).
+ *
+ * Note : on N'inclut PAS Encadrant ici — c'est le but du tier.
+ */
+export function isFullWriter(roles: string[]): boolean {
+  const ids = [
+    ...getStaffFullRoleIds(),
+    CHEF_FAMILLE_ROLE_ID,
+    SOUS_CHEF_FAMILLE_ROLE_ID,
+    ETAT_MAJOR_ROLE_ID,
+  ].filter(isValidRoleId);
   return hasAnyRole(roles, ids) && !isDemoted(roles);
 }
 

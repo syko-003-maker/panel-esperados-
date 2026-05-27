@@ -17,10 +17,16 @@ interface StaffRoleConfig {
 }
 
 // Default staff role IDs (from Discord)
+//
+// "Staff" ici = quiconque a accès au panel staff en visibilité, peu importe
+// les droits d'écriture. L'Encadrant est inclus car il doit voir le panel
+// staff complet (lecture seule sur certaines actions sensibles, géré par
+// isFullWriter() côté routes).
 const DEFAULT_STAFF_ROLE_IDS = [
   "1429607761720770623", // Chef Famille
   "1488610892282335314", // Sous-Chef Famille
   "1312845999366209683", // Etat-Major
+  "1497293700831903774", // Encadrant (lecture + actions limitées)
 ];
 
 /**

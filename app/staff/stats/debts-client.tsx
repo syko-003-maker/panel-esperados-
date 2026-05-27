@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { AlertCircle, RefreshCw, Bell, CheckCircle2, DollarSign } from "lucide-react";
 import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
 import { GRADE_LABEL_BY_ROLE_ID, GRADE_BADGE_STYLE_BY_ROLE_ID } from "@/lib/grade-colors";
+import { useConfirm } from "@/components/staff/ui/use-confirm";
 
 type DebtRow = {
   memberId: string | null;
@@ -76,6 +77,7 @@ export default function DebtsClient() {
   const [batchPinging, setBatchPinging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const avatars = useDiscordAvatars(items.map((i) => i.discordId));
 
@@ -135,7 +137,19 @@ export default function DebtsClient() {
       return;
     }
 
-    if (!confirm(`Envoyer un rappel à tous les membres avec une dette >= ${fmtMoney(thresholdValue)} ?`)) return;
+    const ok = await confirm({
+      title: "Envoyer un rappel groupé ?",
+      description: (
+        <p>
+          Tous les membres avec une dette{" "}
+          <strong className="text-amber-200">≥ {fmtMoney(thresholdValue)}</strong>{" "}
+          recevront un rappel Discord.
+        </p>
+      ),
+      confirmLabel: "Envoyer",
+      tone: "warning",
+    });
+    if (!ok) return;
 
     setBatchPinging(true);
     try {
@@ -165,7 +179,8 @@ export default function DebtsClient() {
   if (!enabled) statusReason = "Système désactivé";
   else if (!hasChannel) statusReason = "Canal manquant";
 
-  return (
+  return (<>
+    {confirmDialog}
     <SectionCard title="Rappels de dettes" description="Gestion des rappels Discord pour les membres en déficit." icon={Bell}>
       <div className="space-y-6">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -298,5 +313,5 @@ export default function DebtsClient() {
         )}
       </div>
     </SectionCard>
-  );
+  </>);
 }

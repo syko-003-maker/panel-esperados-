@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueComplaintDecision } from "@/lib/discord/discord";
 
@@ -16,8 +16,9 @@ function isValidDecision(value: string): value is Decision {
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // CRITICAL RULE: Require Chef or EtatMajor for complaint decisions
-  const guard = await requireChefOrEtatMajor();
+  // CRITICAL RULE: Require writer (Chef / Sous-Chef / EM) for complaint decisions.
+  // Encadrant peut consulter mais pas trancher.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

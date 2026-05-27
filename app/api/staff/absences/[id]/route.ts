@@ -4,7 +4,7 @@ import { requirePrivileged } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { AbsenceStatus } from "@prisma/client";
-import { enqueueDeleteMessage, getOrCreateDiscordConfig } from "@/lib/discord/discord";
+import { enqueueDeleteMessage, enqueueEmbedMessage, getOrCreateDiscordConfig } from "@/lib/discord/discord";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 const ABSENCE_TYPES = ["MEETING", "GENERAL"] as const;
@@ -268,6 +268,87 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         meta: { oldStatus: existing.status, newStatus: updated.status },
       },
     });
+
+    // ── Notification Discord : APPROVED / REJECTED ──────────────────────
+    // On envoie un embed dans le channel #absences mentionnant le membre
+    // (donc il reçoit une notif Discord native). Le decider est nommé pour
+    // la traçabilité. La couleur change selon la décision.
+    // Non-bloquant : si Discord est down ou le channel non configuré, on log.
+    try {
+      const config = await getOrCreateDiscordConfig("esperados");
+      if (config.absencesChannelId) {
+        // Récupère le nom du staff qui a tranché (depuis User.name + Member.rpName si lié)
+        let deciderLabel = session?.user?.name ?? "Staff";
+        try {
+          const decider = await prisma.user.findUnique({
+            where: { id: actorId },
+            select: {
+              name: true,
+              accounts: {
+                where: { provider: "discord" },
+                select: { providerAccountId: true },
+                take: 1,
+              },
+            },
+          });
+          const deciderDiscordId = decider?.accounts?.[0]?.providerAccountId ?? null;
+          if (deciderDiscordId) {
+            const deciderMember = await prisma.member.findFirst({
+              where: { discordId: deciderDiscordId },
+              select: { rpName: true },
+            });
+            deciderLabel = deciderMember?.rpName ?? decider?.name ?? deciderLabel;
+          }
+        } catch {
+          /* fallback à user.name déjà posé */
+        }
+
+        const memberMention = updated.discordId ? `<@${updated.discordId}>` : "_Membre_";
+        const startTs = Math.floor(updated.startAt.getTime() / 1000);
+        const endTs = Math.floor(updated.endAt.getTime() / 1000);
+        const typeLabel = existingMeta?.type === "MEETING" ? "Réunion" : "Générale";
+
+        const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+          { name: "📅  Début", value: `<t:${startTs}:f>`, inline: true },
+          { name: "📅  Fin", value: `<t:${endTs}:f>`, inline: true },
+          { name: "🏷️  Type", value: typeLabel, inline: true },
+        ];
+        if (updated.reason && updated.reason.trim()) {
+          fields.push({ name: "📋  Motif", value: updated.reason.trim().slice(0, 1024), inline: false });
+        }
+        if (value === "REJECTED" && rejectionReasonRaw) {
+          fields.push({ name: "❌  Raison du refus", value: rejectionReasonRaw.slice(0, 1024), inline: false });
+        }
+        fields.push({ name: "👮  Décision par", value: deciderLabel, inline: false });
+
+        const isApproved = value === "APPROVED";
+        const embed = {
+          title: isApproved ? "✅  Absence approuvée" : "❌  Absence refusée",
+          description: memberMention,
+          color: isApproved ? 0x10b981 /* emerald */ : 0xdc2626 /* red */,
+          fields,
+          timestamp: new Date().toISOString(),
+          footer: { text: "Los Esperados  •  Décision absence" },
+        };
+
+        await enqueueEmbedMessage({
+          familyId: existing.familyId,
+          channelId: config.absencesChannelId,
+          embeds: [embed],
+          entity: "Absence",
+          entityId: existing.id,
+        });
+        logInfo("absence_decide_discord_notify_enqueued", { requestId, id, status: updated.status });
+      } else {
+        logWarn("absence_decide_no_absences_channel", { requestId, id });
+      }
+    } catch (notifyErr) {
+      logWarn("absence_decide_discord_notify_failed", {
+        requestId,
+        id,
+        error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+      });
+    }
 
     // Si REJECTED : on supprime le message Discord d'absence (plus valide).
     // APPROVED garde le message visible jusqu'à expire-discord (endAt passé).

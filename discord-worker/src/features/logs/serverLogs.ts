@@ -221,12 +221,26 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
     : "—";
   const joinedTs = member.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
 
+  // Récupère exécuteur ET raison via l'audit log (type 20 = MEMBER_KICK).
+  // Avant : on ne lisait que l'exécuteur, la raison était perdue.
   let kickedBy: string | null = null;
+  let kickReason: string | null = null;
   try {
     await new Promise((r) => setTimeout(r, 800));
     const logs = await member.guild.fetchAuditLogs({ type: 20, limit: 5 });
-    const entry = logs.entries.find((e) => e.target?.id === member.id && Date.now() - e.createdTimestamp < 5000);
-    if (entry) kickedBy = `<@${entry.executor?.id}>`;
+    const entry = logs.entries.find(
+      (e) => e.target?.id === member.id && Date.now() - e.createdTimestamp < 5000,
+    );
+    if (entry) {
+      if (entry.executor?.id) kickedBy = `<@${entry.executor.id}>`;
+      // Notre /kick passe "modTag : raison" — on coupe le préfixe.
+      if (entry.reason) {
+        const m =
+          entry.reason.match(/^[^:]+#\d{1,5}\s*:\s*(.+)$/) ??
+          entry.reason.match(/^[^:\n]{1,32}\s*:\s*(.+)$/);
+        kickReason = m ? m[1].trim() : entry.reason;
+      }
+    }
   } catch { /* non bloquant */ }
 
   const embed = new EmbedBuilder()
@@ -241,6 +255,9 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
       { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
       ...(joinedTs  ? [{ name: "📅 Avait rejoint",  value: `<t:${joinedTs}:R>`, inline: true }] : []),
       ...(kickedBy  ? [{ name: "👢 Expulsé par",     value: kickedBy,            inline: true }] : []),
+      ...(kickedBy && kickReason
+        ? [{ name: "📋 Raison", value: kickReason, inline: false }]
+        : []),
       { name: "🏷️ Rôles", value: roles, inline: false },
     )
     .setFooter({ text: `👥 ${member.guild.memberCount} membres` })
@@ -455,26 +472,119 @@ export async function onVoiceStateUpdate(oldState: any, newState: any): Promise<
 
 // ─── Ban / Unban ──────────────────────────────────────────────────────────────
 
-export function onBanAdd(ban: { guild: Guild; user: User; reason: string | null }): void {
+/**
+ * Extrait la raison + l'exécuteur d'un ban depuis l'audit log.
+ *
+ * Pourquoi ce fetch manuel : l'event Discord `guildBanAdd` est émis AVANT
+ * que la raison + l'auteur ne soient propagés au cache discord.js — donc
+ * `ban.reason` est presque toujours `null`. La seule façon fiable de
+ * récupérer ces infos est de lire l'audit log juste après (type 22 =
+ * MEMBER_BAN_ADD), en filtrant par target.id et un timestamp récent.
+ *
+ * Notre commande /ban passe la raison au format "modTag : raison" → on
+ * coupe le préfixe pour ne garder que la raison côté embed.
+ */
+async function fetchBanAuditDetails(
+  guild: Guild,
+  targetId: string,
+  fallbackReason: string | null,
+): Promise<{ reason: string | null; executorId: string | null }> {
+  // Petite latence pour laisser à Discord le temps d'écrire l'audit log.
+  await new Promise((r) => setTimeout(r, 800));
+  let executorId: string | null = null;
+  let auditReason: string | null = null;
+  try {
+    const logs = await guild.fetchAuditLogs({ type: 22, limit: 5 });
+    const entry = logs.entries.find(
+      (e) => e.target?.id === targetId && Date.now() - e.createdTimestamp < 10_000,
+    );
+    if (entry) {
+      executorId  = entry.executor?.id ?? null;
+      auditReason = entry.reason ?? null;
+    }
+  } catch {
+    /* permission manquante ou erreur réseau → fallback */
+  }
+
+  // On préfère la raison de l'audit log (incluse à coup sûr quand /ban est
+  // utilisée). Si vide, on tente fallbackReason (= ban.reason event).
+  let reason = auditReason ?? fallbackReason ?? null;
+
+  // /ban formate en "User#1234 : <raison>" — on retire le préfixe modTag
+  // pour ne pas le dupliquer avec le champ "Banni par" affiché à côté.
+  if (reason) {
+    const m = reason.match(/^[^:]+#\d{1,5}\s*:\s*(.+)$/);
+    if (m) reason = m[1].trim();
+    // Format alternatif possible (sans discriminator) : "username : raison"
+    if (!m) {
+      const m2 = reason.match(/^[^:\n]{1,32}\s*:\s*(.+)$/);
+      if (m2) reason = m2[1].trim();
+    }
+  }
+  return { reason, executorId };
+}
+
+export async function onBanAdd(ban: {
+  guild: Guild;
+  user: User;
+  reason: string | null;
+}): Promise<void> {
+  const { reason, executorId } = await fetchBanAuditDetails(
+    ban.guild,
+    ban.user.id,
+    ban.reason,
+  );
+
   const embed = new EmbedBuilder()
-    .setAuthor({ name: `${ban.user.tag} — banni`, iconURL: ban.user.displayAvatarURL({ size: 64 }) })
+    .setAuthor({
+      name: `${ban.user.tag} — banni`,
+      iconURL: ban.user.displayAvatarURL({ size: 64 }),
+    })
     .setColor(0xdc2626)
     .setThumbnail(ban.user.displayAvatarURL({ size: 256 }))
     .setDescription(`<@${ban.user.id}>`)
     .addFields(
-      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``,              inline: true },
-      { name: "📋 Raison",     value: ban.reason ?? "Aucune raison",     inline: false },
+      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true },
+      ...(executorId
+        ? [{ name: "👮 Banni par", value: `<@${executorId}>`, inline: true }]
+        : []),
+      {
+        name: "📋 Raison",
+        value: reason && reason.trim() !== "" ? reason : "_Aucune raison fournie_",
+        inline: false,
+      },
     )
     .setTimestamp();
   sendLog(ban.guild, embed);
 }
 
-export function onBanRemove(ban: { guild: Guild; user: User }): void {
+export async function onBanRemove(ban: { guild: Guild; user: User }): Promise<void> {
+  // Idem : on cherche qui a débanni dans l'audit log (type 23 = MEMBER_BAN_REMOVE).
+  let executorId: string | null = null;
+  try {
+    await new Promise((r) => setTimeout(r, 800));
+    const logs = await ban.guild.fetchAuditLogs({ type: 23, limit: 5 });
+    const entry = logs.entries.find(
+      (e) => e.target?.id === ban.user.id && Date.now() - e.createdTimestamp < 10_000,
+    );
+    if (entry) executorId = entry.executor?.id ?? null;
+  } catch {
+    /* non bloquant */
+  }
+
   const embed = new EmbedBuilder()
-    .setAuthor({ name: `${ban.user.tag} — débanni`, iconURL: ban.user.displayAvatarURL({ size: 64 }) })
+    .setAuthor({
+      name: `${ban.user.tag} — débanni`,
+      iconURL: ban.user.displayAvatarURL({ size: 64 }),
+    })
     .setColor(0x16a34a)
     .setDescription(`<@${ban.user.id}>`)
-    .addFields({ name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true })
+    .addFields(
+      { name: "🆔 Discord ID", value: `\`${ban.user.id}\``, inline: true },
+      ...(executorId
+        ? [{ name: "👮 Débanni par", value: `<@${executorId}>`, inline: true }]
+        : []),
+    )
     .setTimestamp();
   sendLog(ban.guild, embed);
 }
@@ -576,8 +686,8 @@ export function setupServerLogs(client: Client): void {
     onScreeningComplete(o, n as GuildMember).catch(() => {});
     onMemberUpdate(o, n as GuildMember).catch(() => {});
   });
-  client.on("guildBanAdd",       (ban)   => onBanAdd(ban as any));
-  client.on("guildBanRemove",    (ban)   => onBanRemove(ban as any));
+  client.on("guildBanAdd",       (ban)   => { onBanAdd(ban as any).catch((e) => console.error("[Logs] onBanAdd error:", e)); });
+  client.on("guildBanRemove",    (ban)   => { onBanRemove(ban as any).catch((e) => console.error("[Logs] onBanRemove error:", e)); });
   client.on("voiceStateUpdate",  (o, n)  => { onVoiceStateUpdate(o, n).catch(() => {}); });
   client.on("roleUpdate",        (o, n)  => onRoleUpdate(o, n));
 

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { canClearSanction, canDeleteSanction, getSanctionLabel } from "@/lib/sanctions";
 import { getEffectiveSanctionStatus, getSanctionStatusLabel } from "@/lib/sanction-status-labels";
+import { useConfirm } from "@/components/staff/ui/use-confirm";
 
 type SanctionDetailProps = {
   sanction: {
@@ -33,6 +34,7 @@ type SanctionDetailProps = {
 
 export default function SanctionDetailClient({ sanction: initialSanction, audit }: SanctionDetailProps) {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [sanction, setSanction] = useState(initialSanction);
   const [retrying, setRetrying] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -43,7 +45,13 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   const [retrySuccess, setRetrySuccess] = useState(false);
 
   async function handleApply() {
-    if (!confirm("Appliquer cette sanction sur Discord maintenant ?")) return;
+    const ok = await confirm({
+      title: "Appliquer la sanction maintenant ?",
+      description: "La sanction sera mise en file d'attente pour être appliquée sur Discord (rôle, mute, etc.).",
+      confirmLabel: "Appliquer",
+      tone: "info",
+    });
+    if (!ok) return;
 
     setApplying(true);
     setError(null);
@@ -82,7 +90,13 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   }
 
   async function handleForceApplied() {
-    if (!confirm("Forcer la sanction comme appliquée ? À utiliser uniquement si le membre est banni ou a définitivement quitté le serveur Discord.")) return;
+    const ok = await confirm({
+      title: "Forcer la sanction comme appliquée ?",
+      description: "À utiliser uniquement si le membre est banni ou a définitivement quitté le serveur Discord — l'effet ne sera pas appliqué techniquement.",
+      confirmLabel: "Forcer",
+      tone: "warning",
+    });
+    if (!ok) return;
 
     setForcingApplied(true);
     setError(null);
@@ -101,10 +115,15 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
 
   async function handleClear() {
     const isReserviste = sanction.type === "RESERVISTE";
-    const confirmMessage = isReserviste
-      ? "Retirer l'état Réserviste ? Cette action retirera le rôle Réserviste sur Discord."
-      : "Supprimer la sanction appliquée ? Cette action retirera son effet Discord.";
-    if (!confirm(confirmMessage)) return;
+    const ok = await confirm({
+      title: isReserviste ? "Retirer l'état Réserviste ?" : "Supprimer la sanction appliquée ?",
+      description: isReserviste
+        ? "Le rôle Réserviste sera retiré sur Discord."
+        : "L'effet de la sanction sera retiré sur Discord.",
+      confirmLabel: "Confirmer",
+      tone: "warning",
+    });
+    if (!ok) return;
 
     setClearing(true);
     setError(null);
@@ -124,7 +143,13 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   }
 
   async function handleDelete() {
-    if (!confirm("Supprimer cette sanction ? Cette action est irréversible.")) return;
+    const ok = await confirm({
+      title: "Supprimer cette sanction ?",
+      description: <p>Cette action est <strong className="text-[#ff8a99]">irréversible</strong>.</p>,
+      confirmLabel: "Supprimer",
+      tone: "danger",
+    });
+    if (!ok) return;
 
     setDeleting(true);
     setError(null);
@@ -182,6 +207,7 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
 
   return (
     <div className="p-6 max-w-4xl space-y-6">
+      {confirmDialog}
       <div>
         <h1 className="text-2xl font-bold">Sanction</h1>
         <p className="text-sm text-gray-600">ID: {sanction.id}</p>

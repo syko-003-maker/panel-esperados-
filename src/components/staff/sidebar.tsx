@@ -18,6 +18,10 @@ import {
   Clock,
   BarChart3,
   TriangleAlert,
+  Hammer,
+  Handshake,
+  Car,
+  Crown,
 } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
@@ -26,6 +30,7 @@ const SIDEBAR_ITEMS = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/staff/dashboard" },
       { icon: Users, label: "Membres", href: "/staff/members" },
+      { icon: Crown, label: "Famille WL", href: "/staff/family" },
     ],
   },
   {
@@ -52,12 +57,27 @@ const SIDEBAR_ITEMS = [
       { icon: Settings, label: "Paramètres", href: "/staff/settings" },
     ],
   },
+  {
+    // Section visible par tout le staff. Liens vers les guides publics —
+    // pratique pour les chefs qui veulent vérifier ou partager les règles.
+    section: "Spécialisations",
+    items: [
+      { icon: Hammer,    label: "Construction", href: "/guide/build" },
+      { icon: Handshake, label: "Négociation",  href: "/guide/negociation" },
+      { icon: Car,       label: "Conduite",     href: "/guide/conduite" },
+    ],
+  },
 ];
 
 interface SidebarProps {
   onClose?: () => void;
   isMobile?: boolean;
-  accessLevel?: "full" | "recruiter";
+  // "full"      : Chef / Sous-Chef / EM → toutes les sections + toutes les actions.
+  // "encadrant" : Encadrant → toutes les sections (visibilité complète) mais
+  //               les actions sensibles (sanction, plainte, finalize…) sont
+  //               bloquées côté API. L'UI doit aussi masquer ces boutons.
+  // "recruiter" : Recruteur → Dashboard + Recrutement uniquement.
+  accessLevel?: "full" | "encadrant" | "recruiter";
 }
 
 export function Sidebar({
@@ -71,6 +91,20 @@ export function Sidebar({
     return pathname === href || pathname?.startsWith(href + "/");
   };
 
+  // "Famille WL" est une page sensible — accessible Chef/Sous-Chef/EM uniquement.
+  // Encadrant : exclu (ne peut pas modifier la WL, et l'API refuse aussi).
+  // Recruteur : exclu (vue ultra-restreinte).
+  // L'icône reste dans le code pour Chef/Sous-Chef/EM ; on filtre par accessLevel.
+  const filterItem = (href: string): boolean => {
+    if (href === "/staff/family" && accessLevel !== "full") return false;
+    return true;
+  };
+
+  const baseSections = SIDEBAR_ITEMS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => filterItem(item.href)),
+  })).filter((section) => section.items.length > 0);
+
   const visibleSections =
     accessLevel === "recruiter"
       ? [
@@ -83,7 +117,7 @@ export function Sidebar({
             items: [{ icon: Briefcase, label: "Recrutement", href: "/staff/recruitment" }],
           },
         ]
-      : SIDEBAR_ITEMS;
+      : baseSections;
 
   return (
     // Pas de flex-1 sur la zone menu : on laisse le bloc se dimensionner à

@@ -76,7 +76,8 @@ export async function lygProbeInfos(
       const res = await fetch(fullUrl, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${config.token}`,
+          // LYG a basculé son auth de Bearer vers X-API-Token (printemps 2026).
+          "X-API-Token": config.token,
           "Content-Type": "application/json",
           Accept: "application/json",
         },

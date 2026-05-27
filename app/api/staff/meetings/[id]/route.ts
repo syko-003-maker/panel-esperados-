@@ -443,11 +443,9 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
   // (absences validées + playtime live) en continu jusqu'à la finalisation.
   // À la finalisation (status CLOSED/FINAL/CANCELED), le snapshot est figé.
   //
-  // Note (override staff) : on remplace toujours par la valeur calculée
-  // automatiquement. Si un staff édite manuellement la row, sa modification
-  // sera écrasée au prochain load — c'est volontaire (demande explicite :
-  // « le staff n'a pas à réfléchir »). Pour décider en réunion, le staff
-  // utilise les colonnes Décision / Note, pas la colonne Présence.
+  // Override staff : si une ligne porte le flag attendanceLockedByStaff
+  // (posé par PATCH /row dès qu'un staff modifie le statut de présence),
+  // on ne réécrit plus rien dessus — l'édition manuelle est respectée.
   if (!meetingLocked && meetingDate) {
     const allMemberIds = existingRows
       .map((r) => r.memberId)
@@ -491,7 +489,7 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
     // sync ; ici on veut la valeur cohérente la plus à jour.
     const rowsForAttendance = await prisma.meetingRow.findMany({
       where: { meetingId: id },
-      select: { id: true, memberId: true, discordIdSnapshot: true, playtimeMinutes: true, attendanceStatus: true, staffNote: true },
+      select: { id: true, memberId: true, discordIdSnapshot: true, playtimeMinutes: true, attendanceStatus: true, staffNote: true, attendanceLockedByStaff: true },
     });
 
     // Détection Chef Famille / Sous Chef Famille : ils sont exclus du suivi
@@ -508,6 +506,13 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
     }
 
     for (const row of rowsForAttendance) {
+      // Override staff : si le staff a modifié manuellement la présence
+      // (via PATCH /row avec status), on ne réécrit plus rien sur cette
+      // ligne. Le flag est posé par la route /row dès qu'un staff touche
+      // au statut. Pour revenir à l'auto, il faut repasser par cette
+      // route ou réinitialiser le flag explicitement.
+      if (row.attendanceLockedByStaff) continue;
+
       const isJustified =
         (row.memberId && justifiedMemberIds.has(row.memberId)) ||
         (row.discordIdSnapshot && justifiedDiscordIds.has(row.discordIdSnapshot));

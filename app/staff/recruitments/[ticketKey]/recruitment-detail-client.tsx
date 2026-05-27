@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
 import { TicketConversation } from "../../ui/TicketConversation";
+import { useConfirm } from "@/components/staff/ui/use-confirm";
 
 function CopyLinkButton({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -55,6 +56,7 @@ export function RecruitmentDetailClient({
   recruitment: Recruitment;
 }) {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [recruitment, setRecruitment] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [deciding, setDeciding] = useState(false);
@@ -87,8 +89,16 @@ export function RecruitmentDetailClient({
   };
 
   const makeDecision = async (decision: "ACCEPT" | "REJECT") => {
-    const confirmMsg = `Êtes-vous sûr de vouloir ${decision === "ACCEPT" ? "ACCEPTER ✅" : "REFUSER ❌"} ce recrutement ?`;
-    if (!window.confirm(confirmMsg)) return;
+    const isAccept = decision === "ACCEPT";
+    const ok = await confirm({
+      title: isAccept ? "Accepter ce recrutement ?" : "Refuser ce recrutement ?",
+      description: isAccept
+        ? "Le candidat sera intégré à la famille et recevra les rôles correspondants sur Discord."
+        : "Le candidat sera notifié du refus. Cette décision peut être révisée plus tard si besoin.",
+      confirmLabel: isAccept ? "Accepter" : "Refuser",
+      tone: isAccept ? "info" : "danger",
+    });
+    if (!ok) return;
 
     setDeciding(true);
     setError(null);
@@ -118,6 +128,7 @@ export function RecruitmentDetailClient({
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div className="mb-4">
         <Link href="/staff/recruitments" className="text-blue-600 hover:underline">
           ← Retour à la liste

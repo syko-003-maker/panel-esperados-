@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireFullWriter } from "@/lib/guards";
 import { auditStaffAction, createAuditLog } from "@/lib/audit";
 import { enqueueRemoveRole } from "@/lib/discord/discord";
 import { getSanctionClearRoleId, isClearableSanctionType } from "@/lib/sanctions";
@@ -9,7 +9,8 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : clear sanction. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const actorId = (guard.session as any)?.user?.id ?? (guard.session as any)?.userId;

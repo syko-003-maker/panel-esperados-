@@ -238,8 +238,15 @@ export default async function Layout({
     );
   }
 
-  // Determine access level from staffUser role or fallback to "full"
-  const accessLevel = accessCheck.staffUser?.roleCode === "RECRUITER" ? "recruiter" : "full";
+  // Determine access level from staffUser role.
+  //   RECRUITER → sidebar réduite (Dashboard + Recrutement uniquement)
+  //   ENCADRANT → sidebar complète mais actions sensibles masquées côté UI
+  //   *         → sidebar complète + actions complètes (Chef/EM/etc.)
+  const roleCode = accessCheck.staffUser?.roleCode;
+  const accessLevel: "full" | "encadrant" | "recruiter" =
+    roleCode === "RECRUITER" ? "recruiter" :
+    roleCode === "ENCADRANT" ? "encadrant" :
+    "full";
 
   // Fetch RP name from member record
   const discordId = (session as any).discordId as string | null;

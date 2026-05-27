@@ -24,6 +24,7 @@ import { MotionButtonFrame, MotionSection } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
+import { ConfirmDialog } from "@/components/staff/ui/ConfirmDialog";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { getDiscordGradeMappings } from "@/lib/discord-grade";
 
@@ -303,10 +304,17 @@ export function MeetingDecisionsClient({
   meetingId,
   meetingStatus,
   onStatusChange,
+  canWrite = true,
 }: {
   meetingId: string;
   meetingStatus: MeetingStatus;
   onStatusChange?: () => void;
+  /**
+   * Si false (= Encadrant) : on masque les actions sensibles
+   * (Finaliser, Clore, Publier, Save décisions, promotions).
+   * Côté serveur ces actions sont déjà bloquées par requireFullWriter().
+   */
+  canWrite?: boolean;
 }) {
   const router = useRouter();
 
@@ -334,6 +342,7 @@ export function MeetingDecisionsClient({
   // UI filters
   const [searchQuery, setSearchQuery] = useState("");
   const [filterAction, setFilterAction] = useState<string>("ALL");
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
 
   // Pending decision/motif changes (manual save)
   const [localRows, setLocalRows] = useState<
@@ -355,15 +364,17 @@ export function MeetingDecisionsClient({
   // ── Computed flags ─────────────────────────────────────────────────────────
 
   const isLocked = meta?.locked ?? false;
+  // Toutes les capacités d'écriture exigent canWrite (= true pour Chef/EM,
+  // false pour Encadrant). Si l'Encadrant tente quand même, le serveur bloque.
   const canEditDecisions =
-    currentMeetingStatus === "DRAFT" || currentMeetingStatus === "IN_PROGRESS";
-  const canFinalize = currentMeetingStatus === "CLOSED";
+    canWrite && (currentMeetingStatus === "DRAFT" || currentMeetingStatus === "IN_PROGRESS");
+  const canFinalize = canWrite && currentMeetingStatus === "CLOSED";
   const isReadOnly =
     currentMeetingStatus === "FINAL" || currentMeetingStatus === "CANCELED";
   const canClose =
-    currentMeetingStatus === "DRAFT" || currentMeetingStatus === "IN_PROGRESS";
+    canWrite && (currentMeetingStatus === "DRAFT" || currentMeetingStatus === "IN_PROGRESS");
   const canPublish =
-    currentMeetingStatus === "CLOSED" || currentMeetingStatus === "FINAL";
+    canWrite && (currentMeetingStatus === "CLOSED" || currentMeetingStatus === "FINAL");
 
   // ── Data loading ───────────────────────────────────────────────────────────
 
@@ -739,14 +750,13 @@ export function MeetingDecisionsClient({
 
   // ── Finalize ───────────────────────────────────────────────────────────────
 
-  async function handleFinalize() {
+  function handleFinalize() {
     if (!canFinalize) return;
-    const confirmed = window.confirm(
-      "Êtes-vous sûr de vouloir finaliser cette réunion ?\n\n" +
-        "Cette action va appliquer les décisions enregistrées (promotions, démotes, sanctions) et verrouiller définitivement la réunion.\n\n" +
-        "Cette action est irréversible."
-    );
-    if (!confirmed) return;
+    setShowFinalizeConfirm(true);
+  }
+
+  async function runFinalize() {
+    setShowFinalizeConfirm(false);
     setFinalizing(true);
     setError(null);
     setSuccess(null);
@@ -1392,6 +1402,28 @@ export function MeetingDecisionsClient({
         <Clock3 className="h-4 w-4" />
         <span>Synchronisation live toutes les 3 secondes lorsque rien n'est en attente de sauvegarde.</span>
       </MotionSection>
+
+      <ConfirmDialog
+        open={showFinalizeConfirm}
+        title="Finaliser la réunion ?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Cette action va <strong className="text-amber-200">appliquer toutes les décisions</strong>{" "}
+              enregistrées (promotions, démotes, sanctions) et verrouiller définitivement la réunion.
+            </p>
+            <p className="text-[#ff8a99]">
+              <strong>Cette action est irréversible.</strong>
+            </p>
+          </div>
+        }
+        confirmLabel="Finaliser"
+        cancelLabel="Annuler"
+        tone="danger"
+        loading={finalizing}
+        onConfirm={runFinalize}
+        onCancel={() => setShowFinalizeConfirm(false)}
+      />
     </div>
   );
 }

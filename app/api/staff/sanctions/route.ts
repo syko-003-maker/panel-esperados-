@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
 import { requireStaffAccess } from "@/lib/rbac";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
@@ -307,7 +307,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const requestId = makeRequestId();
 
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : créer une sanction. Bloqué pour Encadrant (lecture seule).
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const actorId = (guard.session as any)?.user?.id ?? (guard.session as any)?.userId;

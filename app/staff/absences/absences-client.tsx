@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/components/staff/ui/use-confirm";
 
 // ─── Sélecteur de membre ────────────────────────────────────────────────────
 
@@ -283,6 +284,7 @@ function getUpcomingSundays(count = 6): { value: string; label: string }[] {
 }
 
 export default function AbsencesClient() {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [items, setItems] = useState<AbsenceItem[]>([]);
   const [filters, setFilters] = useState({ status: "", dateFrom: "", dateTo: "" });
   const [pendingFilters, setPendingFilters] = useState({ status: "", dateFrom: "", dateTo: "" });
@@ -420,7 +422,13 @@ export default function AbsencesClient() {
   }
 
   async function deleteAbsence(id: string) {
-    if (!window.confirm("Supprimer cette absence définitivement ?")) return;
+    const ok = await confirm({
+      title: "Supprimer cette absence ?",
+      description: <p>L'absence sera supprimée <strong className="text-[#ff8a99]">définitivement</strong>.</p>,
+      confirmLabel: "Supprimer",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusyId(id);
     try {
       const res = await fetch(`/api/staff/absences/${id}`, { method: "DELETE" });
@@ -549,6 +557,7 @@ export default function AbsencesClient() {
 
   return (
     <div className="grid gap-6">
+      {confirmDialog}
       <div className="flex justify-end">
         <MotionButtonFrame>
           <Button onClick={() => load()} variant="outline" size="sm" className="rounded-2xl border-white/10 bg-white/[0.04]">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
+import { requireChefOrEtatMajor, requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import type { MeetingDecisionAction } from "@prisma/client";
 import { isMeetingLocked } from "@/lib/meetings";
@@ -70,7 +70,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requirePrivileged();
+  // Action sensible : enregistrer des décisions (promote/demote/sanction).
+  // Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();
@@ -193,7 +195,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requirePrivileged();
+  // Action sensible : supprimer une décision de réunion. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const { id: meetingId } = await params;

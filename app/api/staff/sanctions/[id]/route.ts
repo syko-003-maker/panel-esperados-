@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
 import { getEntityAuditLogs, auditStaffAction } from "@/lib/audit";
 import { enqueueRemoveRole } from "@/lib/discord/discord";
 import { getAvertRoleId, SANCTION_DELETE_BLOCKING_OUTBOX_STATUSES } from "@/lib/sanctions";
@@ -129,7 +129,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : modifier une sanction. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = (guard as any).session;
@@ -245,7 +246,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireChefOrEtatMajor();
+  // Action sensible : supprimer une sanction. Bloqué pour Encadrant.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = (guard as any).session;

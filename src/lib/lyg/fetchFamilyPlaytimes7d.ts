@@ -101,12 +101,18 @@ export async function fetchFamilyPlaytimes7d(
     res = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        // LYG a basculé son auth de Bearer vers X-API-Token (printemps 2026).
+        "X-API-Token": token,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
+      // Subtilité post-migration LYG : ce endpoint identifie la famille via
+      // le `token` du body (= ancien token famille). Le header X-API-Token
+      // sert seulement à authentifier l'appelant. Les deux sont distincts.
+      // Fallback : si LYG_FAMILY_TOKEN n'est pas configuré, on retombe sur
+      // le token d'auth (ancien comportement avant la migration).
       body: JSON.stringify({
-        token,
+        token: (process.env.LYG_FAMILY_TOKEN ?? token).trim(),
         // Si timeMinutes est passé explicitement → fenêtre courte (ex: 3 min
         // pour le poll "in-family"). Sinon → minutes depuis lundi 00:00
         // Brussels = cumulé semaine en cours (cas 7d sync historique).

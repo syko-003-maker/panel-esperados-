@@ -119,12 +119,22 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
         .map((m) => {
           const steamId = normalizeSteamId64(m.steamId64);
           if (!steamId) return null;
+          // LYG renvoie `class` (1..5) — c'est le rang WL famille.
+          // L'API normalisée le passe via `rank` (cf. lyg/client.ts).
+          const rawClass = (m as any).rank ?? (m as any).class ?? null;
+          const wlClass = (() => {
+            if (rawClass === null || rawClass === undefined) return null;
+            const n = Number(rawClass);
+            return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+          })();
           return {
             steamId,
             discordId: m.discordId ? String(m.discordId).trim() : null,
             rpName: asNonEmptyString(m.rpName),
             grade: m.grade ? String(m.grade).trim() : null,
             joinedAt: toDateOrNull(m.joinedAt),
+            wlClass,
+            wlOwner: Boolean((m as any).owner ?? false),
           };
         })
         .filter((m): m is NonNullable<typeof m> => Boolean(m));
@@ -150,6 +160,9 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
           grade: true,
           joinedAt: true,
           isActive: true,
+          wlClass: true,
+          wlOwner: true,
+          wlClassIntent: true,
         },
       });
 
@@ -178,13 +191,20 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
           lastSeenAt: now,
           missingSince: null,
           missingFromLygSince: null,
+          // LYG WL state (lecture seule, miroir).
+          wlClass: incoming.wlClass,
+          wlOwner: incoming.wlOwner,
         };
 
         if (!existing) {
+          // Premier import : on initialise aussi l'intent au réel (sinon le
+          // diff dirait "à appliquer" alors que rien n'a été décidé).
           await prisma.member.create({
             data: {
               familyId: familyDbId,
               ...payload,
+              wlClassIntent: incoming.wlClass,
+              wlOwnerIntent: incoming.wlOwner,
             },
           });
           created += 1;
@@ -196,23 +216,50 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
         const sameDiscord = (existing.discordId ?? null) === payload.discordId;
         const sameJoinedAt = existing.joinedAt?.getTime() === payload.joinedAt?.getTime();
         const sameActive = existing.isActive === true;
+        const sameWlClass = (existing.wlClass ?? null) === payload.wlClass;
+        const sameWlOwner = existing.wlOwner === payload.wlOwner;
 
-        if (sameRpName && sameGrade && sameDiscord && sameJoinedAt && sameActive) {
+        if (sameRpName && sameGrade && sameDiscord && sameJoinedAt && sameActive && sameWlClass && sameWlOwner) {
+          // Cas spécial : si wlClass est set mais wlClassIntent toujours null
+          // (héritage d'une sync antérieure à la feature intent, ou membre
+          // ajouté manuellement avant que la seed soit en place), on rattrape
+          // ici. Sinon le diff UI dirait "à ajouter" alors qu'il est déjà WL.
+          // Bug constaté sur Aziz Guapo (mai 2026).
+          const needsIntentBackfill =
+            existing.wlClassIntent === null && incoming.wlClass !== null;
+
           await prisma.member.update({
             where: { id: existing.id },
             data: {
               lastSeenAt: now,
               missingSince: null,
               missingFromLygSince: null,
+              ...(needsIntentBackfill
+                ? {
+                    wlClassIntent: incoming.wlClass,
+                    wlOwnerIntent: incoming.wlOwner,
+                  }
+                : {}),
             },
           });
           unchanged += 1;
           continue;
         }
 
+        // Si l'intent n'existe pas encore, on l'initialise au réel après une
+        // resync. Si le chef a déjà posé un intent, on respecte sa décision.
+        const seedIntent = existing.wlClassIntent === null && incoming.wlClass !== null;
         await prisma.member.update({
           where: { id: existing.id },
-          data: payload,
+          data: {
+            ...payload,
+            ...(seedIntent
+              ? {
+                  wlClassIntent: incoming.wlClass,
+                  wlOwnerIntent: incoming.wlOwner,
+                }
+              : {}),
+          },
         });
         updated += 1;
       }
