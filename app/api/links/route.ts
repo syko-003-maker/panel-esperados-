@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/auth";
+import { requireStaffAccess } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { resolveFamilyId } from "@/lib/family";
 
 const DEFAULT_FAMILY_SLUG = process.env.FAMILY_ID ?? "esperados";
 
 // GET /api/links -> retourne toutes les liaisons (members)
+// ⚠️ SÉCURITÉ : expose discordId + steamId + rpName de TOUS les membres
+// (cartographie d'identités). Réservé au staff.
 export async function GET() {
+  const guard = await requireStaffAccess();
+  if (guard instanceof Response) return guard;
+
   try {
     const links = await prisma.member.findMany({
       where: { familyId: await resolveFamilyId(DEFAULT_FAMILY_SLUG) },

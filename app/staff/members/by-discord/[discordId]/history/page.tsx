@@ -167,7 +167,7 @@ export default function MemberHistoryPage() {
 
       {tab === "logs" && (
         <div className="bg-slate-900/40 border border-slate-800 shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-slate-800">
+          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-800">
             <thead className="bg-slate-900/20">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
@@ -199,13 +199,13 @@ export default function MemberHistoryPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {tab === "sanctions" && (
         <div className="bg-slate-900/40 border border-slate-800 shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-slate-800">
+          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-800">
             <thead className="bg-slate-900/20">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
@@ -254,13 +254,13 @@ export default function MemberHistoryPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {tab === "grades" && (
         <div className="bg-slate-900/40 border border-slate-800 shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-slate-800">
+          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-800">
             <thead className="bg-slate-900/20">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
@@ -295,7 +295,7 @@ export default function MemberHistoryPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
@@ -307,7 +307,7 @@ export default function MemberHistoryPage() {
             </div>
           ) : (
             <div className="bg-slate-900/40 border border-slate-800 shadow rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-slate-800">
+              <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-800">
                 <thead className="bg-slate-900/20">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
@@ -338,7 +338,7 @@ export default function MemberHistoryPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )}
         </div>

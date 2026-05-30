@@ -22,6 +22,7 @@ import {
   Handshake,
   Car,
   Crown,
+  Calculator,
 } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
@@ -54,6 +55,7 @@ const SIDEBAR_ITEMS = [
   {
     section: "Outils",
     items: [
+      { icon: Calculator, label: "Calculateur Printer", href: "/staff/printers" },
       { icon: Settings, label: "Paramètres", href: "/staff/settings" },
     ],
   },
@@ -115,6 +117,10 @@ export function Sidebar({
           {
             section: "Recrutement",
             items: [{ icon: Briefcase, label: "Recrutement", href: "/staff/recruitment" }],
+          },
+          {
+            section: "Outils",
+            items: [{ icon: Calculator, label: "Calculateur Printer", href: "/printers" }],
           },
         ]
       : baseSections;

@@ -12,7 +12,7 @@ import { createAuditLog } from "@/lib/audit";
  * https://families.lyg.fr.
  *
  * Body :
- *   { wlClassIntent?: 1|2|3|4|5|null, wlOwnerIntent?: boolean }
+ *   { wlClassIntent?: 1|2|3|4|null, wlOwnerIntent?: boolean }
  *
  * `wlClassIntent: null` = retirer le membre de la famille (plan de retrait).
  *
@@ -47,9 +47,9 @@ export async function PATCH(
       nextClass = null;
     } else {
       const n = Number(raw);
-      if (!Number.isInteger(n) || n < 1 || n > 5) {
+      if (!Number.isInteger(n) || n < 1 || n > 4) {
         return NextResponse.json(
-          { ok: false, error: "INVALID_WL_CLASS", message: "wlClassIntent doit être 1..5 ou null" },
+          { ok: false, error: "INVALID_WL_CLASS", message: "wlClassIntent doit être 1..4 ou null" },
           { status: 400 }
         );
       }

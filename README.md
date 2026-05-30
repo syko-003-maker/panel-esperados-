@@ -12,10 +12,11 @@ Gestion des membres, absences, sanctions, réunions, plaintes, whitelist famille
 | Module | Description |
 |--------|-------------|
 | **Membres** | Liste avec filtres (actifs, inactifs, faible activité, top actifs, à surveiller, **en jeu live**), compteurs temps réel, statut connexion LYG, recherche, tri, fiche détaillée |
-| **Famille WL** | Gestion des whitelists in-game LYG (rangs 1-5 + flag owner). **Mode planif** (intent stocké) ou **mode live** (modifs poussées en temps réel sur families.lyg.fr via cookie chiffré). Auto-add sur recrutement / auto-remove sur DEMOTE/BLACKLIST |
+| **Famille WL** | Gestion des whitelists in-game LYG (rangs 1-4 + flag owner). **Mode planif** (intent stocké) ou **mode live** (modifs poussées en temps réel sur families.lyg.fr via cookie chiffré). Auto-add sur recrutement / auto-remove sur DEMOTE/BLACKLIST |
+| **Armes par classe WL** | Arsenal de chaque classe WL (Métier n°1-4) géré en live sur families.lyg.fr : catalogue ~120 armes, budget de points par classe (150/110/110/100), sélection avec compteur anti-dépassement, binds in-game copiables (1 par 1). Réservé Chef/Sous-Chef + propriétaire du cookie |
 | **Warns in-game** | Liste des sanctions LYG (Warn / Jail / Ban) par membre, triées par date |
 | **Absences** | Workflow PENDING→APPROVED/REJECTED. Type Réunion (dimanche dédié) ou Générale (période 2 mois max). Notifications Discord à la décision |
-| **Sanctions** | 7 types (AVERT oral / léger / lourd / EM, DEMOTE, RÉSERVISTE, BLACKLIST). Sync rôles Discord + retrait WL famille auto sur DEMOTE/BLACKLIST |
+| **Sanctions** | 7 types (AVERT oral / léger / lourd / EM, DEMOTE, RÉSERVISTE, BLACKLIST). Réservistes sanctionnables (escalade RÉSERVISTE → DEMOTE → BLACKLIST). Sync rôles Discord (rôle Server Booster/Nitro préservé) + retrait WL famille auto sur DEMOTE/BLACKLIST + auto-clôture des avertissements quand une sanction bloquante est appliquée |
 | **Réunions** | Gestion hebdo, présences (auto + override manuel), décisions (UP / DOUBLE_UP / DEMOTE / WARN), finalisation avec sécurité grades protégés |
 | **Plaintes** | Workflow complet, historique messages, décisions tranchées |
 | **Banque** | Logs LYG bancaires, alertes dettes, statistiques |
@@ -34,6 +35,7 @@ Gestion des membres, absences, sanctions, réunions, plaintes, whitelist famille
 | **Justifier une absence** | Formulaire 2 modes : Réunion (dimanche pré-sélectionné) ou Générale (période). Envoi automatique sur Discord |
 | **Justifier une sanction** | Formulaire avec sélecteur Warn / Jail / Ban + contexte + justification |
 | **Recrutement** | Recruteurs : suivi des tickets en cours |
+| **Calculateur Printer** | Comparateur de rentabilité des printers LYG (jusqu'à 4 modèles) : coût, revenu net/min, revenu net/h, coût de recharge, temps de rentabilisation + totaux. Accessible à toute la famille (membre + staff) |
 
 ### 📖 Guides publics
 
@@ -55,6 +57,8 @@ Accessibles sans authentification, avec sidebar intégrée pour les membres conn
 | ✏️ Message modifié | Avant / après |
 | 🔄 Rôles modifiés | Rôles ajoutés / retirés + auteur |
 | 🔊 Vocal | Connexion / déconnexion / déplacement (détection auto modé) |
+| 🔇 Mute (timeout) | Mise en sourdine Discord native, levée, prolongation + auteur + durée + raison (audit log) |
+| 🔇 Mute / sourdine serveur | « Rendre muet sur le serveur » et sourdine vocale (+ inverses) + auteur (audit log) |
 | ⚠️ **Warn in-game** | Nouveau warn LYG → embed avec raison, type, **barre de gravité visuelle** (●●●○○), avatar membre ou logo Los Esperados |
 | 🛠️ **Commandes staff** | Trace `/annonce-recrutement`, `/linkpanel`, `/reglement-post` → embed audit + log DB |
 
@@ -149,6 +153,15 @@ Tentatives d'accès refusées → audit log dédié (`WRITER_DENIED`, `CHEF_FAMI
 - **Keep-alive** : ping du dashboard families.lyg.fr toutes les 10 min → la session PHP reste vivante indéfiniment
 - Détection auto d'expiration cookie → badge rouge + invitation à refournir
 
+### Armes par classe WL
+- Page `/staff/family/weapons` lit en direct l'arsenal des 4 classes depuis `families.lyg.fr/pages/weapons.php` (catalogue + attributions + totaux parsés)
+- Ajout (`POST edit.php`) / retrait (`GET edit.php?rem_weapons=…`) d'armes ; **validation du budget de points côté serveur** avant l'appel (évite de gaspiller les 500k€/arme sur un dépassement)
+- Génère les binds in-game (`bind <touche> "use <arme>"`) sur la rangée AZERTY, copiables un par un (la console GMod n'accepte qu'une ligne à la fois)
+
+### Calculateur Printer
+- Comparateur côté navigateur (`/printers` membre, `/staff/printers` staff) — composant partagé, données dans `src/lib/printers.ts`
+- Sélection jusqu'à 4 printers → coût, revenu net/min, revenu/h (= min × 60), temps de rentabilisation (= coût ÷ revenu/min) + totaux
+
 ### In-family loop
 - Poll de `/api/darkrp/familles/playtimes` (LYG) toutes les **30s** avec fenêtre 4 min
 - Membres avec playtime famille > 0 dans la fenêtre → considérés "en jeu"
@@ -188,6 +201,7 @@ panel/
 ├── app/
 │   ├── (member)/                      # Espace membre — dashboard, banque, justificatifs
 │   │   ├── dashboard/                 # Solde + transactions
+│   │   ├── printers/                  # 🆕 Calculateur Printer (toute la famille)
 │   │   ├── justificatifs/
 │   │   │   ├── absence/               # Form Réunion / Générale
 │   │   │   └── sanction/              # Form Warn / Jail / Ban
@@ -195,7 +209,9 @@ panel/
 │   ├── staff/
 │   │   ├── dashboard/                 # KPI staff
 │   │   ├── members/                   # Liste + fiche détaillée
-│   │   ├── family/                    # 🆕 Gestion WL famille (live ou planif)
+│   │   ├── family/                    # Gestion WL famille (live ou planif)
+│   │   │   └── weapons/               # 🆕 Armes par classe WL (live)
+│   │   ├── printers/                  # 🆕 Calculateur Printer (vue staff)
 │   │   ├── warns/                     # Sanctions IG LYG
 │   │   ├── absences/                  # Workflow validation
 │   │   ├── sanctions/                 # Création + suivi
@@ -215,8 +231,9 @@ panel/
 │   └── api/
 │       ├── staff/
 │       │   ├── family/
-│       │   │   ├── members/           # 🆕 GET liste + PATCH intent
-│       │   │   └── lyg/               # 🆕 POST actions live (up/down/add/remove)
+│       │   │   ├── members/           # GET liste + PATCH intent
+│       │   │   ├── lyg/               # POST actions live (up/down/add/remove)
+│       │   │   └── weapons/           # 🆕 GET arsenal + POST add/remove armes
 │       │   ├── settings/
 │       │   │   └── lyg-cookie/        # 🆕 GET/POST/DELETE cookie chiffré
 │       │   ├── sanctions/             # CRUD + apply + clear + retry
@@ -227,14 +244,16 @@ panel/
 │               └── family-remove/     # 🆕 Endpoint interne worker → proxy LYG
 ├── src/
 │   ├── components/
-│   │   ├── error-screen.tsx           # 🆕 Composant unifié pages erreur
+│   │   ├── printers/                  # 🆕 printer-calculator.tsx (partagé membre + staff)
+│   │   ├── error-screen.tsx           # Composant unifié pages erreur
 │   │   └── staff/ui/
 │   │       ├── ConfirmDialog.tsx      # 🆕 Modal stylée
 │   │       └── use-confirm.tsx        # 🆕 Hook impératif useConfirm()
 │   ├── lib/
-│   │   ├── crypto-secret.ts           # 🆕 AES-256-GCM encrypt/decrypt
+│   │   ├── printers.ts                # 🆕 Catalogue printers + calculs rentabilité
+│   │   ├── crypto-secret.ts           # AES-256-GCM encrypt/decrypt
 │   │   ├── lyg/
-│   │   │   ├── family-admin.ts        # 🆕 Proxy families.lyg.fr (cookie)
+│   │   │   ├── family-admin.ts        # Proxy families.lyg.fr (WL + armes par classe)
 │   │   │   ├── family-keepalive.ts    # 🆕 Keep-alive cookie 10 min
 │   │   │   ├── client.ts              # API publique LYG (X-API-Token)
 │   │   │   ├── sync-members.ts        # Sync DB ↔ LYG members
@@ -394,6 +413,7 @@ Site exposé via **Cloudflare Tunnel** — aucun port ouvert directement sur int
 - **Cookie LYG admin** chiffré AES-256-GCM, jamais loggé, masqué dans l'UI (`bcd6…02ef6`)
 - **Audit log complet** sur toutes les actions sensibles (incl. tentatives refusées)
 - **Single-user mode** sur le proxy LYG : seul le propriétaire du cookie peut déclencher des actions
+- **Auth vérifiée sur toutes les routes API** : guards staff/writer/chef + scope membre ; secrets machine-à-machine en *fail-closed* (refus si non configuré) ; PII (Discord↔Steam↔RP) réservée au staff
 - **Ports DB** bloqués par UFW (127.0.0.1 only)
 - **Secrets** : `.env*` git-ignorés
 - **CSP / IP cachée** derrière Cloudflare

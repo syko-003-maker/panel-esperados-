@@ -124,6 +124,7 @@ export function ActivityRulesClient() {
       )}
 
       <div className="bg-slate-900/40 border border-slate-800 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -214,6 +215,7 @@ export function ActivityRulesClient() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="mt-6 p-4 bg-gray-50 rounded-lg">

@@ -8,6 +8,7 @@ import {
   ExternalLink,
   RefreshCw,
   Search,
+  Swords,
   Trash2,
   UserPlus,
 } from "lucide-react";
@@ -184,7 +185,8 @@ export default function FamilyClient({
     if (liveMode && row.steamId && row.wlClass !== null) {
       await lygAction({ rowId: row.id, steamId: row.steamId, action: "up", currentClass: row.wlClass });
     } else {
-      const next = (row.wlClassIntent ?? row.wlClass ?? 5) - 1;
+      // WL 1 (Chef) → 4 (plus bas), pas de WL5.
+      const next = (row.wlClassIntent ?? row.wlClass ?? 4) - 1;
       await patchIntent(row.id, { wlClassIntent: Math.max(1, next) });
     }
   }
@@ -193,7 +195,7 @@ export default function FamilyClient({
       await lygAction({ rowId: row.id, steamId: row.steamId, action: "down", currentClass: row.wlClass });
     } else {
       const next = (row.wlClassIntent ?? row.wlClass ?? 1) + 1;
-      await patchIntent(row.id, { wlClassIntent: Math.min(5, next) });
+      await patchIntent(row.id, { wlClassIntent: Math.min(4, next) });
     }
   }
   async function doRemove(row: Row) {
@@ -207,7 +209,8 @@ export default function FamilyClient({
     if (liveMode && row.steamId) {
       await lygAction({ rowId: row.id, steamId: row.steamId, action: "add" });
     } else {
-      await patchIntent(row.id, { wlClassIntent: 5 });
+      // LYG ajoute en classe 4 par défaut (cohérent avec la route /lyg).
+      await patchIntent(row.id, { wlClassIntent: 4 });
     }
   }
 
@@ -270,6 +273,13 @@ export default function FamilyClient({
               </Button>
             </MotionButtonFrame>
             <a
+              href="/staff/family/weapons"
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-medium text-slate-100 transition-colors hover:bg-white/[0.1]"
+            >
+              <Swords className="h-4 w-4" />
+              Armes par classe
+            </a>
+            <a
               href={LYG_ADMIN_URL}
               target="_blank"
               rel="noopener noreferrer"
@@ -286,7 +296,7 @@ export default function FamilyClient({
           <DataTile label="Owners" value={ownerCount} tone={ownerCount > 0 ? "success" : "default"} />
           <DataTile label="WL 1 (Chef)" value={byClass(1)} tone="success" />
           <DataTile label="WL 2" value={byClass(2)} tone="info" />
-          <DataTile label="WL 3-5" value={byClass(3) + byClass(4) + byClass(5)} tone="warning" />
+          <DataTile label="WL 3-4" value={byClass(3) + byClass(4)} tone="warning" />
           <DataTile
             label="À appliquer LYG"
             value={pendingCount}

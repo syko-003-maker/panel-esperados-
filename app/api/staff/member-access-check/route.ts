@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { auth } from "@/auth";
+import { requireStaffAccess } from "@/lib/rbac";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { getDiscordGrade } from "@/lib/discord-grade";
 
@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/staff/member-access-check?discordId=XXX
  * Staff-only diagnostic: check if a specific member can access the member space.
+ * ⚠️ SÉCURITÉ : renvoie de la PII membre (rpName, grade…) — réservé au staff
+ * (avant : un simple `session` suffisait → n'importe quel membre connecté).
  */
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await requireStaffAccess();
+  if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
   const discordId = searchParams.get("discordId");

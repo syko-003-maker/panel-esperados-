@@ -331,6 +331,236 @@ export async function lygFamilyAdd(steamId: string) {
   return executeAction("add", steamId);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTION DES ARMES PAR CLASSE WL
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Le site families.lyg.fr expose une page /pages/weapons.php qui permet
+// d'attribuer des armes par "classe métier" (= classe WL 1..4). Chaque arme
+// a un coût en points. Chaque classe a un budget de points à ne pas dépasser.
+//
+// Protocole découvert (parsing HTML + form) :
+//   Catalogue : <select name="weapons"> avec <option value="ID">[coût] Nom</option>
+//   Classes   : 4 blocs "Armes Métier n°N" listant les armes attribuées + Total
+//   Ajouter   : POST /modules/edit.php   body: weapons=ID & class=N
+//   Retirer   : GET  /modules/edit.php?rem_weapons=ID&class_weapons=N
+//
+// Budgets de points par classe (fournis par le Chef famille, non exposés par
+// la page elle-même) :
+export const WEAPON_CLASS_BUDGETS: Record<number, number> = {
+  1: 150,
+  2: 110,
+  3: 110,
+  4: 100,
+};
+
+export const WEAPON_CLASSES = [1, 2, 3, 4] as const;
+
+export type WeaponCatalogItem = { id: string; name: string; cost: number };
+
+export type FamilyWeaponsState = {
+  /** Catalogue complet des armes disponibles (id interne, nom, coût). */
+  catalog: WeaponCatalogItem[];
+  /** Armes attribuées par classe (1..4). */
+  classes: Record<number, WeaponCatalogItem[]>;
+  /** Total de points consommé par classe (tel que renvoyé par LYG). */
+  totals: Record<number, number>;
+  /** Budget max par classe. */
+  budgets: Record<number, number>;
+};
+
+export type FamilyWeaponsStateResult =
+  | { ok: true; state: FamilyWeaponsState; tookMs: number }
+  | { ok: false; error: string; expired: boolean; tookMs: number };
+
+/** Parse la page weapons.php → catalogue + attributions par classe. */
+function parseWeaponsHtml(html: string): {
+  catalog: WeaponCatalogItem[];
+  classIds: Record<number, string[]>;
+  totals: Record<number, number>;
+} {
+  // 1) Catalogue depuis <select name="weapons">
+  const catalog: WeaponCatalogItem[] = [];
+  const selectMatch = html.match(
+    /<select\b[^>]*name\s*=\s*["']weapons["'][^>]*>([\s\S]*?)<\/select>/i
+  );
+  if (selectMatch) {
+    for (const o of selectMatch[1].matchAll(
+      /<option\b[^>]*value\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/option>/gi
+    )) {
+      const id = o[1].trim();
+      const text = o[2].replace(/\s+/g, " ").trim();
+      const m = text.match(/^\[(\d+)\]\s*(.+)$/);
+      if (id && m) {
+        catalog.push({ id, cost: Number(m[1]), name: m[2].trim() });
+      }
+    }
+  }
+
+  // 2) Attributions par classe + totaux depuis les blocs "Armes Métier n°N"
+  const classIds: Record<number, string[]> = { 1: [], 2: [], 3: [], 4: [] };
+  const totals: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  for (const block of html.matchAll(
+    /Armes Métier n°(\d)<\/p>([\s\S]*?)Total\s*:\s*(\d+)/gi
+  )) {
+    const cls = Number(block[1]);
+    if (!(cls in classIds)) continue;
+    const inner = block[2];
+    for (const a of inner.matchAll(
+      /rem_weapons=([^&"']+)&(?:amp;)?class_weapons=(\d)/gi
+    )) {
+      const wid = decodeURIComponent(a[1].trim());
+      const aCls = Number(a[2]);
+      if (aCls === cls) classIds[cls].push(wid);
+    }
+    totals[cls] = Number(block[3]);
+  }
+
+  return { catalog, classIds, totals };
+}
+
+/** Récupère l'état complet des armes (lecture seule, GET weapons.php). */
+export async function fetchFamilyWeaponsState(): Promise<FamilyWeaponsStateResult> {
+  const started = Date.now();
+  const { cookie } = await loadCookieOrThrow();
+
+  let res: Response;
+  try {
+    res = await fetch(`${FAMILY_ADMIN_BASE}/pages/weapons.php`, {
+      headers: { ...COMMON_HEADERS, Cookie: `PHPSESSID=${cookie}` },
+      redirect: "manual",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg, expired: false, tookMs: Date.now() - started };
+  }
+
+  const tookMs = Date.now() - started;
+
+  if (detectExpiry(res.status, res.headers.get("location"))) {
+    await markExpired("Cookie expiré (fetch armes)");
+    return {
+      ok: false,
+      error: "Cookie expiré — redonne un nouveau cookie dans Paramètres → LYG",
+      expired: true,
+      tookMs,
+    };
+  }
+  if (res.status !== 200) {
+    await markUsed({ ok: false, status: res.status });
+    return { ok: false, error: `LYG a renvoyé status ${res.status}`, expired: false, tookMs };
+  }
+
+  const html = await res.text();
+  const { catalog, classIds, totals } = parseWeaponsHtml(html);
+
+  if (catalog.length === 0) {
+    await markUsed({ ok: false, status: res.status });
+    return {
+      ok: false,
+      error: "Impossible de parser le catalogue d'armes (structure LYG modifiée ?)",
+      expired: false,
+      tookMs,
+    };
+  }
+
+  const byId = new Map(catalog.map((w) => [w.id, w]));
+  const classes: Record<number, WeaponCatalogItem[]> = { 1: [], 2: [], 3: [], 4: [] };
+  for (const cls of WEAPON_CLASSES) {
+    classes[cls] = classIds[cls].map(
+      (id) => byId.get(id) ?? { id, name: id, cost: 0 }
+    );
+  }
+
+  await markUsed({ ok: true, status: res.status });
+  return {
+    ok: true,
+    tookMs,
+    state: {
+      catalog,
+      classes,
+      totals,
+      budgets: WEAPON_CLASS_BUDGETS,
+    },
+  };
+}
+
+/** Ajoute une arme à une classe (POST edit.php weapons=ID&class=N). */
+export async function lygWeaponAdd(
+  weaponId: string,
+  classNum: number
+): Promise<LygFamilyActionResult> {
+  const started = Date.now();
+  const { cookie } = await loadCookieOrThrow();
+  let response: Awaited<ReturnType<typeof callLygAdmin>>;
+  try {
+    response = await callLygAdmin({
+      cookie,
+      method: "POST",
+      body: { weapons: weaponId, class: String(classNum) },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await markUsed({ ok: false, status: 0 });
+    return { ok: false, status: 0, tookMs: Date.now() - started, error: msg, expired: false };
+  }
+  return finishWeaponAction(response, started);
+}
+
+/** Retire une arme d'une classe (GET edit.php?rem_weapons=ID&class_weapons=N). */
+export async function lygWeaponRemove(
+  weaponId: string,
+  classNum: number
+): Promise<LygFamilyActionResult> {
+  const started = Date.now();
+  const { cookie } = await loadCookieOrThrow();
+  let response: Awaited<ReturnType<typeof callLygAdmin>>;
+  try {
+    response = await callLygAdmin({
+      cookie,
+      method: "GET",
+      query: { rem_weapons: weaponId, class_weapons: String(classNum) },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await markUsed({ ok: false, status: 0 });
+    return { ok: false, status: 0, tookMs: Date.now() - started, error: msg, expired: false };
+  }
+  return finishWeaponAction(response, started);
+}
+
+/** Logique commune de fin d'action arme (réplique de executeAction). */
+async function finishWeaponAction(
+  response: Awaited<ReturnType<typeof callLygAdmin>>,
+  started: number
+): Promise<LygFamilyActionResult> {
+  const tookMs = Date.now() - started;
+  if (response.expired) {
+    await markExpired("Cookie PHPSESSID expiré (redirect vers /login)");
+    return {
+      ok: false,
+      status: response.status,
+      tookMs,
+      error: "Cookie expiré — redonne un nouveau cookie dans Paramètres → LYG",
+      expired: true,
+    };
+  }
+  const success = response.status === 302 || response.status === 200;
+  if (success) {
+    await markUsed({ ok: true, status: response.status });
+    return { ok: true, status: response.status, tookMs };
+  }
+  await markUsed({ ok: false, status: response.status });
+  return {
+    ok: false,
+    status: response.status,
+    tookMs,
+    error: `LYG admin a renvoyé status ${response.status}`,
+    expired: false,
+  };
+}
+
 /**
  * Test "ping" : vérifie juste que le cookie est valide en touchant le
  * dashboard (GET /pages/dashboard.php). Si on ne se fait pas rediriger

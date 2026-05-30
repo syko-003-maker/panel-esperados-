@@ -361,7 +361,20 @@ export function onMessageUpdate(old: Message | PartialMessage, msg: Message | Pa
   sendLog(msg.guild, embed);
 }
 
-// ─── Rôles modifiés ───────────────────────────────────────────────────────────
+// ─── Rôles modifiés / Mute (timeout) ──────────────────────────────────────────
+
+function formatTimeoutDuration(untilMs: number): string {
+  const diff = Math.max(0, untilMs - Date.now());
+  const minutes = Math.round(diff / 60_000);
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""}`;
+  if (minutes < 1440) {
+    const h = Math.floor(minutes / 60);
+    const rem = minutes % 60;
+    return rem > 0 ? `${h}h ${rem}min` : `${h}h`;
+  }
+  const days = Math.floor(minutes / 1440);
+  return `${days} jour${days > 1 ? "s" : ""}`;
+}
 
 export async function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): Promise<void> {
   if (!member) return;
@@ -369,6 +382,67 @@ export async function onMemberUpdate(old: GuildMember | PartialGuildMember, memb
   if (old.partial) return;
   if (!("cache" in old.roles) || !("cache" in member.roles)) return;
 
+  // ── Timeout (mute Discord natif) ────────────────────────────────────────
+  // communicationDisabledUntilTimestamp est posé quand un mod time-out un membre
+  // via /mute, l'UI Discord (clic droit → Time Out), ou un autre bot. On compare
+  // l'ancien et le nouveau pour détecter les transitions mute / unmute / extend.
+  const oldUntil = (old as GuildMember).communicationDisabledUntilTimestamp ?? null;
+  const newUntil = member.communicationDisabledUntilTimestamp ?? null;
+  // Discord laisse parfois un timestamp passé après expiration : on normalise
+  const oldActive = oldUntil !== null && oldUntil > Date.now() - 1000;
+  const newActive = newUntil !== null && newUntil > Date.now() - 1000;
+
+  if (oldActive !== newActive || (oldActive && newActive && oldUntil !== newUntil)) {
+    // Audit log type 24 = MEMBER_UPDATE (timeout, deafen, mute serveur, nickname)
+    let modBy: string | null = null;
+    let reason: string | null = null;
+    try {
+      await new Promise((r) => setTimeout(r, 800));
+      const logs = await member.guild.fetchAuditLogs({ type: 24, limit: 8 });
+      const entry = logs.entries.find(
+        (e) =>
+          e.target?.id === member.id &&
+          Date.now() - e.createdTimestamp < 10_000 &&
+          (e.changes ?? []).some((c: any) => c.key === "communication_disabled_until")
+      );
+      if (entry && entry.executor && entry.executor.id !== member.id) {
+        modBy = `<@${entry.executor.id}>`;
+        if (entry.reason) reason = entry.reason;
+      }
+    } catch { /* non bloquant */ }
+
+    const muted = newActive && !oldActive;
+    const unmuted = oldActive && !newActive;
+    const extended = oldActive && newActive && oldUntil !== newUntil;
+
+    const embed = new EmbedBuilder()
+      .setAuthor({
+        name: muted
+          ? `${member.user.tag} — mis en sourdine (timeout)`
+          : unmuted
+            ? `${member.user.tag} — sourdine levée`
+            : `${member.user.tag} — sourdine prolongée/réduite`,
+        iconURL: member.user.displayAvatarURL({ size: 64 }),
+      })
+      .setColor(muted || extended ? 0xf59e0b : 0x22c55e)
+      .setDescription(`**${member.user.tag}** · \`${member.id}\``)
+      .setTimestamp();
+
+    if (modBy) embed.addFields({ name: "👮 Par", value: modBy, inline: true });
+    if (newActive && newUntil) {
+      embed.addFields(
+        { name: "⏳ Durée", value: formatTimeoutDuration(newUntil), inline: true },
+        { name: "⌛ Expire", value: `<t:${Math.floor(newUntil / 1000)}:R>`, inline: true }
+      );
+    }
+    if (reason) embed.addFields({ name: "📝 Raison", value: reason.slice(0, 1024), inline: false });
+
+    sendLog(member.guild, embed);
+    // Pas de return : on continue pour traiter aussi les changements de rôles
+    // qui auraient eu lieu en même temps (peu probable mais possible).
+  }
+
+  // ── Changements de rôles ────────────────────────────────────────────────
   const added   = member.roles.cache.filter((r) => !old.roles.cache.has(r.id));
   const removed = old.roles.cache.filter((r) => !member.roles.cache.has(r.id));
   if (added.size === 0 && removed.size === 0) return;
@@ -406,6 +480,61 @@ export async function onVoiceStateUpdate(oldState: any, newState: any): Promise<
   if (!member || member.user.bot) return;
 
   const guild = newState.guild ?? oldState.guild;
+
+  // ── Server mute / deafen (audit log type 24 - MEMBER_UPDATE) ───────────
+  // "Rendre muet sur le serveur" = serverMute, "Mettre en sourdine sur le
+  // serveur" = serverDeaf. Ces flags persistent même si le membre rejoint
+  // un autre vocal. On compare old vs new pour détecter les transitions.
+  const oldMute = Boolean(oldState.serverMute);
+  const newMute = Boolean(newState.serverMute);
+  const oldDeaf = Boolean(oldState.serverDeaf);
+  const newDeaf = Boolean(newState.serverDeaf);
+
+  if (oldMute !== newMute || oldDeaf !== newDeaf) {
+    let modBy: string | null = null;
+    let reason: string | null = null;
+    try {
+      await new Promise((r) => setTimeout(r, 800));
+      const logs = await guild.fetchAuditLogs({ type: 24, limit: 8 });
+      const entry = logs.entries.find(
+        (e: any) =>
+          e.target?.id === member.id &&
+          Date.now() - e.createdTimestamp < 10_000 &&
+          (e.changes ?? []).some((c: any) => c.key === "mute" || c.key === "deaf")
+      );
+      if (entry && entry.executor && entry.executor.id !== member.id) {
+        modBy = `<@${entry.executor.id}>`;
+        if (entry.reason) reason = entry.reason;
+      }
+    } catch { /* non bloquant */ }
+
+    const events: Array<{ title: string; color: number }> = [];
+    if (oldMute !== newMute) {
+      events.push(
+        newMute
+          ? { title: `🔇 ${member.user.tag} — rendu muet sur le serveur`, color: 0xf59e0b }
+          : { title: `🔊 ${member.user.tag} — voix réactivée sur le serveur`, color: 0x22c55e }
+      );
+    }
+    if (oldDeaf !== newDeaf) {
+      events.push(
+        newDeaf
+          ? { title: `🔕 ${member.user.tag} — mis en sourdine sur le serveur`, color: 0xf59e0b }
+          : { title: `🔔 ${member.user.tag} — sourdine serveur levée`, color: 0x22c55e }
+      );
+    }
+
+    for (const ev of events) {
+      const embed = new EmbedBuilder()
+        .setAuthor({ name: ev.title, iconURL: member.user.displayAvatarURL({ size: 64 }) })
+        .setColor(ev.color)
+        .setDescription(`**${member.user.tag}** · \`${member.id}\``)
+        .setTimestamp();
+      if (modBy) embed.addFields({ name: "👮 Par", value: modBy, inline: true });
+      if (reason) embed.addFields({ name: "📝 Raison", value: reason.slice(0, 1024), inline: false });
+      sendLog(guild, embed);
+    }
+  }
 
   const oldChannelId = oldState.channelId ?? oldState.channel?.id ?? null;
   const newChannelId = newState.channelId ?? newState.channel?.id ?? null;

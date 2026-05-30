@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { canClearSanction, canDeleteSanction, getSanctionLabel } from "@/lib/sanctions";
 import { getEffectiveSanctionStatus, getSanctionStatusLabel } from "@/lib/sanction-status-labels";
 import { useConfirm } from "@/components/staff/ui/use-confirm";
+import { StaffPage } from "../../ui/StaffPage";
+import { Badge } from "../../ui/Badge";
 
 type SanctionDetailProps = {
   sanction: {
@@ -31,6 +33,54 @@ type SanctionDetailProps = {
     createdAt: string;
   }>;
 };
+
+type StatusTone = "green" | "red" | "yellow" | "blue" | "gray" | "orange" | "purple";
+
+function getEffectiveStatusTone(status: string): StatusTone {
+  if (status === "ACTIVE") return "yellow";
+  if (status === "CLOSED" || status === "EXPIRED") return "gray";
+  if (status === "CLEARED") return "green";
+  return "gray";
+}
+
+function getDiscordStatusTone(status: string): StatusTone {
+  if (status === "APPLIED") return "green";
+  if (status === "FAILED") return "red";
+  if (status === "PENDING") return "yellow";
+  return "gray";
+}
+
+function formatDateFr(iso: string): string {
+  return new Date(iso).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
+}
+
+function InfoCard({
+  label,
+  children,
+  hint,
+  tone,
+}: {
+  label: string;
+  children: React.ReactNode;
+  hint?: React.ReactNode;
+  tone?: "danger" | "warning";
+}) {
+  const accent =
+    tone === "danger"
+      ? "border-red-500/30 bg-red-500/[0.04]"
+      : tone === "warning"
+        ? "border-amber-500/30 bg-amber-500/[0.04]"
+        : "border-white/10 bg-white/[0.03]";
+  return (
+    <div className={`rounded-2xl border ${accent} p-4`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+        {label}
+      </div>
+      <div className="mt-2 text-sm font-medium text-slate-100">{children}</div>
+      {hint ? <div className="mt-2 text-xs text-slate-400">{hint}</div> : null}
+    </div>
+  );
+}
 
 export default function SanctionDetailClient({ sanction: initialSanction, audit }: SanctionDetailProps) {
   const router = useRouter();
@@ -57,12 +107,9 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
     setError(null);
 
     try {
-      const res = await fetch(`/api/staff/sanctions/apply/${sanction.id}`, {
-        method: "POST",
-      });
+      const res = await fetch(`/api/staff/sanctions/apply/${sanction.id}`, { method: "POST" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Apply failed");
-      alert("✅ Sanction mise en file d'attente pour application Discord");
       router.refresh();
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -80,10 +127,10 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
       const res = await fetch(`/api/staff/sanctions/apply/${sanction.id}`, { method: "POST" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Échec");
-      setSanction(prev => ({ ...prev, discordStatus: "PENDING" }));
+      setSanction((prev) => ({ ...prev, discordStatus: "PENDING" }));
       setRetrySuccess(true);
     } catch (e: unknown) {
-      setError("Erreur: " + getErrorMessage(e));
+      setError(getErrorMessage(e));
     } finally {
       setRetrying(false);
     }
@@ -92,7 +139,8 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   async function handleForceApplied() {
     const ok = await confirm({
       title: "Forcer la sanction comme appliquée ?",
-      description: "À utiliser uniquement si le membre est banni ou a définitivement quitté le serveur Discord — l'effet ne sera pas appliqué techniquement.",
+      description:
+        "À utiliser uniquement si le membre est banni ou a définitivement quitté le serveur Discord — l'effet ne sera pas appliqué techniquement.",
       confirmLabel: "Forcer",
       tone: "warning",
     });
@@ -105,9 +153,9 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
       const res = await fetch(`/api/staff/sanctions/${sanction.id}/force-applied`, { method: "POST" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Échec");
-      setSanction(prev => ({ ...prev, discordStatus: "APPLIED", discordError: null }));
+      setSanction((prev) => ({ ...prev, discordStatus: "APPLIED", discordError: null }));
     } catch (e: unknown) {
-      setError("Erreur: " + getErrorMessage(e));
+      setError(getErrorMessage(e));
     } finally {
       setForcingApplied(false);
     }
@@ -116,7 +164,7 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   async function handleClear() {
     const isReserviste = sanction.type === "RESERVISTE";
     const ok = await confirm({
-      title: isReserviste ? "Retirer l'état Réserviste ?" : "Supprimer la sanction appliquée ?",
+      title: isReserviste ? "Retirer l'état Réserviste ?" : "Lever la sanction ?",
       description: isReserviste
         ? "Le rôle Réserviste sera retiré sur Discord."
         : "L'effet de la sanction sera retiré sur Discord.",
@@ -129,11 +177,9 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
     setError(null);
 
     try {
-      const res = await fetch(`/api/staff/sanctions/${sanction.id}/clear`, {
-        method: "POST",
-      });
+      const res = await fetch(`/api/staff/sanctions/${sanction.id}/clear`, { method: "POST" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Suppression failed");
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Échec");
       router.refresh();
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -145,7 +191,11 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   async function handleDelete() {
     const ok = await confirm({
       title: "Supprimer cette sanction ?",
-      description: <p>Cette action est <strong className="text-[#ff8a99]">irréversible</strong>.</p>,
+      description: (
+        <p>
+          Cette action est <strong className="text-[#ff8a99]">irréversible</strong>.
+        </p>
+      ),
       confirmLabel: "Supprimer",
       tone: "danger",
     });
@@ -155,28 +205,19 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
     setError(null);
 
     try {
-      const res = await fetch(`/api/staff/sanctions/${sanction.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/staff/sanctions/${sanction.id}`, { method: "DELETE" });
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
         if (json?.error === "SANCTION_DELETE_BLOCKED_ALREADY_APPLIED") {
-          throw new Error(
-            "Une sanction déjà appliquée ne peut pas être supprimée. Utilisez plutôt Supprimer ou Clôturer."
-          );
+          throw new Error("Une sanction déjà appliquée ne peut pas être supprimée. Utilisez plutôt Lever ou Clôturer.");
         }
-
         if (json?.error === "SANCTION_DELETE_BLOCKED_OUTBOX_ALREADY_SENT_OR_RUNNING") {
-          throw new Error(
-            "Impossible de supprimer cette sanction car son traitement Discord est déjà en cours ou terminé. Utilisez plutôt Clôturer ou Supprimer."
-          );
+          throw new Error("Impossible de supprimer : le traitement Discord est déjà en cours ou terminé. Utilisez plutôt Lever ou Clôturer.");
         }
-
         if (res.status === 409 && typeof json?.details?.message === "string") {
           throw new Error(json.details.message);
         }
-
         throw new Error(json?.error || "Delete failed");
       }
 
@@ -197,181 +238,205 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
   const canRetry = sanction.discordStatus === "FAILED";
   const canForce = sanction.discordStatus === "FAILED" || sanction.discordStatus === "PENDING";
   const canApply =
-    sanction.discordStatus === "PENDING" &&
-    effectiveStatus === "ACTIVE" &&
-    !sanction.outboxStatus;
+    sanction.discordStatus === "PENDING" && effectiveStatus === "ACTIVE" && !sanction.outboxStatus;
   const isApplied = sanction.discordStatus === "APPLIED";
-  const clearActionLabel = sanction.type === "RESERVISTE" ? "Retirer réserviste" : "Supprimer";
+  const clearActionLabel = sanction.type === "RESERVISTE" ? "Retirer réserviste" : "Lever la sanction";
   const canClear = canClearSanction(sanction);
   const canDelete = canDeleteSanction(sanction);
+  const memberName = sanction.member?.rpName ?? "Membre inconnu";
+  const memberDiscordId = sanction.member?.discordId ?? sanction.discordId;
+
+  const hasAnyAction = canApply || isApplied || canRetry || canForce || canClear || canDelete;
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
+    <>
       {confirmDialog}
-      <div>
-        <h1 className="text-2xl font-bold">Sanction</h1>
-        <p className="text-sm text-gray-600">ID: {sanction.id}</p>
-      </div>
-
-      {error ? (
-        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
-      ) : null}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 border rounded">
-          <div className="text-xs text-gray-500">Membre</div>
-          <div className="font-semibold">
-            {sanction.member?.rpName ?? "Unknown"} ({sanction.member?.discordId ?? sanction.discordId})
-          </div>
-        </div>
-        <div className="p-4 border rounded">
-          <div className="text-xs text-gray-500">Type</div>
-          <div className="font-semibold">{getSanctionLabel(sanction.type)}</div>
-        </div>
-        <div className="p-4 border rounded">
-          <div className="text-xs text-gray-500">Statut</div>
-          <div className="font-semibold">{getSanctionStatusLabel(effectiveStatus)}</div>
-        </div>
-        <div className="p-4 border rounded">
-          <div className="text-xs text-gray-500">Discord</div>
-          <div className="font-semibold">{getSanctionStatusLabel(sanction.discordStatus)}</div>
-          {sanction.discordError ? (
-            <div className="text-xs text-red-600 mt-1">{sanction.discordError}</div>
-          ) : null}
-        </div>
-        <div className="p-4 border rounded">
-          <div className="text-xs text-gray-500">Créée le</div>
-          <div className="font-semibold">{new Date(sanction.createdAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}</div>
-        </div>
-        {sanction.expiresAt ? (
-          <div className="p-4 border rounded">
-            <div className="text-xs text-gray-500">Expire le</div>
-            <div className="font-semibold">{new Date(sanction.expiresAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}</div>
+      <StaffPage
+        title="Détail de la sanction"
+        subtitle={`ID ${sanction.id}`}
+      >
+        {error ? (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
         ) : null}
-        {sanction.clearedAt || sanction.clearedStatus || sanction.clearedError ? (
-          <div className="p-4 border rounded">
-            <div className="text-xs text-gray-500">Levée le</div>
-            <div className="font-semibold">
-              {sanction.clearedAt ? new Date(sanction.clearedAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" }) : "En cours"}
+
+        {/* Récap principal */}
+        <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.6),rgba(2,6,23,0.6))] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Membre sanctionné
+              </div>
+              <div className="mt-2 text-xl font-semibold text-slate-50">{memberName}</div>
+              <div className="mt-1 font-mono text-xs text-slate-400">{memberDiscordId}</div>
             </div>
-            {sanction.clearedStatus ? (
-              <div className="text-xs text-gray-600 mt-1">
-                Statut: {getSanctionStatusLabel(`CLEAR_${sanction.clearedStatus}`)}
+            <div className="flex flex-col items-end gap-2">
+              <Badge tone={getEffectiveStatusTone(effectiveStatus)}>
+                {getSanctionStatusLabel(effectiveStatus)}
+              </Badge>
+              <Badge tone={getDiscordStatusTone(sanction.discordStatus)}>
+                Discord&nbsp;: {getSanctionStatusLabel(sanction.discordStatus)}
+              </Badge>
+            </div>
+          </div>
+        </section>
+
+        {/* Infos détaillées */}
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <InfoCard label="Type">{getSanctionLabel(sanction.type)}</InfoCard>
+          <InfoCard label="Créée le">{formatDateFr(sanction.createdAt)}</InfoCard>
+          {sanction.expiresAt ? (
+            <InfoCard label="Expire le">{formatDateFr(sanction.expiresAt)}</InfoCard>
+          ) : null}
+          {sanction.clearedAt || sanction.clearedStatus || sanction.clearedError ? (
+            <InfoCard
+              label="Levée"
+              tone={sanction.clearedError ? "danger" : undefined}
+              hint={
+                <>
+                  {sanction.clearedStatus ? (
+                    <div>Statut&nbsp;: {getSanctionStatusLabel(`CLEAR_${sanction.clearedStatus}`)}</div>
+                  ) : null}
+                  {sanction.clearedError ? (
+                    <div className="text-red-300">Erreur&nbsp;: {sanction.clearedError}</div>
+                  ) : null}
+                </>
+              }
+            >
+              {sanction.clearedAt ? formatDateFr(sanction.clearedAt) : "En cours"}
+            </InfoCard>
+          ) : null}
+          <div className="md:col-span-2">
+            <InfoCard label="Raison">
+              {sanction.reason?.trim() || <span className="text-slate-500">— Aucune —</span>}
+            </InfoCard>
+          </div>
+          {sanction.discordError ? (
+            <div className="md:col-span-2">
+              <InfoCard label="Erreur Discord" tone="danger">
+                <span className="font-mono text-xs text-red-200">{sanction.discordError}</span>
+              </InfoCard>
+            </div>
+          ) : null}
+        </section>
+
+        {/* Actions */}
+        {hasAnyAction ? (
+          <section className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Actions
+            </div>
+
+            {canApply ? (
+              <div className="mt-3 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
+                <div className="text-sm font-semibold text-blue-200">🎯 Application Discord</div>
+                <p className="mt-1 text-xs text-blue-300/80">
+                  Mettre en file d&apos;attente l&apos;application de la sanction (rôles, mute, etc.)
+                </p>
+                <button
+                  onClick={handleApply}
+                  disabled={applying}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {applying ? "⏳ Application…" : "⚡ Appliquer sur Discord"}
+                </button>
               </div>
             ) : null}
-            {sanction.clearedError ? (
-              <div className="text-xs text-red-600 mt-1">Erreur: {sanction.clearedError}</div>
+
+            {isApplied ? (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                <span>✅</span>
+                <span>Sanction appliquée sur Discord</span>
+              </div>
             ) : null}
-          </div>
-        ) : null}
-      </div>
 
-      <div className="p-4 border rounded">
-        <div className="text-xs text-gray-500">Raison</div>
-        <div className="font-semibold">{sanction.reason ?? "-"}</div>
-      </div>
-
-      {canApply ? (
-        <div className="p-4 border-2 border-blue-500 bg-blue-50 rounded">
-          <div className="text-sm font-semibold text-blue-900 mb-2">🎯 Application Discord</div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleApply}
-              disabled={applying}
-              className="px-4 py-2 text-sm font-semibold rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-            >
-              {applying ? "⏳ Application..." : "⚡ Appliquer sur Discord"}
-            </button>
-          </div>
-          <div className="text-xs text-blue-700 mt-2">
-            Cette action mettra en file d'attente l'application de la sanction (rôles, mute, etc.)
-          </div>
-        </div>
-      ) : null}
-
-      {isApplied ? (
-        <div className="p-4 border-2 border-green-500 bg-green-50 rounded">
-          <div className="text-sm font-semibold text-green-900">✅ Sanction appliquée sur Discord</div>
-        </div>
-      ) : null}
-
-      {canForce ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-3">
-            {canRetry && (
-              <button
-                onClick={handleRetryDiscord}
-                disabled={retrying || forcingApplied}
-                className="inline-flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
-              >
-                {retrying ? "En cours..." : "↺ Relancer Discord"}
-              </button>
-            )}
-            <button
-              onClick={handleForceApplied}
-              disabled={forcingApplied || retrying}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500/20 disabled:opacity-50"
-              title="À utiliser si le membre est banni ou a définitivement quitté le Discord"
-            >
-              {forcingApplied ? "En cours..." : "✓ Forcer appliqué"}
-            </button>
-          </div>
-          {retrySuccess ? (
-            <div className="text-xs text-amber-400">
-              Mis en file d'attente — sera appliqué dès que le membre rejoint le serveur.
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {canClear ? (
-        <div className="flex gap-3">
-          <button
-            onClick={handleClear}
-            disabled={clearing}
-            className="px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-          >
-            {clearing ? "Suppression..." : clearActionLabel}
-          </button>
-        </div>
-      ) : null}
-
-      {canDelete ? (
-        <div className="flex gap-3">
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="px-4 py-2 text-sm font-semibold rounded bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-          >
-            {deleting ? "Suppression..." : "Supprimer"}
-          </button>
-        </div>
-      ) : null}
-
-      {isApplied ? (
-        <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Une sanction déjà appliquée ne peut pas être supprimée. Utilisez plutôt Supprimer ou Clôturer.
-        </div>
-      ) : null}
-
-      <div className="p-4 border rounded">
-        <div className="text-sm font-semibold">Audit</div>
-        <ul className="mt-2 space-y-2 text-sm">
-          {audit.length === 0 ? (
-            <li className="text-gray-500">Aucun audit</li>
-          ) : (
-            audit.map((log) => (
-              <li key={log.id} className="border-b pb-2">
-                <div className="font-semibold">{log.action}</div>
-                <div className="text-xs text-gray-500">
-                  {new Date(log.createdAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}
+            {canForce ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {canRetry ? (
+                    <button
+                      onClick={handleRetryDiscord}
+                      disabled={retrying || forcingApplied}
+                      className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {retrying ? "En cours…" : "↺ Relancer Discord"}
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={handleForceApplied}
+                    disabled={forcingApplied || retrying}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="À utiliser si le membre est banni ou a définitivement quitté le Discord"
+                  >
+                    {forcingApplied ? "En cours…" : "✓ Forcer appliqué"}
+                  </button>
                 </div>
-              </li>
-            ))
+                {retrySuccess ? (
+                  <div className="text-xs text-amber-300">
+                    Mis en file d&apos;attente — sera appliqué dès que le membre rejoint le serveur.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {(canClear || canDelete) ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {canClear ? (
+                  <button
+                    onClick={handleClear}
+                    disabled={clearing}
+                    className="inline-flex items-center gap-2 rounded-xl border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm font-medium text-green-200 transition-colors hover:bg-green-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {clearing ? "En cours…" : clearActionLabel}
+                  </button>
+                ) : null}
+                {canDelete ? (
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deleting ? "Suppression…" : "🗑 Supprimer"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {isApplied && !canDelete ? (
+              <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                Une sanction déjà appliquée ne peut pas être supprimée. Utilisez plutôt « Lever la sanction ».
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {/* Audit */}
+        <section className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Audit
+          </div>
+          {audit.length === 0 ? (
+            <div className="mt-3 rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-500">
+              Aucun audit pour le moment
+            </div>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {audit.map((log) => (
+                <li
+                  key={log.id}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3"
+                >
+                  <div className="font-mono text-xs font-semibold text-slate-200">
+                    {log.action}
+                  </div>
+                  <div className="text-xs text-slate-500">{formatDateFr(log.createdAt)}</div>
+                </li>
+              ))}
+            </ul>
           )}
-        </ul>
-      </div>
-    </div>
+        </section>
+      </StaffPage>
+    </>
   );
 }

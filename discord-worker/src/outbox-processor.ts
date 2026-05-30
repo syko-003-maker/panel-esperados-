@@ -1081,6 +1081,66 @@ async function handleSanctionApply(
       memberDiscordId: discordId,
       sanctionType,
     });
+
+    // ── Auto-remove WL famille même si le membre a quitté la guild Discord.
+    // Le retrait WL doit avoir lieu côté LYG (jeu) même sans Discord — c'est
+    // une action distincte. Sans ça, un démote/blacklist sur un membre parti
+    // de la guild laisse sa WL active in-game. Bug constaté sur Emir Esperados.
+    if (sanctionType === "DEMOTE" || sanctionType === "BLACKLIST") {
+      const memberSteamId = sanction.member?.steamId?.trim() ?? "";
+      if (/^\d{17}$/.test(memberSteamId)) {
+        try {
+          const base = (process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+          const secret = process.env.INGEST_SECRET ?? "";
+          if (base && secret) {
+            const res = await fetch(`${base}/api/internal/lyg/family-remove`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-ingest-secret": secret },
+              body: JSON.stringify({
+                steamId: memberSteamId,
+                source: sanctionType === "DEMOTE" ? "sanction_demote_no_guild" : "sanction_blacklist_no_guild",
+                sanctionId: sanction.id,
+              }),
+              signal: AbortSignal.timeout(20_000),
+            });
+            const json = (await res.json().catch(() => ({}))) as any;
+            if (res.ok && json?.ok && json?.applied) {
+              log("sanction_apply_lyg_remove_ok", {
+                sanctionId: sanction.id,
+                sanctionType,
+                steamId: memberSteamId,
+                tookMs: json.tookMs,
+                memberInGuild: false,
+              });
+            } else if (res.ok && json?.ok && !json?.applied) {
+              log("sanction_apply_lyg_remove_skipped", {
+                sanctionId: sanction.id,
+                steamId: memberSteamId,
+                reason: json?.reason ?? "unknown",
+                memberInGuild: false,
+              });
+            } else {
+              log("sanction_apply_lyg_remove_failed", {
+                sanctionId: sanction.id,
+                steamId: memberSteamId,
+                status: res.status,
+                error: json?.error ?? "unknown",
+                expired: json?.expired ?? false,
+                memberInGuild: false,
+              });
+            }
+          }
+        } catch (err) {
+          log("sanction_apply_lyg_remove_exception", {
+            sanctionId: sanction.id,
+            steamId: memberSteamId,
+            error: err instanceof Error ? err.message : String(err),
+            memberInGuild: false,
+          });
+        }
+      }
+    }
+
     return;
   }
 
@@ -1166,6 +1226,30 @@ async function handleSanctionApply(
 
   await ensureManageRoles(member);
 
+  // Filtre les rôles "managed" Discord (Server Booster, rôles de bot,
+  // intégrations type Twitch/YouTube) — le bot ne peut techniquement PAS
+  // les retirer, et ils sont indépendants du grade famille. Sans ça, un
+  // membre Nitro Booster ne peut pas être démote (bug constaté sur Loic).
+  const skippedManagedRoles: string[] = [];
+  rolePlan.rolesToRemove = rolePlan.rolesToRemove.filter((roleId) => {
+    const role = member.roles.cache.get(roleId);
+    if (role && role.managed) {
+      skippedManagedRoles.push(role.name);
+      return false;
+    }
+    return true;
+  });
+  if (skippedManagedRoles.length > 0) {
+    log("sanction_apply_skip_managed_roles", {
+      sanctionId: sanction.id,
+      memberDiscordId: discordId,
+      skipped: skippedManagedRoles,
+    });
+  }
+
+  // Reste-t-il un rôle non-editable (= au-dessus du bot dans la hiérarchie) ?
+  // Ce cas est différent des rôles managed : c'est une erreur de config
+  // Discord (le bot doit être placé au-dessus des rôles à retirer).
   const blockingRemovalRole = rolePlan.rolesToRemove.find((roleId) => {
     const role = member.roles.cache.get(roleId);
     return role ? !role.editable : false;

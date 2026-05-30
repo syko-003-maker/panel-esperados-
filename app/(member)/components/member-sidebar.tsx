@@ -14,6 +14,7 @@ import {
   Handshake,
   Car,
   GraduationCap,
+  Calculator,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: React.ElementType; external?: boolean };
@@ -46,6 +47,10 @@ function getSections(isLinked: boolean, isRecruiter: boolean): NavSection[] {
         { href: "/guide/negociation", label: "Négociation", Icon: Handshake },
         { href: "/guide/conduite", label: "Conduite", Icon: Car },
       ],
+    },
+    {
+      title: "Outils",
+      items: [{ href: "/printers", label: "Calculateur Printer", Icon: Calculator }],
     },
   ];
 

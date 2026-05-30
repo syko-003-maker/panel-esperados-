@@ -1,37 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/auth";
-import { getCurrentMember } from "@/lib/auth/current-member";
+import { requireFullWriter } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { triggerDiscordRenameAsync } from "@/lib/discord/rename";
 
 /**
- * ✅ MEGA PATCH #2: PATCH /api/staff/members/[memberId]/update-rpname
- * 
- * Route staff-only pour mettre à jour le rpName d'un membre.
- * Sécurisé: auth staff obligatoire, validation, logs.
+ * PATCH /api/staff/members/[memberId]/update-rpname
+ *
+ * Met à jour le rpName d'un membre. Action d'écriture → réservée aux
+ * Chef / Sous-Chef / État-Major (requireFullWriter).
+ *
+ * ⚠️ SÉCURITÉ : avant, le guard reposait sur le flag legacy `session.isStaff`,
+ * incohérent avec le RBAC basé sur les rôles Discord. Remplacé par le guard
+ * canonique requireFullWriter (comme les autres mutations sensibles).
  */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ memberId: string }> }
 ) {
   try {
-    // ✅ Étape 1: Vérifier auth staff
-    const session = await getSession();
-    if (!session?.user?.id) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireFullWriter();
+    if (guard instanceof Response) return guard;
+    const session: any = (guard as any).session ?? {};
 
-    const isStaff = (session as any).isStaff || (session?.user as any).isStaff;
-    if (!isStaff) {
-      logger.warn("staff:update-rpname", `non-staff attempt for session ${session.user.id}`);
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: staff only" },
-        { status: 403 }
-      );
-    }
-
-    // ✅ Étape 2: Récupérer body
+    // Récupérer body
     const body = await req.json().catch(() => ({}));
     const rpName = body?.rpName;
 
@@ -73,7 +65,7 @@ export async function PATCH(
     logger.immediate(
       "staff:update-rpname",
       `updated member ${memberId} rpName: "${member.rpName}" -> "${trimmedRpName}"`,
-      { staffId: session.user.id }
+      { staffId: session?.user?.id ?? null }
     );
 
     // Déclencher le renommage Discord en arrière-plan (fire-and-forget)

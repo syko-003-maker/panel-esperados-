@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { BLOCKING_SANCTION_TYPES } from "@/lib/sanctions";
-import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
+import { isSanctionableScopeMember } from "@/lib/staff/member-scope";
 
 export async function GET(req: Request) {
   const guard = await requireChefOrEtatMajor();
@@ -41,9 +41,16 @@ export async function GET(req: Request) {
     },
   });
 
-  const candidateMembers = members.filter(isActiveMembersScopeMember);
+  // On inclut maintenant les réservistes et démotés dans la liste : ils
+  // peuvent être escaladés vers DEMOTE/BLACKLIST. Seuls les blacklistés
+  // restent exclus (plus rien à escalader au-dessus).
+  const candidateMembers = members.filter(isSanctionableScopeMember);
 
-  const blockedSanctions = candidateMembers.length
+  // Lookup des sanctions BLOQUANTES actives pour affichage côté UI.
+  // On ne les exclut plus du picker — la logique d'escalade est gérée
+  // côté POST. Mais le client peut afficher un badge "déjà réserviste"
+  // ou "déjà démoté" pour informer le staff.
+  const activeSanctions = candidateMembers.length
     ? await prisma.sanction.findMany({
         where: {
           familyId,
@@ -52,24 +59,22 @@ export async function GET(req: Request) {
           clearedAt: null,
           type: { in: [...BLOCKING_SANCTION_TYPES] },
         },
-        select: { memberId: true },
+        select: { memberId: true, type: true },
       })
     : [];
 
-  const blockedMemberIds = new Set(
-    blockedSanctions
-      .map((sanction) => sanction.memberId)
-      .filter((memberId): memberId is string => Boolean(memberId))
-  );
-
-  const sanctionableMembers = candidateMembers.filter((member) => !blockedMemberIds.has(member.id));
+  const activeByMember = new Map<string, string>();
+  for (const s of activeSanctions) {
+    if (s.memberId) activeByMember.set(s.memberId, s.type);
+  }
 
   return NextResponse.json({
     ok: true,
-    items: sanctionableMembers.map((member) => ({
+    items: candidateMembers.map((member) => ({
       id: member.id,
       rpName: member.rpName ?? "Unknown",
       discordId: member.discordId ?? null,
+      activeSanctionType: activeByMember.get(member.id) ?? null,
     })),
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { Badge } from "../../../../ui/Badge";
 
 type SanctionEvent = {
@@ -47,8 +47,9 @@ const discordTone: Record<string, "yellow" | "green" | "red"> = {
 export default function MemberSanctionsPage({
   params,
 }: {
-  params: { discordId: string };
+  params: Promise<{ discordId: string }>;
 }) {
+  const { discordId } = use(params);
   const [member, setMember] = useState<MemberInfo | null>(null);
   const [sanctions, setSanctions] = useState<SanctionEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +58,7 @@ export default function MemberSanctionsPage({
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/staff/members/by-discord/${params.discordId}/sanctions`, {
+        const res = await fetch(`/api/staff/members/by-discord/${discordId}/sanctions`, {
           cache: "no-store",
         });
         const json = await res.json().catch(() => ({}));
@@ -71,7 +72,7 @@ export default function MemberSanctionsPage({
       }
     }
     load();
-  }, [params.discordId]);
+  }, [discordId]);
 
   if (loading)
     return (

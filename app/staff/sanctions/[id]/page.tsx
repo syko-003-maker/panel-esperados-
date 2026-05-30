@@ -4,15 +4,17 @@ import { requireChefOrEtatMajor } from "@/lib/guards";
 import { getEntityAuditLogs } from "@/lib/audit";
 import SanctionDetailClient from "./sanction-detail-client";
 
-export default async function SanctionDetailPage({ params }: { params: { id: string } }) {
+export default async function SanctionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const guard = await requireChefOrEtatMajor();
   if (guard instanceof Response) {
     const location = guard.headers.get("Location") ?? "/staff/forbidden";
     redirect(location);
   }
 
+  const { id } = await params;
+
   const sanction = await prisma.sanction.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { member: { select: { rpName: true, discordId: true } } },
   });
 

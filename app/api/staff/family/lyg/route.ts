@@ -211,7 +211,8 @@ export async function POST(req: Request) {
     if (action === "up" && typeof currentClass === "number") {
       nextClass = Math.max(1, currentClass - 1);
     } else if (action === "down" && typeof currentClass === "number") {
-      nextClass = Math.min(5, currentClass + 1);
+      // WL va de 1 (Chef) à 4 (plus bas) — il n'y a PAS de WL5.
+      nextClass = Math.min(4, currentClass + 1);
     } else if (action === "remove") {
       nextClass = null;
     } else if (action === "add") {

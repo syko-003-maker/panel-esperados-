@@ -285,7 +285,7 @@ export default function MeetingsClient() {
                             next.setHours(h, m, 0, 0);
                             setCreateDate(next);
                           }}
-                          className={`rounded-md px-2 py-1 text-xs transition-colors ${selected
+                          className={`rounded-md px-1 py-1 text-[11px] transition-colors sm:px-2 sm:text-xs ${selected
                             ? "bg-[#7a1f2b] text-white"
                             : inMonth
                               ? "text-slate-200 hover:bg-white/[0.06]"

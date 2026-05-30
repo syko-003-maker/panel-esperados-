@@ -64,6 +64,10 @@ type MemberOption = {
   id: string;
   rpName: string;
   discordId: string | null;
+  // Type d'une éventuelle sanction bloquante active. Seul RESERVISTE peut
+  // apparaître ici — les démotés/blacklist sont exclus du picker en amont.
+  // Présence du badge = escalade possible (DEMOTE/BLACKLIST plus grave).
+  activeSanctionType?: "RESERVISTE" | null;
 };
 
 type Justification = {
@@ -555,7 +559,14 @@ export default function SanctionsClient({ canWrite = true }: { canWrite?: boolea
                           }`}
                         >
                           <span className="flex min-w-0 flex-col">
-                            <span className="truncate text-sm font-medium">{member.rpName}</span>
+                            <span className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium">{member.rpName}</span>
+                              {member.activeSanctionType === "RESERVISTE" ? (
+                                <span className="rounded border border-amber-500/35 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-200">
+                                  Réserviste
+                                </span>
+                              ) : null}
+                            </span>
                             <span className="truncate text-xs text-muted-foreground">
                               {member.discordId ?? "Discord ID indisponible"}
                             </span>

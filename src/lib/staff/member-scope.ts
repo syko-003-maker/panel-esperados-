@@ -150,3 +150,31 @@ export function isNonLinkedDisplayableStaffMember(member: MemberScopeInput): boo
 export function isActiveMembersScopeMember(member: MemberScopeInput): boolean {
   return isDisplayableStaffMember(member) && isLinkedStaffMember(member);
 }
+
+/**
+ * Variante pour la page sanctions : on inclut les **réservistes** dans le
+ * picker pour permettre l'escalade RESERVISTE → DEMOTE/BLACKLIST (cas
+ * d'usage typique : un réserviste continue à mal se comporter, on doit
+ * pouvoir le démoter sans devoir d'abord lui retirer le statut).
+ *
+ * Restent EXCLUS :
+ *   - Blacklistés (déjà au plus bas, plus rien à escalader)
+ *   - Démotés (sanction déjà appliquée, pas besoin d'apparaître ici —
+ *     si on veut les blacklister, c'est plus une décision EM qu'une
+ *     sanction quotidienne)
+ *   - Extra-members (Nutella, etc.)
+ *
+ * La logique d'escalade est gérée côté POST /api/staff/sanctions.
+ */
+export function isSanctionableScopeMember(member: MemberScopeInput): boolean {
+  if (!isLinkedStaffMember(member)) return false;
+  const isActive = member.isActive === true;
+  const isGhost = member.isGhost === true;
+  const isMissingFromLyg = member.missingFromLygSince != null;
+  if (!isActive || isGhost || isMissingFromLyg) return false;
+
+  const flags = getMemberScopeFlags(member);
+  // Réservistes : OK. Démotés / Blacklistés / Extra-members : exclus.
+  if (flags.isBlacklisted || flags.isDemoted || flags.isExtraMember) return false;
+  return true;
+}

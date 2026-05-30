@@ -420,11 +420,60 @@ export async function POST(req: Request) {
     select: { id: true, type: true },
   });
 
+  // Logique d'escalade : si une sanction bloquante existe, on autorise
+  // la nouvelle sanction UNIQUEMENT si elle est strictement plus grave
+  // (ou de type différent allant vers le haut). Sinon on refuse.
+  //
+  // Échelle de gravité (du moins grave au plus grave) :
+  //   RESERVISTE  →  DEMOTE  →  BLACKLIST
+  //
+  // Avertissements (AVERT_*) : toujours autorisés en plus, sans clearer
+  // la sanction bloquante (cumul possible).
   if (blockingSanction) {
-    return NextResponse.json(
-      { ok: false, error: "MEMBER_NOT_SANCTIONABLE", blockingType: blockingSanction.type },
-      { status: 409 }
-    );
+    const severity: Record<string, number> = {
+      RESERVISTE: 1,
+      DEMOTE: 2,
+      BLACKLIST: 3,
+    };
+    const isAvertissement = typeRaw.startsWith("AVERT_");
+    const oldSev = severity[blockingSanction.type] ?? 0;
+    const newSev = severity[typeRaw] ?? 0;
+
+    if (isAvertissement) {
+      // Avertissement sur réserviste/démoté : OK, on ne touche pas à l'existante.
+    } else if (newSev > oldSev) {
+      // Escalade : on clear l'ancienne sanction bloquante puis on crée la nouvelle.
+      // Idempotent : si on plante après le clear, on aura juste un membre sans
+      // sanction bloquante (état acceptable, le staff peut re-tenter).
+      // Note d'audit dans la sanction clearée pour expliquer le clear automatique.
+      await prisma.sanction.update({
+        where: { id: blockingSanction.id },
+        data: {
+          status: "CLOSED",
+          clearedAt: new Date(),
+          clearedError: `Auto-escalade vers ${typeRaw}`,
+        },
+      });
+      logInfo("sanction_create_escalated", {
+        requestId,
+        memberId: member.id,
+        oldType: blockingSanction.type,
+        newType: typeRaw,
+      });
+    } else {
+      // Même gravité ou rétrogradation : refusé.
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "MEMBER_NOT_SANCTIONABLE",
+          blockingType: blockingSanction.type,
+          message: newSev === oldSev
+            ? `Le membre a déjà une sanction ${blockingSanction.type} active. Tu ne peux pas appliquer la même.`
+            : `Pour escalader, choisis une sanction plus grave que ${blockingSanction.type} (DEMOTE ou BLACKLIST).`,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const startAt = new Date();
@@ -448,6 +497,48 @@ export async function POST(req: Request) {
       complaintId: complaintId || null,
     } as any,
   })) as any;
+
+  // ── Cascade auto-close des sanctions précédentes ─────────────────────────
+  // Quand on applique une sanction bloquante (RESERVISTE / DEMOTE / BLACKLIST),
+  // le rolePlan worker retire TOUS les rôles non-protégés du membre (incluant
+  // les rôles AVERT_*). Les sanctions AVERT_* précédentes deviennent donc
+  // techniquement levées sur Discord — leur record DB doit suivre pour ne
+  // pas afficher des sanctions "actives" alors que le rôle n'existe plus.
+  //
+  // Bug constaté sur Loic O'Malley : BLACKLIST appliqué après un AVERT_LOURD
+  // → rôle Averto Lourd retiré par le worker, mais sanction AVERT_LOURD
+  // restait ACTIVE dans la liste sanctions → confusion staff.
+  const isBlockingSanction = (BLOCKING_SANCTION_TYPES as readonly string[]).includes(typeRaw);
+  if (isBlockingSanction) {
+    const cascade = await prisma.sanction.updateMany({
+      where: {
+        familyId,
+        memberId: member.id,
+        id: { not: sanction.id },
+        status: "ACTIVE",
+        clearedAt: null,
+        // Les sanctions bloquantes précédentes (la "ancienne" déjà clearée
+        // par l'escalade au-dessus) sont déjà CLOSED, donc on cible ici les
+        // AVERT_* + tout reste qui aurait pu être ACTIVE.
+        type: { notIn: [...BLOCKING_SANCTION_TYPES] },
+      },
+      data: {
+        status: "CLOSED",
+        clearedAt: new Date(),
+        clearedStatus: "APPLIED",
+        clearedError: `Auto-cascade — sanction bloquante appliquée (${typeRaw})`,
+      },
+    });
+    if (cascade.count > 0) {
+      logInfo("sanction_cascade_closed", {
+        requestId,
+        memberId: member.id,
+        newSanctionId: sanction.id,
+        newSanctionType: typeRaw,
+        closedCount: cascade.count,
+      });
+    }
+  }
 
   await auditStaffAction(actorId, actorName, "SANCTION_CREATE", "Sanction", sanction.id, {
     familyId,

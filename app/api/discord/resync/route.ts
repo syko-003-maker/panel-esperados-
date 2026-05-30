@@ -199,10 +199,13 @@ async function resyncAllMembers(): Promise<{ synced: number; errors: number }> {
 }
 
 export async function POST(req: Request) {
-  // Verify secret via header (not URL — secrets in URLs appear in server logs)
-  const secret = req.headers.get("x-worker-secret") ?? new URL(req.url).searchParams.get("secret");
+  // Secret via header uniquement (jamais en query : ça fuite dans les logs).
+  const secret = req.headers.get("x-worker-secret");
 
-  if (WORKER_SECRET && secret !== WORKER_SECRET) {
+  // ⚠️ SÉCURITÉ : fail-closed. Si DISCORD_WORKER_SECRET n'est pas configuré,
+  // on REFUSE tout (avant, `if (WORKER_SECRET && …)` laissait passer sans
+  // secret → resync complet de la guilde accessible sans authentification).
+  if (!WORKER_SECRET || secret !== WORKER_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

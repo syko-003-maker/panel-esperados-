@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireStaffAccess } from "@/lib/rbac";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { enqueueRemoveRole } from "@/lib/discord/discord";
 import { getAvertRoleId } from "@/lib/sanctions";
@@ -117,6 +118,13 @@ export async function POST(req: NextRequest) {
  * GET - for health check / status
  */
 export async function GET(req: NextRequest) {
+  // Health/status : accessible via secret cron (monitoring) OU staff connecté.
+  // Avant : aucun contrôle (fuite mineure des compteurs de sanctions).
+  if (!validateCronSecret(req)) {
+    const guard = await requireStaffAccess();
+    if (guard instanceof Response) return guard;
+  }
+
   const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
 
   try {
