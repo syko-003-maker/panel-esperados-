@@ -12,6 +12,7 @@ import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/components/staff/ui/use-confirm";
+import { getUpcomingMeetingSundays } from "@/lib/meeting-dates";
 
 // ─── Sélecteur de membre ────────────────────────────────────────────────────
 
@@ -259,29 +260,8 @@ function fmtDateShort(iso: string) {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function getNextSunday(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = day === 0 ? 7 : 7 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-
-function getUpcomingSundays(count = 6): { value: string; label: string }[] {
-  const results = [];
-  const d = new Date();
-  // Start from today, find next Sunday
-  const daysUntilSunday = (7 - d.getDay()) % 7;
-  d.setDate(d.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday));
-  for (let i = 0; i < count; i++) {
-    const copy = new Date(d);
-    const value = copy.toISOString().slice(0, 10); // YYYY-MM-DD
-    const label = copy.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
-    results.push({ value, label });
-    d.setDate(d.getDate() + 7);
-  }
-  return results;
-}
+// Dimanches de réunion (un sur deux) — helper partagé avec le côté membre.
+// cf. src/lib/meeting-dates.ts
 
 export default function AbsencesClient() {
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -659,7 +639,7 @@ export default function AbsencesClient() {
                     Date de la réunion
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {getUpcomingSundays().map((sun) => (
+                    {getUpcomingMeetingSundays().map((sun) => (
                       <button
                         key={sun.value}
                         type="button"

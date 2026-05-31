@@ -10,30 +10,7 @@ import {
   CalendarClock,
   CalendarDays,
 } from "lucide-react";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Génère les `count` prochains dimanches (réunion famille = dimanche 21h
- * normalisé côté serveur). Format identique à celui utilisé côté staff
- * (cf. app/staff/absences/absences-client.tsx → getUpcomingSundays).
- */
-function getUpcomingSundays(count = 6): { value: string; label: string }[] {
-  const results: { value: string; label: string }[] = [];
-  const d = new Date();
-  const daysUntilSunday = (7 - d.getDay()) % 7;
-  d.setDate(d.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday));
-  for (let i = 0; i < count; i++) {
-    const copy = new Date(d);
-    const value = copy.toISOString().slice(0, 10);
-    const label = copy.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
-    results.push({ value, label });
-    d.setDate(d.getDate() + 7);
-  }
-  return results;
-}
+import { getUpcomingMeetingSundays } from "@/lib/meeting-dates";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Composant principal
@@ -53,7 +30,7 @@ export function AbsencePageClient() {
   const [to, setTo] = useState("");
   const [meetingDate, setMeetingDate] = useState("");
 
-  const upcomingSundays = useMemo(() => getUpcomingSundays(6), []);
+  const upcomingSundays = useMemo(() => getUpcomingMeetingSundays(6), []);
   const reasonLength = reason.trim().length;
   const isReasonValid = reasonLength >= 10;
   const isMeetingDateValid = type === "GENERAL" || Boolean(meetingDate);
