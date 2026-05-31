@@ -6,6 +6,7 @@ import {
   RECHARGE_INTERVAL_MIN,
   isPrinterComplete,
   paybackMinutes,
+  revenuNetMin,
   revenuNetHeure,
   type Printer,
 } from "@/lib/printers";
@@ -13,6 +14,7 @@ import { Calculator, RotateCcw, Check, Sigma, AlertTriangle } from "lucide-react
 
 const MAX_SELECT = 4;
 const eur = new Intl.NumberFormat("fr-FR");
+const intervalLabel = RECHARGE_INTERVAL_MIN.toLocaleString("fr-FR", { minimumFractionDigits: 2 });
 
 function money(n: number): string {
   return `${eur.format(Math.round(n))} €`;
@@ -27,7 +29,6 @@ function formatPayback(min: number | null): string {
   return `~ ${h}h${String(mm).padStart(2, "0")}`;
 }
 
-const rechargeLabel = `Perte totale / ${RECHARGE_INTERVAL_MIN.toLocaleString("fr-FR")} min`;
 const TODO = "À renseigner";
 
 export default function PrinterCalculator() {
@@ -51,18 +52,33 @@ export default function PrinterCalculator() {
   );
 
   const totals = useMemo(() => {
-    const t = { cost: 0, revMin: 0, revH: 0, perte: 0, missing: [] as string[] };
+    const t = {
+      cost: 0,
+      completeCost: 0,
+      brut: 0,
+      recharge: 0,
+      net: 0,
+      netH: 0,
+      missing: [] as string[],
+    };
     for (const p of selectedPrinters) {
       t.cost += p.cost;
-      if (p.revenuNetMin != null) {
-        t.revMin += p.revenuNetMin;
-        t.revH += p.revenuNetMin * 60;
+      if (isPrinterComplete(p)) {
+        t.brut += p.revenuBrutMin ?? 0;
+        t.recharge += p.rechargeCost ?? 0;
+        const net = revenuNetMin(p) ?? 0;
+        t.net += net;
+        t.netH += net * 60;
+        t.completeCost += p.cost; // coût des seuls printers complets
+      } else {
+        t.missing.push(p.name);
       }
-      if (p.perteRecharge != null) t.perte += p.perteRecharge;
-      if (!isPrinterComplete(p)) t.missing.push(p.name);
     }
     return t;
   }, [selectedPrinters]);
+
+  // Rentabilisation combinée : coût total ÷ revenu NET total/min (printers complets).
+  const combinedPayback = totals.net > 0 ? totals.completeCost / totals.net : null;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-2">
@@ -77,7 +93,7 @@ export default function PrinterCalculator() {
             <h1 className="text-2xl font-bold tracking-tight text-slate-50">Calculateur Printer</h1>
             <p className="mt-1 text-sm text-slate-400">
               Sélectionne jusqu&apos;à {MAX_SELECT} modèles pour comparer revenus, coûts de recharge et temps
-              de rentabilisation.
+              de rentabilisation. Le revenu net tient compte d&apos;une recharge toutes les {intervalLabel} min.
             </p>
           </div>
         </div>
@@ -170,15 +186,21 @@ export default function PrinterCalculator() {
             </div>
             <div className="divide-y divide-white/[0.06]">
               <Row label="Coût total net" value={money(totals.cost)} />
-              <Row label="Revenu net total / min" value={money(totals.revMin)} accent="text-emerald-300" />
-              <Row label="Revenu net total / h" value={money(totals.revH)} accent="text-emerald-300" />
-              <Row label={`${rechargeLabel} (cumul)`} value={money(totals.perte)} accent="text-rose-300" />
+              <Row label="Production brute totale / min" value={money(totals.brut)} accent="text-slate-200" />
+              <Row label="Coût de recharge (cumul)" value={money(totals.recharge)} accent="text-rose-300" />
+              <Row label="Revenu net total / min" value={money(totals.net)} accent="text-emerald-300" />
+              <Row label="Revenu net total / h" value={money(totals.netH)} accent="text-emerald-300" />
+              <Row
+                label="Temps de rentabilisation (combiné)"
+                value={formatPayback(combinedPayback)}
+                accent="text-amber-200"
+              />
             </div>
             {totals.missing.length > 0 ? (
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200/90">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                 <span>
-                  Totaux incomplets : revenu non renseigné pour {totals.missing.join(", ")}.
+                  Totaux incomplets : données manquantes pour {totals.missing.join(", ")}.
                 </span>
               </div>
             ) : null}
@@ -190,7 +212,8 @@ export default function PrinterCalculator() {
 }
 
 function PrinterCard({ printer }: { printer: Printer }) {
-  const revH = revenuNetHeure(printer);
+  const net = revenuNetMin(printer);
+  const netH = revenuNetHeure(printer);
   const payback = paybackMinutes(printer);
   const complete = isPrinterComplete(printer);
 
@@ -209,19 +232,24 @@ function PrinterCard({ printer }: { printer: Printer }) {
       <div className="divide-y divide-white/[0.06]">
         <Row label="Coût total net" value={money(printer.cost)} />
         <Row
+          label="Production brute / min"
+          value={printer.revenuBrutMin != null ? money(printer.revenuBrutMin) : TODO}
+          accent={printer.revenuBrutMin != null ? "text-slate-200" : "text-slate-500"}
+        />
+        <Row
+          label={`Coût de recharge (/ ${intervalLabel} min)`}
+          value={printer.rechargeCost != null ? money(printer.rechargeCost) : TODO}
+          accent={printer.rechargeCost != null ? "text-rose-300" : "text-slate-500"}
+        />
+        <Row
           label="Revenu net / min"
-          value={printer.revenuNetMin != null ? money(printer.revenuNetMin) : TODO}
-          accent={printer.revenuNetMin != null ? "text-emerald-300" : "text-slate-500"}
+          value={net != null ? money(net) : TODO}
+          accent={net != null ? "text-emerald-300" : "text-slate-500"}
         />
         <Row
           label="Revenu net / h"
-          value={revH != null ? money(revH) : TODO}
-          accent={revH != null ? "text-emerald-300" : "text-slate-500"}
-        />
-        <Row
-          label={rechargeLabel}
-          value={printer.perteRecharge != null ? money(printer.perteRecharge) : TODO}
-          accent={printer.perteRecharge != null ? "text-rose-300" : "text-slate-500"}
+          value={netH != null ? money(netH) : TODO}
+          accent={netH != null ? "text-emerald-300" : "text-slate-500"}
         />
         <Row
           label="Temps estimé de rentabilisation"
