@@ -72,9 +72,12 @@ const CLASS_BADGE: Record<
   },
 };
 
-// Touches de la rangée de chiffres AZERTY (sans Shift) — slots d'armes 1..10.
-// Ordre : 1=& 2=é 3=" 4=' 5=( 6=- 7=è 8=_ 9=ç 10=à
-const BIND_KEYS = ["&", "é", '"', "'", "(", "-", "è", "_", "ç", "à"] as const;
+// Touches de bind = noms reconnus par la console Source/GMod.
+// La rangée de chiffres se binde par son CHIFFRE (1..0), pas par le symbole
+// AZERTY affiché (`bind &` est refusé : « & isn't a valid key »). Sur AZERTY
+// la touche "1" est physiquement celle qui montre &, donc le bind tombe au
+// bon endroit.
+const BIND_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const;
 
 /** Construit la ligne de bind d'une arme (touche selon sa position). */
 function buildBindLine(weapon: Weapon, index: number): string {
