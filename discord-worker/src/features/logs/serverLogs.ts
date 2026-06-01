@@ -243,15 +243,43 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
     }
   } catch { /* non bloquant */ }
 
+  // ── Noms : on veut un nom RECONNAISSABLE (le username Discord type
+  // "griffiths_mo0n" ne dit rien). On récupère le surnom serveur + le nom RP
+  // stocké dans le panel pour identifier facilement qui est parti.
+  const serverNick = member.nickname ?? null;
+  const globalName = member.user?.globalName ?? null;
+  const username = member.user?.username ?? null;
+
+  let panelName: string | null = null;
+  try {
+    const rec = await prisma.member.findFirst({
+      where: { discordId: member.id },
+      select: { rpName: true, discordDisplayName: true },
+    });
+    panelName = (rec?.rpName ?? rec?.discordDisplayName ?? null) || null;
+  } catch { /* non bloquant */ }
+
+  // Nom mis en avant dans le titre : surnom serveur > nom RP panel > global > username.
+  const titleName = serverNick ?? panelName ?? globalName ?? username ?? member.id;
+
   const embed = new EmbedBuilder()
     .setAuthor({
-      name:    kickedBy ? `${member.user?.tag ?? member.id} a été expulsé` : `${member.user?.tag ?? member.id} a quitté le serveur`,
+      name:    kickedBy ? `${titleName} a été expulsé` : `${titleName} a quitté le serveur`,
       iconURL: member.user?.displayAvatarURL({ size: 64 }) ?? undefined,
     })
     .setColor(kickedBy ? 0xf97316 : 0xef4444)
     .setThumbnail(member.user?.displayAvatarURL({ size: 256 }) ?? null)
-    .setDescription(`**${member.user?.tag ?? "Compte supprimé"}** · \`${member.id}\``)
+    .setDescription(
+      `**${titleName}**` +
+        (username ? ` · \`@${username}\`` : "") +
+        ` · \`${member.id}\``,
+    )
     .addFields(
+      ...(serverNick ? [{ name: "👤 Surnom serveur", value: serverNick, inline: true }] : []),
+      ...(panelName && panelName !== serverNick
+        ? [{ name: "📒 Nom RP (panel)", value: panelName, inline: true }]
+        : []),
+      ...(username ? [{ name: "💬 Username Discord", value: `\`@${username}\``, inline: true }] : []),
       { name: "🆔 Discord ID", value: `\`${member.id}\``, inline: true },
       ...(joinedTs  ? [{ name: "📅 Avait rejoint",  value: `<t:${joinedTs}:R>`, inline: true }] : []),
       ...(kickedBy  ? [{ name: "👢 Expulsé par",     value: kickedBy,            inline: true }] : []),
