@@ -248,7 +248,15 @@ export async function POST(
             roleId: targetRoleId,
             entity: "Meeting",
             entityId: meetingId,
-            meta: { actorDiscordId: userDiscordId ?? null, actorUserId: userId ?? null },
+            meta: {
+              actorDiscordId: userDiscordId ?? null,
+              actorUserId: userId ?? null,
+              // Filet de sécurité anti "double rang" : à l'application, le worker
+              // lit les rôles LIVE du membre et retire tous les autres grades
+              // (sauf la cible). Robuste même si le mirror discordRoleIds était
+              // périmé au moment du up (cause du bug constaté sur Tyson).
+              stripGradeRoleIds: Object.keys(GRADE_LABEL_BY_ROLE_ID),
+            },
           });
 
           // Collecter les anciens rôles de grade à retirer (priorité

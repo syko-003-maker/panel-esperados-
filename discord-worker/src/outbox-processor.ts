@@ -391,6 +391,32 @@ async function handleRoleMutation(
     if (!member.roles.cache.has(roleId)) {
       await member.roles.add(roleId);
     }
+
+    // ── Anti "double rang" : promotion → retirer les AUTRES rôles de grade ──
+    // On lit les rôles LIVE du membre (source de vérité) et on retire tout
+    // autre rôle de grade listé dans meta.stripGradeRoleIds (sauf la cible).
+    // Bulletproof même si le mirror DB était périmé au moment du up.
+    const stripIds = Array.isArray((job.meta as any)?.stripGradeRoleIds)
+      ? ((job.meta as any).stripGradeRoleIds as string[])
+      : null;
+    if (stripIds && stripIds.length > 0) {
+      for (const otherId of stripIds) {
+        if (!otherId || otherId === roleId) continue;
+        if (!member.roles.cache.has(otherId)) continue;
+        const otherRole =
+          member.guild.roles.cache.get(otherId) ??
+          (await member.guild.roles.fetch(otherId).catch(() => null));
+        if (otherRole && otherRole.editable) {
+          await member.roles.remove(otherId, `Promotion : retrait ancien grade`).catch((err: unknown) => {
+            log("promotion_strip_role_failed", {
+              memberDiscordId: member.id,
+              roleId: otherId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
+      }
+    }
   } else if (member.roles.cache.has(roleId)) {
     await member.roles.remove(roleId);
   }
