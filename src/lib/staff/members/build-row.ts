@@ -28,6 +28,7 @@ export function buildStaffMemberRow(
     steamId: member.steamId ?? null,
     discordId: member.discordId ?? null,
     rpName: getMemberDisplayName(member),
+    discordDisplayName: member.discordDisplayName ?? null,
     familyName: null,
     currentGradeName: grade,
     rankRoleId: member._discordGradeRoleId ?? member.rankRoleId ?? null,

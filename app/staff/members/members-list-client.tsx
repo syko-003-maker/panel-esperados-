@@ -67,6 +67,27 @@ function getAbsenceTypeLabel(type: "MEETING" | "GENERAL") {
   return type === "MEETING" ? "Absence réunion" : "Absence générale";
 }
 
+/** Normalise un nom pour comparaison (sans accents, casse, espaces/ponctuation). */
+function normalizeNameForCompare(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Renvoie le pseudo Discord SI il diffère réellement du nom RP affiché
+ * (sinon null) — pour repérer un membre qui utilise un autre nom en jeu.
+ * Ignore les simples différences d'accents/casse/espaces.
+ */
+function getDivergentDiscordName(rpName: string | null, discordName: string | null): string | null {
+  const nick = (discordName ?? "").trim();
+  if (!nick) return null;
+  if (normalizeNameForCompare(nick) === normalizeNameForCompare(rpName)) return null;
+  return nick;
+}
+
 type OnlineStatus = { connected: boolean; last_name: string | null; coins: number | null };
 
 type MembersScope = "active" | "all" | "demoted" | "non_link" | "blacklisted" | "reservists";
@@ -574,6 +595,17 @@ export default function MembersListClient() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold text-[15px] text-slate-50 leading-tight">{member.rpName ?? "—"}</p>
                       <p className="truncate text-xs text-slate-400 mt-0.5 leading-tight">{member.grade ?? "—"}</p>
+                      {(() => {
+                        const igName = getDivergentDiscordName(member.rpName, member.discordDisplayName);
+                        return igName ? (
+                          <p
+                            className="truncate text-[11px] mt-0.5 leading-tight text-amber-300/90"
+                            title={`Pseudo Discord (diffère du nom RP) : ${igName} — à vérifier en jeu`}
+                          >
+                            <span className="text-amber-400/70">Discord&nbsp;:</span> {igName}
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 

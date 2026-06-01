@@ -13,6 +13,8 @@ export type StaffMemberDto = {
   steamId: string | null;
   discordId: string | null;
   rpName: string | null;
+  /** Pseudo Discord (nickname serveur) — pour repérer un nom in-game différent. */
+  discordDisplayName: string | null;
   familyName: string | null;
   currentGradeName: string | null;
   rankRoleId: string | null;
