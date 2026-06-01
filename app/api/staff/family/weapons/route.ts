@@ -130,12 +130,15 @@ export async function POST(req: Request) {
       { status: 409 }
     );
   }
-  if (cred.ownerDiscordId !== callerDiscordId) {
+  // isChef (Chef + Sous-Chef) a déjà été vérifié plus haut → la direction
+  // famille peut gérer les armes via le cookie partagé, même sans en être
+  // propriétaire. On bloque seulement le cas improbable non-chef & non-owner.
+  if (!isChef && cred.ownerDiscordId !== callerDiscordId) {
     return NextResponse.json(
       {
         ok: false,
         error: "NOT_COOKIE_OWNER",
-        message: `Le cookie LYG appartient à ${cred.ownerName ?? cred.ownerDiscordId}. Seul lui peut gérer les armes.`,
+        message: `Le cookie LYG appartient à ${cred.ownerName ?? cred.ownerDiscordId}. Seuls lui, le Chef et le Sous-Chef famille peuvent gérer les armes.`,
       },
       { status: 403 }
     );

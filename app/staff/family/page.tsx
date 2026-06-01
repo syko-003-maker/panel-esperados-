@@ -22,8 +22,10 @@ export default async function StaffFamilyPage() {
   const canWrite = await isCurrentSessionFullWriter();
   const canManageRanks = await isCurrentSessionChefFamille();
 
-  // État du cookie LYG : si configuré + propriété du caller, on bascule la
-  // page en "mode live" — les boutons appellent LYG directement.
+  // État du cookie LYG → "mode live" si un cookie valide est configuré ET que
+  // le caller est autorisé à l'utiliser : soit son propriétaire, soit la
+  // direction famille (Chef + Sous-Chef = canManageRanks). Le Sous-Chef peut
+  // donc agir en live via le cookie partagé du Chef.
   const cookieState = await getLygCredentialState();
   const session = await auth();
   const callerDiscordId =
@@ -31,7 +33,7 @@ export default async function StaffFamilyPage() {
   const liveMode =
     cookieState.configured &&
     !cookieState.expired &&
-    cookieState.ownerDiscordId === callerDiscordId;
+    (cookieState.ownerDiscordId === callerDiscordId || canManageRanks);
 
   return (
     <PageShell

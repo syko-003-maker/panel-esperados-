@@ -10,6 +10,7 @@ import {
 } from "@/lib/lyg/family-admin";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { createAuditLog } from "@/lib/audit";
+import { isCurrentSessionChefFamille } from "@/lib/rbac";
 import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, getDiscordRolesForUser } from "@/lib/discord-roles";
 
 /**
@@ -139,12 +140,16 @@ export async function POST(req: Request) {
       { status: 409 }
     );
   }
-  if (cred.ownerDiscordId !== callerDiscordId) {
+  // Le cookie est utilisable par son propriétaire OU par la direction famille
+  // (Chef + Sous-Chef). Le Sous-Chef peut donc déclencher les actions LYG via
+  // le cookie partagé du Chef.
+  const isLeadership = await isCurrentSessionChefFamille();
+  if (cred.ownerDiscordId !== callerDiscordId && !isLeadership) {
     return NextResponse.json(
       {
         ok: false,
         error: "NOT_COOKIE_OWNER",
-        message: `Le cookie LYG appartient à ${cred.ownerName ?? cred.ownerDiscordId}. Seul lui peut déclencher des actions LYG. Sinon, mets à jour le cookie avec le tien.`,
+        message: `Le cookie LYG appartient à ${cred.ownerName ?? cred.ownerDiscordId}. Seuls lui, le Chef et le Sous-Chef famille peuvent l'utiliser.`,
       },
       { status: 403 }
     );

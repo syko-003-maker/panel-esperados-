@@ -23,10 +23,12 @@ export default async function StaffFamilyWeaponsPage() {
   const session = await auth();
   const callerDiscordId =
     (session as any)?.discordId ?? (session as any)?.user?.discordId ?? null;
+  // Live si cookie valide ET caller autorisé : propriétaire OU direction
+  // famille (Chef + Sous-Chef = canManage). Le Sous-Chef gère donc les armes.
   const liveMode =
     cookieState.configured &&
     !cookieState.expired &&
-    cookieState.ownerDiscordId === callerDiscordId;
+    (cookieState.ownerDiscordId === callerDiscordId || canManage);
 
   return (
     <PageShell
