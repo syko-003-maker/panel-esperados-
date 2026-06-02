@@ -336,6 +336,18 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember], // Pour les messages non mis en cache
 });
 
+// ── Handlers gateway : éviter le bot "zombie" silencieux ───────────────────
+// Sans ça, une erreur de socket ou une invalidation de session n'est pas
+// loggée et le bot peut rester en vie sans rien faire. Sur invalidated (token
+// révoqué / session perdue), on quitte → le superviseur (systemd) relance.
+client.on("error", (err) => console.error("[gateway] client error:", err));
+client.on("shardError", (err) => console.error("[gateway] shard error:", err));
+client.on("shardReconnecting", (id) => console.warn(`[gateway] shard ${id} reconnecting…`));
+client.on("invalidated", () => {
+  console.error("[gateway] session invalidée (token/intents ?) → exit pour relance superviseur");
+  process.exit(1);
+});
+
 client.once("ready", async () => {
   // ✅ Log environment configuration at boot
   const ingestBaseUrl = process.env.INGEST_BASE_URL || "(NOT SET)";

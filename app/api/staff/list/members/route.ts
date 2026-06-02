@@ -41,27 +41,6 @@ export async function GET(req: NextRequest) {
       type: typeof familyDbId,
     });
 
-    // DEBUG: Test raw query without any filters first
-    console.log("\n=== DEBUG: RAW COUNT TEST ===");
-    const countAll = await prisma.member.count({});
-    const countByFamilyId = await prisma.member.count({ where: { familyId: familyDbId } });
-    console.log(`Total members in DB: ${countAll}`);
-    console.log(`Members with familyId = "${familyDbId}": ${countByFamilyId}`);
-
-    // DEBUG: Test with all families to see what familyIds exist
-    const familiesInDb = await prisma.family.findMany({
-      select: { id: true, slug: true }
-    });
-    console.log(`Families in DB:`, familiesInDb);
-
-    // DEBUG: Get first 5 members to see their familyId
-    const sampleMembers = await prisma.member.findMany({
-      take: 5,
-      select: { id: true, discordId: true, rpName: true, familyId: true }
-    });
-    console.log(`Sample members (first 5):`, sampleMembers);
-    console.log("=== END DEBUG ===\n");
-
     // Build where clause
     const where: any = { familyId: familyDbId };
 
@@ -171,11 +150,7 @@ export async function GET(req: NextRequest) {
           (item.discordId ? activeByDiscordId.get(item.discordId) ?? null : null),
       }));
 
-      // Debug: Log total in DB vs returned
       const totalInDb = await prisma.member.count({ where });
-      console.log(`[Cursor] Query where:`, JSON.stringify(where, null, 2));
-      console.log(`[Cursor] Total in DB: ${totalInDb}, Returned in scope: ${scopedItems.length}`);
-      
       debug("[staff/list/members] Cursor pagination result", {
         totalInDb,
         returned: scopedItems.length,
