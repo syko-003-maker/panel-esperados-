@@ -24,7 +24,22 @@ export function getLastMembersAutoSyncAt(): number {
   return lastMembersAutoSyncAt;
 }
 
+let isRunningMembers = false;
+
 export async function runMembersAutoSyncJob(): Promise<void> {
+  if (isRunningMembers) {
+    console.warn("[MEMBERS_AUTO_SYNC] skip: run précédent encore en cours");
+    return;
+  }
+  isRunningMembers = true;
+  try {
+    await runMembersAutoSyncJobInner();
+  } finally {
+    isRunningMembers = false;
+  }
+}
+
+async function runMembersAutoSyncJobInner(): Promise<void> {
   const baseUrl = getBaseUrl();
   const secret = getSecret();
 

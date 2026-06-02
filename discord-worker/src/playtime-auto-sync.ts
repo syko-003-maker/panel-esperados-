@@ -27,7 +27,22 @@ export function getLastPlaytimeAutoSyncAt(): number {
   return lastPlaytimeAutoSyncAt;
 }
 
+let isRunningPlaytime = false;
+
 export async function runPlaytimeAutoSyncJob(): Promise<void> {
+  if (isRunningPlaytime) {
+    console.warn("[PLAYTIME_AUTO_SYNC] skip: run précédent encore en cours");
+    return;
+  }
+  isRunningPlaytime = true;
+  try {
+    await runPlaytimeAutoSyncJobInner();
+  } finally {
+    isRunningPlaytime = false;
+  }
+}
+
+async function runPlaytimeAutoSyncJobInner(): Promise<void> {
   const baseUrl = getBaseUrl();
   const secret = getSecret();
 

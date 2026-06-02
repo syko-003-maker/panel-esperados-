@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged } from "@/lib/guards";
+import { requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 
 export async function GET(req: NextRequest) {
@@ -69,7 +69,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requirePrivileged();
+  // Création/upsert de membre = écriture sensible → Chef/Sous-Chef/EM seulement.
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   try {

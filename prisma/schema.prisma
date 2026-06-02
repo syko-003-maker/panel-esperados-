@@ -47,6 +47,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -56,6 +57,8 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model SyncState {
@@ -392,6 +395,7 @@ model Recruitment {
   @@index([rpName])
   @@index([ticketKey])
   @@index([threadId])
+  @@index([createdById])
 }
 
 model RecruitmentTicket {
@@ -483,6 +487,7 @@ model Complaint {
   @@index([threadId])
   @@index([complainantId])
   @@index([targetId])
+  @@index([createdById])
 }
 
 model ComplaintTicket {
@@ -572,7 +577,7 @@ enum MeetingDecisionAction {
 
 model Meeting {
   id              String        @id @default(cuid())
-  familyId        String        @default("esperados")
+  familyId        String
   title           String?
   meetingDate     DateTime
   weekKey         String
@@ -788,13 +793,14 @@ model Absence {
   @@index([discordId])
   @@index([memberId])
   @@index([decidedById])
+  @@index([createdById])
 }
 
 model Sanction {
   id            String          @id @default(cuid())
   familyId      String
   memberId      String?
-  member        Member?         @relation("SanctionMember", fields: [memberId], references: [id])
+  member        Member?         @relation("SanctionMember", fields: [memberId], references: [id], onDelete: SetNull)
   discordId     String
   type          SanctionType
   reason        String?
@@ -848,6 +854,8 @@ model Sanction {
   @@index([discordId, status])
   @@index([expiresAt])
   @@index([complaintId])
+  @@index([createdById])
+  @@index([closedById])
 }
 
 model AbsenceJustification {
@@ -1217,6 +1225,7 @@ model StaffUser {
   role   StaffRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   @@index([familyId, roleId])
+  @@index([roleId])
   @@index([userId])
   @@unique([familyId, discordId])
 }
@@ -1235,7 +1244,7 @@ enum LinkRequestStatus {
 
 model LinkRequest {
   id                    String              @id @default(cuid())
-  familyId              String              @default("esperados")
+  familyId              String
   requesterDiscordId    String
   requesterName         String?
   steamId               String?             // SteamID64 provided by member or staff override

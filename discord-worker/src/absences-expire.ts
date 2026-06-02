@@ -32,7 +32,22 @@ export function getLastAbsencesExpireAt(): number {
   return lastAbsencesExpireAt;
 }
 
+let isRunningAbsencesExpire = false;
+
 export async function runAbsencesExpireJob(): Promise<void> {
+  if (isRunningAbsencesExpire) {
+    console.warn("[ABSENCES_EXPIRE] skip: run précédent encore en cours");
+    return;
+  }
+  isRunningAbsencesExpire = true;
+  try {
+    await runAbsencesExpireJobInner();
+  } finally {
+    isRunningAbsencesExpire = false;
+  }
+}
+
+async function runAbsencesExpireJobInner(): Promise<void> {
   const baseUrl = getBaseUrl();
   const secret = getSecret();
 

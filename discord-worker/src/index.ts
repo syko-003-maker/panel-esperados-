@@ -169,7 +169,7 @@ import {
 import { syncHierarchyMessage } from "./features/hierarchy/hierarchyMessage.js";
 import { PrismaClient } from "@prisma/client";
 import { initSentry, captureException } from "./sentry.js";
-import { startHeartbeat } from "./heartbeat.js";
+import { startHeartbeat, acquireSingleInstanceLock } from "./heartbeat.js";
 import { sendDiscordAlert } from "./alerts.js";
 
 // Init Sentry au plus tôt (no-op si SENTRY_DSN absent — n'affecte pas le boot)
@@ -1155,4 +1155,19 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
 });
 
-client.login(must("DISCORD_TOKEN"));
+// Verrou mono-instance AVANT le login : si une autre instance du worker est
+// déjà vivante, on refuse de démarrer (évite double bot / doubles pollers /
+// doubles effets de bord). systemd relancera proprement.
+void (async () => {
+  const acquired = await acquireSingleInstanceLock();
+  if (!acquired) {
+    console.error(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: "fatal",
+      event: "single_instance_lock_denied",
+      message: "Une autre instance du worker est déjà active → arrêt.",
+    }));
+    process.exit(1);
+  }
+  await client.login(must("DISCORD_TOKEN"));
+})();

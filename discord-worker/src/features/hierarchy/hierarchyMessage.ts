@@ -343,7 +343,25 @@ async function buildHierarchyEmbed(
  *
  * Idempotent : appeler plusieurs fois est sûr.
  */
+let isSyncingHierarchy = false;
+
 export async function syncHierarchyMessage(
+  client: DiscordClient,
+  prisma: PrismaClient,
+): Promise<{ updated: boolean; messageId: string | null }> {
+  if (isSyncingHierarchy) {
+    console.warn("[HIERARCHY] skip: sync précédente encore en cours");
+    return { updated: false, messageId: null };
+  }
+  isSyncingHierarchy = true;
+  try {
+    return await syncHierarchyMessageInner(client, prisma);
+  } finally {
+    isSyncingHierarchy = false;
+  }
+}
+
+async function syncHierarchyMessageInner(
   client: DiscordClient,
   prisma: PrismaClient,
 ): Promise<{ updated: boolean; messageId: string | null }> {

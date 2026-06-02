@@ -24,7 +24,22 @@ export function getLastInfosAutoSyncAt(): number {
   return lastInfosAutoSyncAt;
 }
 
+let isRunningInfos = false;
+
 export async function runInfosAutoSyncJob(): Promise<void> {
+  if (isRunningInfos) {
+    console.warn("[INFOS_AUTO_SYNC] skip: run précédent encore en cours");
+    return;
+  }
+  isRunningInfos = true;
+  try {
+    await runInfosAutoSyncJobInner();
+  } finally {
+    isRunningInfos = false;
+  }
+}
+
+async function runInfosAutoSyncJobInner(): Promise<void> {
   const baseUrl = getBaseUrl();
   const secret = getSecret();
 

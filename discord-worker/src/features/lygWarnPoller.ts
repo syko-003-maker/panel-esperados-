@@ -62,7 +62,22 @@ async function fetchWarnsFromLyg(steamId: string): Promise<{ total: number; warn
   }
 }
 
+let isPollingLygWarns = false;
+
 export async function pollLygWarns(client: Client, prisma: PrismaClient): Promise<void> {
+  if (isPollingLygWarns) {
+    console.warn("[lygWarnPoller] skip: poll précédent encore en cours");
+    return;
+  }
+  isPollingLygWarns = true;
+  try {
+    await pollLygWarnsInner(client, prisma);
+  } finally {
+    isPollingLygWarns = false;
+  }
+}
+
+async function pollLygWarnsInner(client: Client, prisma: PrismaClient): Promise<void> {
   const logsChannelId = process.env.DISCORD_LOGS_CHANNEL_ID;
   if (!LYG_TOKEN) return;
 
@@ -143,12 +158,17 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
       const warnDate = parseLygWarnDate(w.date);
       if (!warnDate) continue;
 
+      // Normalisation du type (minuscule) : la dédup repose sur la contrainte
+      // unique (steamId, warnDate, type) ; sans ça "Ban"/"ban" ou "Warn"/"warn"
+      // créent des doublons. Valeur normalisée utilisée pour findUnique ET create.
+      const warnType = String(w.type ?? "").toLowerCase().trim();
+
       const existing = await prisma.lygWarn.findUnique({
         where: {
           steamId_warnDate_type: {
             steamId: member.steamId,
             warnDate,
-            type: w.type,
+            type: warnType,
           },
         },
         select: { id: true, notified: true },
@@ -171,7 +191,7 @@ export async function pollLygWarns(client: Client, prisma: PrismaClient): Promis
             memberId: member.id,
             steamId: member.steamId,
             reason: w.reason,
-            type: w.type,
+            type: warnType,
             warnDate,
             expired: w.expired,
             notified: !isAfterJoin, // warns pré-recrutement = notifié d'emblée (= jamais notifier)

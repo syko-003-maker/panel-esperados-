@@ -24,7 +24,23 @@ export function getLastBanklogsAutoSyncAt(): number {
   return lastBanklogsAutoSyncAt;
 }
 
+let isRunningBanklogs = false;
+
 export async function runBanklogsAutoSyncJob(): Promise<void> {
+  // Garde anti-chevauchement : si le run précédent n'est pas terminé, on saute.
+  if (isRunningBanklogs) {
+    console.warn("[BANKLOGS_AUTO_SYNC] skip: run précédent encore en cours");
+    return;
+  }
+  isRunningBanklogs = true;
+  try {
+    await runBanklogsAutoSyncJobInner();
+  } finally {
+    isRunningBanklogs = false;
+  }
+}
+
+async function runBanklogsAutoSyncJobInner(): Promise<void> {
   const baseUrl = getBaseUrl();
   const secret = getSecret();
 
