@@ -55,10 +55,12 @@ next-env.d.ts
 
 /generated/prisma
 
-# Backups
+# Backups (dumps de base de données) — PAS les migrations Prisma
 backups/
 *.sql
 *.sql.gz
+# Exception : les migrations Prisma DOIVENT être versionnées (reproductibilité)
+!prisma/migrations/**/*.sql
 
 # Logs
 /var/log/panel-backup.log
