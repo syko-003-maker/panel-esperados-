@@ -73,11 +73,6 @@ discord-worker/dist/
 bin/cloudflared*
 bin/*.exe
 
-# Outils internes — ne jamais committer
-.claude/
-.cursor/
-.aider*
-
 # Fichiers accidentels
 "ystemctl show panel-esperados -p MainPID --value)"
 =
