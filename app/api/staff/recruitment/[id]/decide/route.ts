@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
-import { enqueueAssignRole, enqueueRecruitmentDecision } from "@/lib/discord/discord";
+import { enqueueAssignRole, enqueueRemoveRole, enqueueRecruitmentDecision } from "@/lib/discord/discord";
+import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
+import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
@@ -21,6 +24,25 @@ const RECRUITMENT_ACCEPT_ROLE_IDS = [
   "1408484776708673686", // Homme de rang
   "1325929087079813232", // Sans spé
 ] as const;
+
+// Rôles retirés à l'acceptation s'ils sont présents sur le membre. Cas typique :
+// ré-recrutement d'un ancien démote / réserviste / blacklist, OU un ancien grade
+// Famille à nettoyer avant d'attribuer Novato. Sans ça, le membre conserve le
+// rôle et reste classé "démoté/réserviste/<grade>" par le scope → il N'APPARAÎT
+// PAS (ou au mauvais grade) dans la liste, alors qu'il a bien sa WL.
+// (Parité avec la commande Discord /decide.)
+const NOVATO_ROLE_ID = "1408492476351778836";
+const RECRUITMENT_REMOVE_ROLE_IDS = new Set<string>([
+  DEMOTE_ROLE_ID,
+  BLACKLIST_ROLE_ID,
+  RESERVIST_ROLE_ID,
+  // Tous les anciens rôles de grade Famille (sauf Novato + les rôles attribués).
+  ...GRADE_ROLE_IDS_ORDERED.filter(
+    (rid) =>
+      rid !== NOVATO_ROLE_ID &&
+      !(RECRUITMENT_ACCEPT_ROLE_IDS as readonly string[]).includes(rid)
+  ),
+]);
 
 type Decision = (typeof DECISIONS)[number];
 
@@ -249,6 +271,46 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           })
         )
       );
+
+      // Nettoie les rôles résiduels RÉELLEMENT présents sur le membre
+      // (ré-recrutement d'un ancien démote/réserviste/blacklist, ou un ancien
+      // grade Famille). Sans ça il reste classé "démoté/<grade>" par le scope
+      // → masqué (ou au mauvais grade) dans la liste, malgré sa WL. On lit le
+      // mirror discordRoleIds pour n'enquêter que ce qu'il a (zéro job no-op).
+      const memberForCleanup = await prisma.member
+        .findFirst({
+          where: { discordId: candidateDiscordId },
+          select: { discordRoleIds: true },
+        })
+        .catch(() => null);
+      const currentRoles = Array.isArray(memberForCleanup?.discordRoleIds)
+        ? memberForCleanup!.discordRoleIds
+        : [];
+      const rolesToRemove = currentRoles.filter((rid) =>
+        RECRUITMENT_REMOVE_ROLE_IDS.has(rid)
+      );
+      if (rolesToRemove.length > 0) {
+        logInfo("recruitment_decide_cleanup_roles", {
+          requestId,
+          recruitmentId: id,
+          candidateDiscordId,
+          rolesToRemove,
+        });
+        await Promise.all(
+          rolesToRemove.map((roleId) =>
+            enqueueRemoveRole({
+              familyId: FAMILY_ID,
+              guildId: GUILD_ID,
+              userDiscordId: candidateDiscordId,
+              roleId,
+              entity: "recruitment_ticket",
+              entityId: updated.id,
+            }).catch((err) => {
+              logError("recruitment_decide_remove_role_failed", { requestId, recruitmentId: id, roleId, candidateDiscordId }, err);
+            })
+          )
+        );
+      }
     } else {
       logWarn("recruitment_decide_invalid_discord_id", { requestId, recruitmentId: id, discordId: updated.discordId ?? "vide" });
     }
