@@ -35,7 +35,7 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 
 ## 📸 Captures d'écran
 
-> _Captures à ajouter dans `docs/screenshots/` — voir le **[guide de capture](docs/screenshots/CAPTURE_GUIDE.md)** (noms de fichiers attendus + liste des écrans à shooter)._
+> Interface en thème sombre. _Captures réalisées sur données réelles (repo privé) — à anonymiser avant toute diffusion publique._
 
 <table>
   <tr>
@@ -47,8 +47,12 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
     <td width="50%"><img src="docs/screenshots/04-wl-weapons.png" alt="Armes par classe"/><br/><sub><b>Armes par classe</b> — budget de points + binds</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/05-printer-calculator.png" alt="Calculateur de rentabilité"/><br/><sub><b>Calculateur</b> — comparateur de rentabilité</sub></td>
-    <td width="50%"><img src="docs/screenshots/06-discord-bot.png" alt="Embeds du bot Discord"/><br/><sub><b>Bot Discord</b> — logs & hiérarchie automatiques</sub></td>
+    <td width="50%"><img src="docs/screenshots/05-printer-calculator.png" alt="Calculateur de rentabilité"/><br/><sub><b>Calculateur</b> — comparateur de rentabilité (revenu net, rentabilisation)</sub></td>
+    <td width="50%"><img src="docs/screenshots/06-sanctions.png" alt="Sanctions"/><br/><sub><b>Sanctions</b> — création &amp; suivi (workflow + Discord)</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/07-member-dashboard.png" alt="Espace membre"/><br/><sub><b>Espace membre</b> — solde bancaire &amp; raccourcis</sub></td>
+    <td width="50%" valign="middle"><sub>🤖 <b>Bot Discord</b> — logs enrichis, modération, anti-spam et message de hiérarchie auto-actualisé.<br/><em>(capture à ajouter depuis Discord — voir le <a href="docs/screenshots/CAPTURE_GUIDE.md">guide</a>)</em></sub></td>
   </tr>
 </table>
 
