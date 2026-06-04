@@ -76,40 +76,60 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // Couleur de l'embed selon le type — cohérent avec l'UI membre.
-    //   Warn  → amber  (avertissement)
-    //   Jail  → orange (prison)
-    //   Ban   → red    (bannissement)
+    // Type → emoji + couleur (cohérent avec l'UI membre : Warn / Jail / Ban).
     const typeLower = trimmedSanctionType.toLowerCase();
-    const embedColor =
-      typeLower === "warn" ? 0xf59e0b :
-      typeLower === "jail" ? 0xf97316 :
-      typeLower === "ban"  ? 0xdc2626 :
-      0xef4444; // fallback red
+    const TYPE_META: Record<string, { emoji: string; color: number }> = {
+      warn: { emoji: "⚠️", color: 0xf59e0b }, // amber
+      jail: { emoji: "⛓️", color: 0xf97316 }, // orange
+      ban: { emoji: "🔨", color: 0xdc2626 }, // red
+    };
+    const typeMeta = TYPE_META[typeLower];
+    const embedColor = typeMeta?.color ?? 0x6366f1; // fallback indigo (espace membre)
 
-    // Build message
+    // Discord : un field value ≤ 1024 caractères — on tronque par sécurité
+    // pour ne jamais faire rejeter l'embed (400) sur un texte trop long.
+    const clamp = (s: string, n: number): string =>
+      s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
+
+    // Le membre en mention cliquable (<@id>) plutôt qu'un ID brut illisible.
+    // Une mention dans un embed ne ping personne — c'est purement visuel.
+    const memberValue = discordId
+      ? `**${member.rpName || "Inconnu"}**\n<@${discordId}>`
+      : `**${member.rpName || "Inconnu"}**`;
+
+    const typeValue = trimmedSanctionType
+      ? `${typeMeta ? `${typeMeta.emoji} ` : ""}${trimmedSanctionType}`
+      : "—";
+
     const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-      { name: "👤 Membre", value: member.rpName || "Inconnu", inline: true },
-      { name: "🆔 Discord ID", value: discordId || "N/A", inline: true },
+      { name: "👤 Membre", value: memberValue, inline: true },
+      { name: "🏷️ Type de sanction", value: typeValue, inline: true },
     ];
 
-    if (trimmedSanctionType) {
-      // Renommé "Sanction ID" → "Type de sanction" pour matcher la nouvelle UI.
-      fields.push({ name: "🏷️ Type de sanction", value: trimmedSanctionType, inline: true });
-    }
-
     if (trimmedContext) {
-      fields.push({ name: "📋 Contexte", value: trimmedContext, inline: false });
+      fields.push({
+        name: "📋 Contexte donné",
+        value: `>>> ${clamp(trimmedContext, 1000)}`,
+        inline: false,
+      });
     }
 
-    fields.push({ name: "📝 Justification", value: trimmedReason, inline: false });
+    fields.push({
+      name: "📝 Justification du membre",
+      value: `>>> ${clamp(trimmedReason, 1000)}`,
+      inline: false,
+    });
 
+    const LOGO_URL = "https://losesperados.fr/branding/los-esperados.png";
     const embed = {
+      author: { name: "Espace membre · Los Esperados", icon_url: LOGO_URL },
       title: "⚠️ Justification de sanction",
-      description: "Demande de justification reçue depuis l'espace membre.",
+      description:
+        "Un membre a justifié une sanction reçue, directement depuis son espace.",
       color: embedColor,
       fields,
-      footer: { text: "Panel Los Esperados" },
+      thumbnail: { url: LOGO_URL },
+      footer: { text: "Panel Los Esperados", icon_url: LOGO_URL },
       timestamp: new Date().toISOString(),
     };
 
