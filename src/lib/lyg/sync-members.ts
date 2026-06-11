@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
+import { enqueueEmbedMessage } from "@/lib/discord/discord";
 import { runDiscordSnapshotResync } from "@/lib/discord-snapshot-sync";
 import { fetchMembersPage } from "@/lib/lyg/client";
 import { runControlledLygSync, type ControlledSyncResult, type SyncSource } from "@/lib/lyg/sync-runner";
@@ -35,6 +36,10 @@ async function maybeRunDiscordSnapshotResync(familyDbId: string, source: SyncSou
     return;
   }
 
+  // « Périmé » = jamais synchronisé OU synchronisé il y a plus d'un cycle.
+  // Sans le critère d'âge, le mirror Discord (discordRoleIds, pseudo) restait
+  // FIGÉ une fois tous les membres peuplés : un rôle posé à la main sur
+  // Discord (ex: Recruteur) n'était jamais détecté par le panel.
   const staleMembersCount = await prisma.member.count({
     where: {
       familyId: familyDbId,
@@ -42,6 +47,7 @@ async function maybeRunDiscordSnapshotResync(familyDbId: string, source: SyncSou
       OR: [
         { discordRolesUpdatedAt: null },
         { discordSnapshot: null },
+        { discordRolesUpdatedAt: { lt: new Date(now - DISCORD_SNAPSHOT_SYNC_INTERVAL_MS) } },
       ],
     },
   });
@@ -262,6 +268,39 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
           },
         });
         updated += 1;
+
+        // Changement de nom RP détecté côté LYG → log Discord, sinon le staff
+        // ne s'en rend jamais compte (le panel se met à jour silencieusement).
+        if (!sameRpName && existing.rpName && payload.rpName) {
+          const logsChannelId = (process.env.DISCORD_LOGS_CHANNEL_ID ?? "").trim();
+          if (logsChannelId) {
+            try {
+              await enqueueEmbedMessage({
+                familyId: familyDbId,
+                channelId: logsChannelId,
+                entity: "member_rpname_change",
+                entityId: existing.id,
+                embeds: [
+                  {
+                    title: "📝 Changement de nom RP",
+                    description: existing.discordId
+                      ? `<@${existing.discordId}> a changé de nom en jeu.`
+                      : "Un membre a changé de nom en jeu.",
+                    color: 0x38bdf8,
+                    fields: [
+                      { name: "Ancien nom", value: existing.rpName, inline: true },
+                      { name: "Nouveau nom", value: payload.rpName, inline: true },
+                    ],
+                    footer: { text: "Sync LYG — Panel Los Esperados" },
+                    timestamp: new Date().toISOString(),
+                  },
+                ],
+              });
+            } catch {
+              /* non bloquant : la sync ne doit jamais échouer pour un log */
+            }
+          }
+        }
       }
 
       await maybeRunDiscordSnapshotResync(familyDbId, source);

@@ -295,6 +295,11 @@ export async function canAccessStaffPanel(
 
   // 2. Try DB mirror (Member.discordRoleIds) — fast, no Discord API needed
   // Same source used by requireRecruiterOrAbove() → consistent, reliable
+  // `mirrorUsable` : le mirror a répondu avec des rôles exploitables. Dans ce
+  // cas on NE consulte PAS l'API live en secours — même règle que les guards
+  // de routes. Sinon le layout pouvait accorder (live) ce que les routes
+  // refusaient (mirror) → sidebar staff affichée mais "accès refusé" partout.
+  let mirrorUsable = false;
   if (discordId) {
     try {
       const { isStaffFull, isRecruiter, isEncadrant, isFullWriter } = await import("@/lib/discord-roles");
@@ -306,6 +311,7 @@ export async function canAccessStaffPanel(
       if (memberRecord && !memberRecord.discordLastError && memberRecord.discordInGuild) {
         const roles = Array.isArray(memberRecord.discordRoleIds) ? (memberRecord.discordRoleIds as string[]) : [];
         if (roles.length > 0) {
+          mirrorUsable = true;
           if (isStaffFull(roles)) {
             // Distinguer ENCADRANT (lecture seule) vs DISCORD_STAFF (EM/Chef avec write).
             // isFullWriter = EM/Chef/Sous-Chef ; pas Encadrant.
@@ -334,8 +340,10 @@ export async function canAccessStaffPanel(
     }
   }
 
-  // 3. Try live Discord roles (fallback — requires Discord API + BOT_TOKEN)
-  if (discordId) {
+  // 3. Try live Discord roles — UNIQUEMENT si le mirror était inutilisable
+  // (membre non lié / jamais synchronisé / hors guild). Même règle que les
+  // guards de routes → layout et routes prennent toujours la même décision.
+  if (discordId && !mirrorUsable) {
     try {
       const { getDiscordRolesForUser, isStaffFull, isRecruiter, isEncadrant, isFullWriter } = await import("@/lib/discord-roles");
       const roles = await getDiscordRolesForUser(discordId);

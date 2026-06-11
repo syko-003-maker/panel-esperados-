@@ -251,12 +251,16 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
   const username = member.user?.username ?? null;
 
   let panelName: string | null = null;
+  let panelSteamId: string | null = null;
+  let panelWlClass: number | null = null;
   try {
     const rec = await prisma.member.findFirst({
       where: { discordId: member.id },
-      select: { rpName: true, discordDisplayName: true },
+      select: { rpName: true, discordDisplayName: true, steamId: true, wlClass: true },
     });
     panelName = (rec?.rpName ?? rec?.discordDisplayName ?? null) || null;
+    panelSteamId = rec?.steamId ?? null;
+    panelWlClass = rec?.wlClass ?? null;
   } catch { /* non bloquant */ }
 
   // Nom mis en avant dans le titre : surnom serveur > nom RP panel > global > username.
@@ -292,6 +296,47 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
     .setTimestamp();
 
   sendLog(member.guild, embed);
+
+  // ── Hygiène panel : marquer hors-guild immédiatement (sinon le mirror
+  // discordRoleIds reste figé jusqu'à la prochaine resync horaire).
+  try {
+    await prisma.member.updateMany({
+      where: { discordId: member.id },
+      data: {
+        discordInGuild: false,
+        discordRoleIds: [],
+        discordRolesUpdatedAt: new Date(),
+      },
+    });
+  } catch { /* non bloquant */ }
+
+  // ── WL famille LYG : un membre qui quitte le Discord ne doit pas garder sa
+  // whitelist in-game. On passe par la route interne du panel (proxy cookie,
+  // audit, et remise à zéro de wlClass en DB). Échec = non bloquant, tracé
+  // côté panel dans l'audit (LYG_FAMILY_REMOVE_AUTO_*).
+  if (panelWlClass !== null && panelSteamId && /^\d{17}$/.test(panelSteamId)) {
+    try {
+      const base = String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+      const secret = String(process.env.INGEST_SECRET ?? "").trim();
+      if (base && secret) {
+        const res = await fetch(`${base}/api/internal/lyg/family-remove`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-ingest-secret": secret },
+          body: JSON.stringify({ steamId: panelSteamId, source: "discord_leave" }),
+        });
+        const data = await res.json().catch(() => null);
+        console.log("[LEAVE_WL_REMOVE]", {
+          discordId: member.id,
+          steamId: panelSteamId,
+          ok: res.ok,
+          applied: data?.applied ?? null,
+          reason: data?.reason ?? data?.error ?? null,
+        });
+      }
+    } catch (err) {
+      console.error("[LEAVE_WL_REMOVE] exception", err instanceof Error ? err.message : String(err));
+    }
+  }
 }
 
 // ─── Message supprimé ─────────────────────────────────────────────────────────
@@ -409,6 +454,31 @@ export async function onMemberUpdate(old: GuildMember | PartialGuildMember, memb
   // Si old est partial (pas en cache), ses rôles sont vides → faux positifs, on ignore
   if (old.partial) return;
   if (!("cache" in old.roles) || !("cache" in member.roles)) return;
+
+  // ── Mirror panel temps réel : tout changement de rôle/pseudo sur Discord
+  // est répercuté immédiatement dans Member.discordRoleIds + pseudo. Sans ça,
+  // un rôle posé à la main (ex: Recruteur) ou un rename n'était vu par le
+  // panel qu'à la prochaine resync horaire (voire jamais avant ce fix).
+  try {
+    const guildId = member.guild.id;
+    const oldRoleIds = [...old.roles.cache.keys()].filter((id) => id !== guildId).sort();
+    const newRoleIds = [...member.roles.cache.keys()].filter((id) => id !== guildId).sort();
+    const rolesChanged = oldRoleIds.join(",") !== newRoleIds.join(",");
+    const nickChanged = (old.nickname ?? null) !== (member.nickname ?? null);
+    if (rolesChanged || nickChanged) {
+      await prisma.member.updateMany({
+        where: { discordId: member.id },
+        data: {
+          discordInGuild: true,
+          discordRoleIds: newRoleIds,
+          discordRolesUpdatedAt: new Date(),
+          discordDisplayName:
+            member.nickname ?? member.user.globalName ?? member.user.username,
+          discordUsername: member.user.globalName ?? member.user.username,
+        },
+      });
+    }
+  } catch { /* non bloquant — la resync horaire rattrapera */ }
 
   // ── Timeout (mute Discord natif) ────────────────────────────────────────
   // communicationDisabledUntilTimestamp est posé quand un mod time-out un membre

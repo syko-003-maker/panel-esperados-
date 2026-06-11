@@ -188,6 +188,15 @@ export async function runDiscordSnapshotResync(source: "cron" | "event" | "manua
             discordRoleIds: result.inGuild ? result.roles : [],
             discordRolesUpdatedAt: now,
             discordLastError: null,
+            // Pseudo Discord : tenu à jour ici (affichage panel + divergence
+            // nom RP / nom Discord). On garde le dernier connu si le membre a
+            // quitté la guild (utile pour les logs de départ).
+            ...(result.inGuild
+              ? {
+                  discordDisplayName: result.nickname ?? result.username,
+                  discordUsername: result.username,
+                }
+              : {}),
           },
         });
 
