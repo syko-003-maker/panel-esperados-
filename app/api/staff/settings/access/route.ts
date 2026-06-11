@@ -73,12 +73,17 @@ export async function GET() {
   if (guard instanceof Response) return guard;
 
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+  // Uniquement les membres « gérables » : encore WL famille ET présents sur le
+  // Discord. Les démotés sans WL / partis du serveur n'ont rien à faire ici
+  // (vérifié : aucun détenteur d'accès n'est dans ce cas).
   const members = await prisma.member.findMany({
     where: {
       familyId: familyDbId,
       isActive: true,
       isGhost: false,
       discordId: { not: null },
+      discordInGuild: true,
+      wlClass: { not: null },
     },
     select: MEMBER_SELECT,
     orderBy: { rpName: "asc" },
