@@ -62,11 +62,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 
 | | |
 |---|---|
-| **~104 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **211** routes API | **52** modèles de données (Prisma) |
-| **71** pages | **12** migrations versionnées |
-| **107** composants React | **7** boucles de fond (sync, pollers, keep-alive) |
-| **19** fichiers de tests (Vitest) | **115** commits — **1** développeur |
+| **~105 000** lignes de TypeScript | **2** services en production (web + worker) |
+| **212** routes API | **52** modèles de données (Prisma) |
+| **72** pages | **12** migrations versionnées |
+| **108** composants React | **7** boucles de fond (sync, pollers, keep-alive) |
+| **19** fichiers de tests (Vitest) | **129** commits — **1** développeur |
 
 ---
 
@@ -102,8 +102,10 @@ flowchart LR
 - Membres (filtres, live in-game, fiches)
 - Sanctions (7 types, escalade, sync rôles)
 - Absences & réunions (workflows)
-- Plaintes, recrutement, stats, dettes
+- Plaintes : clôture **synchronisée Discord** (thread archivé + DM au plaignant)
+- Recrutement + **classement quota recruteurs**
 - Whitelists & armes in-game **en live**
+- **Autorisations** : accès panel gérés en un clic
 - Audit complet de chaque action
 
 </td><td valign="top" width="33%">
@@ -134,8 +136,9 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 
 - **🔁 Système distribué simple & résilient.** Toute action Discord (message, rôle, sanction) est écrite comme un **job en base**, consommé par le worker avec **retry, déduplication (`dedupeKey`) et idempotence (`discordAppliedAt`)**. Si Discord tombe, rien n'est perdu — les jobs sont rejoués.
 - **🔒 Verrou mono-instance** sur le worker (heartbeat + TTL en base) : impossible de traiter deux fois le même job si deux instances démarrent par erreur.
-- **🔐 Proxy chiffré vers un site tiers.** Le panel pilote en temps réel les whitelists in-game sur un site PHP externe via un **cookie de session chiffré AES-256-GCM** — avec keep-alive automatique, mode *single-user*, et validation du budget de points **côté serveur** avant chaque appel.
-- **🛡️ RBAC multi-tiers** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur) avec **guards par route serveur** et **journalisation des accès refusés** (pas seulement des accès réussis).
+- **🔐 Proxy chiffré vers un site tiers.** Le panel pilote en temps réel les whitelists in-game sur un site PHP externe via un **cookie de session chiffré AES-256-GCM** — keep-alive automatique, validation du budget de points **côté serveur**, et **réconciliation automatique** : les changements planifiés hors-ligne sont appliqués tout seuls dès que la session redevient valide.
+- **🪞 Mirror Discord temps réel.** Les rôles et pseudos Discord sont répliqués en base **à l'événement** (gateway) + resync horaire de rattrapage : poser un rôle à la main sur Discord met à jour les accès du panel en ~1 s, et l'UI ne peut jamais diverger des guards serveur (même source de vérité).
+- **🛡️ RBAC multi-tiers** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur) avec **guards par route serveur**, **journalisation des accès refusés** (pas seulement des accès réussis) et une **page d'administration des accès** (rôles appliqués sur Discord en un clic, audités).
 - **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
 - **⏱️ Pollers conscients du quota.** ~57 requêtes / 15 min vers l'API tierce — **sous le budget de 100 req/15 min** — avec backoff automatique sur HTTP 429 et garde anti-chevauchement (`isRunning`).
 - **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, DB bindée en `127.0.0.1`, secrets git-ignorés, IP masquée derrière Cloudflare.

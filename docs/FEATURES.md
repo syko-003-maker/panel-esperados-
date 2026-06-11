@@ -18,13 +18,14 @@ Gestion des membres, absences, sanctions, réunions, plaintes, whitelist famille
 | **Absences** | Workflow PENDING→APPROVED/REJECTED. Type Réunion (dimanche dédié) ou Générale (période 2 mois max). Notifications Discord à la décision |
 | **Sanctions** | 7 types (AVERT oral / léger / lourd / EM, DEMOTE, RÉSERVISTE, BLACKLIST). Réservistes sanctionnables (escalade RÉSERVISTE → DEMOTE → BLACKLIST). Sync rôles Discord (rôle Server Booster/Nitro préservé) + retrait WL famille auto sur DEMOTE/BLACKLIST + auto-clôture des avertissements quand une sanction bloquante est appliquée |
 | **Réunions** | Gestion hebdo, présences (auto + override manuel), décisions (UP / DOUBLE_UP / DEMOTE / WARN), finalisation avec sécurité grades protégés |
-| **Plaintes** | Workflow complet, historique messages, décisions tranchées |
+| **Plaintes** | Workflow complet, conversation archivée **rendue type Discord** (avatars, regroupement, mentions résolues). Clôture **synchronisée Discord** : résumé posté dans le thread + archivage + DM récapitulatif au plaignant |
 | **Banque** | Logs LYG bancaires, alertes dettes, statistiques |
-| **Recrutement** | Pipeline candidats, scoring, sync tickets Discord, auto-add WL famille à la validation |
+| **Recrutement** | Pipeline candidats, scoring, sync tickets Discord, auto-add WL famille à la validation, nettoyage des rôles résiduels (ré-recrutement d'un démoté), **classement quota recruteurs** (acceptés/refusés, taux, avatars) |
 | **Stats / Dettes** | Dashboard analytique, top recrueurs, dettes membres avec rappel groupé Discord |
 | **Activité** | Score playtime + réunions + absences, snapshots hebdo |
 | **Audit** | Trace complète de toutes les actions (qui, quoi, quand, diff) |
 | **Paramètres Système** | Configuration Discord, RBAC, templates messages, **cookie LYG admin chiffré** |
+| **Autorisations** | Gestion des accès panel par membre (Chef/Sous-Chef) : toggles État-Major / Encadrant / Recruteur appliqués **directement sur Discord** via l'outbox, resync individuelle depuis l'API live, audit de chaque changement |
 
 ### 📱 Espace Membre
 
@@ -112,7 +113,7 @@ Modérateurs (permission `Gérer les messages`) immunisés.
 | **Sous-Chef famille** | Tout | ✅ | ✅ | ✅ |
 | **État-Major** | Tout | ✅ | ❌ (Add/Remove seulement) | ❌ |
 | **Encadrant** | Tout sauf Famille WL et Cookie LYG | ❌ (lecture seule) | ❌ | ❌ |
-| **Recruteur** | Dashboard + Recrutement uniquement | — | — | — |
+| **Recruteur** | Sidebar **membre** partout + module Recrutement (même vue que le staff) | — | — | — |
 
 **Guards serveur** :
 - `requirePrivileged()` — tout staff (n'importe quel rôle)
@@ -152,6 +153,25 @@ Tentatives d'accès refusées → audit log dédié (`WRITER_DENIED`, `CHEF_FAMI
 - Boutons **Up / Down / Owner / Remove / Add** → modifs poussées en temps réel sur `families.lyg.fr` via le cookie chiffré
 - **Keep-alive** : ping du dashboard families.lyg.fr toutes les 10 min → la session PHP reste vivante indéfiniment
 - Détection auto d'expiration cookie → badge rouge + invitation à refournir
+
+### Famille WL — auto-application des changements planifiés
+- Toutes les 10 min (keep-alive cookie OK), les intents WL en attente (intent ≠ réel) sont **appliqués automatiquement** sur families.lyg.fr (add/del/up/down jusqu'à la classe cible, max 5 membres/cycle)
+- Mise à jour locale immédiate + audit `LYG_WL_AUTO_APPLIED` / `LYG_WL_AUTO_APPLY_FAILED`
+- Plus de bandeau « changement planifié à reporter » qui traîne
+
+### Départ Discord → retrait WL
+- Un membre qui quitte le serveur Discord perd automatiquement sa WL famille (hook `guildMemberRemove` → route interne → proxy LYG), mirror marqué hors-guild dans la foulée
+
+### Mirror Discord temps réel
+- Tout changement de rôle/pseudo sur Discord est répliqué en base **à l'événement** (~1 s) — y compris après un restart du worker (pas de dépendance au cache)
+- Resync complète horaire en filet de sécurité ; resync manuelle par membre depuis la page Autorisations
+- Layouts et guards lisent la **même source** → l'UI ne peut pas accorder ce que les routes refusent
+
+### Clôture de plainte
+- Trancher une plainte depuis le panel poste le résumé dans le thread Discord, **archive le thread**, envoie un **DM récapitulatif au plaignant** et trace le tout dans staff-logs (statut CLOSED inclus)
+
+### Changement de nom RP
+- Détecté par la sync LYG (3 min) → embed Discord « 📝 Changement de nom RP : Ancien → Nouveau » dans le salon logs
 
 ### Armes par classe WL
 - Page `/staff/family/weapons` lit en direct l'arsenal des 4 classes depuis `families.lyg.fr/pages/weapons.php` (catalogue + attributions + totaux parsés)
