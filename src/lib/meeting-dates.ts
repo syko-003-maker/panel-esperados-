@@ -22,10 +22,11 @@ const DAY_MS = 86_400_000;
 export function getUpcomingMeetingSundays(count = 6): { value: string; label: string }[] {
   const results: { value: string; label: string }[] = [];
 
-  // Prochain dimanche à partir d'aujourd'hui.
+  // Prochain dimanche à partir d'aujourd'hui — aujourd'hui inclus si on est
+  // dimanche : une absence doit pouvoir être posée le jour même de la réunion.
   const d = new Date();
   const daysUntilSunday = (7 - d.getDay()) % 7;
-  d.setDate(d.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday));
+  d.setDate(d.getDate() + daysUntilSunday);
 
   // On avance dimanche par dimanche et on ne garde que ceux qui tombent sur la
   // cadence bi-hebdomadaire (écart multiple de 14 jours avec l'ancre).
