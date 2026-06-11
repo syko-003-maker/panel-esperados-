@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { PageShell, SectionCard } from "@/components/staff/ui";
-import { Bot, FileText, Send, Server } from "lucide-react";
+import { Bot, FileText, KeyRound, Send, Server, ShieldCheck } from "lucide-react";
 
 export default function SettingsClient() {
   return (
@@ -12,6 +12,38 @@ export default function SettingsClient() {
       icon={Bot}
     >
       <div className="grid gap-6">
+        <SectionCard title="Accès & sécurité" description="Qui a le droit de faire quoi sur le panel (réservé Chef / Sous-Chef)">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link href="/staff/settings/access" className="block group">
+              <div className="premium-card premium-card-bordeaux p-6 rounded-lg border border-white/10 bg-white/[0.03]">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <ShieldCheck className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-foreground">Autorisations</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Donner ou retirer les accès panel (État-Major, Encadrant, Recruteur) et resynchroniser un membre
+                </p>
+              </div>
+            </Link>
+
+            <Link href="/staff/settings/lyg-cookie" className="block group">
+              <div className="premium-card premium-card-bordeaux p-6 rounded-lg border border-white/10 bg-white/[0.03]">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <KeyRound className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-foreground">Cookie LYG admin</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Session families.lyg.fr pour les actions WL en temps réel
+                </p>
+              </div>
+            </Link>
+          </div>
+        </SectionCard>
+
         <SectionCard title="Pages Discord" description="Accès aux différentes sections de gestion Discord">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link href="/staff/settings/config" className="block group">
