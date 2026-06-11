@@ -869,29 +869,89 @@ async function handleRecruitmentDecision(
 }
 
 async function handleComplaintDecision(job: OutboxJob, channel: TextChannel): Promise<void> {
-  const { decision, complaintTitle } = job.meta;
+  const { decision, complaintTitle, authorDiscordId, threadId, closedByName, summary } =
+    (job.meta ?? {}) as Record<string, string | null>;
 
   const labels = {
-    APPROVED: { label: "✅ APPROUVÉE", color: 0x10b981 },
-    REJECTED: { label: "❌ REJETÉE", color: 0xef4444 },
-    DISMISSED: { label: "🚫 CLASSÉE SANS SUITE", color: 0x6b7280 },
+    APPROVED: { label: "✅ TRAITÉE", color: 0x10b981 },
+    REJECTED: { label: "❌ NON RÉSOLUE", color: 0xef4444 },
+    DISMISSED: { label: "🚫 REFUSÉE", color: 0x6b7280 },
+    CLOSED: { label: "🔒 CLÔTURÉE", color: 0x64748b },
   };
 
   const decisionInfo = labels[decision as keyof typeof labels] || {
-    label: decision,
+    label: String(decision),
     color: 0x6b7280,
   };
 
-  const embed = new EmbedBuilder()
-    .setTitle(`📝 Décision Plainte`)
-    .setColor(decisionInfo.color)
-    .addFields(
-      { name: "Titre", value: complaintTitle || "Sans titre", inline: false },
-      { name: "Décision", value: decisionInfo.label, inline: true }
-    )
-    .setTimestamp();
+  const buildEmbed = () =>
+    new EmbedBuilder()
+      .setTitle("📝 Plainte traitée")
+      .setColor(decisionInfo.color)
+      .addFields(
+        { name: "Titre", value: complaintTitle || "Sans titre", inline: false },
+        { name: "Décision", value: decisionInfo.label, inline: true },
+        ...(closedByName
+          ? [{ name: "Traitée par", value: String(closedByName), inline: true }]
+          : []),
+        ...(summary
+          ? [{ name: "Résumé", value: String(summary).slice(0, 1024), inline: false }]
+          : [])
+      )
+      .setFooter({ text: "Panel Los Esperados" })
+      .setTimestamp();
 
-  await channel.send({ embeds: [embed] });
+  let threadClosed = false;
+  let authorNotified = false;
+
+  // 1. Résumé DANS le thread de la plainte, puis archivage (= clôture visible
+  //    côté Discord — avant ce fix le ticket restait ouvert indéfiniment).
+  if (threadId) {
+    try {
+      const thread = await channel.client.channels.fetch(String(threadId));
+      if (thread && thread.isThread()) {
+        await thread.send({ embeds: [buildEmbed()] });
+        await thread.setArchived(true, "Plainte traitée via le panel");
+        threadClosed = true;
+      }
+    } catch (err) {
+      log("complaint_thread_close_failed", { threadId, error: String(err) });
+    }
+  }
+
+  // 2. DM récapitulatif au plaignant (il n'était jamais notifié avant).
+  if (authorDiscordId) {
+    try {
+      const user = await channel.client.users.fetch(String(authorDiscordId));
+      await user.send({
+        content: "📨 Ta plainte a été traitée par l'État-Major **Los Esperados** :",
+        embeds: [buildEmbed()],
+      });
+      authorNotified = true;
+    } catch (err) {
+      // DMs fermés / utilisateur introuvable — non bloquant, tracé dans staff-logs.
+      log("complaint_author_dm_failed", { authorDiscordId, error: String(err) });
+    }
+  }
+
+  // 3. Trace staff-logs avec le statut des actions Discord.
+  const logEmbed = buildEmbed().addFields(
+    {
+      name: "Thread",
+      value: threadId ? (threadClosed ? "🔒 Archivé" : "⚠️ Échec archivage") : "—",
+      inline: true,
+    },
+    {
+      name: "Plaignant",
+      value: authorDiscordId
+        ? authorNotified
+          ? "✅ Notifié en DM"
+          : "⚠️ DM impossible (fermés ?)"
+        : "—",
+      inline: true,
+    }
+  );
+  await channel.send({ embeds: [logEmbed] });
 }
 
 async function handleSanctionApply(

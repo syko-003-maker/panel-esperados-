@@ -16,12 +16,14 @@ const STATUS_MAP: Record<string, string> = {
 
 // Mapping vers les décisions Discord (utilisées par l'outbox COMPLAINT_DECISION).
 // IN_REVIEW n'est PAS une décision finale → pas d'enqueue Discord.
-const DISCORD_DECISION_MAP: Record<string, "APPROVED" | "REJECTED" | "DISMISSED" | null> = {
+// CLOSED notifie aussi : toute clôture côté panel doit se refléter sur Discord
+// (résumé dans le thread + DM au plaignant + archivage du thread).
+const DISCORD_DECISION_MAP: Record<string, "APPROVED" | "REJECTED" | "DISMISSED" | "CLOSED" | null> = {
   TRAITE: "APPROVED",
   NON_RESOLUE: "REJECTED",
   REFUSE: "DISMISSED",
   IN_REVIEW: null,
-  CLOSED: null,
+  CLOSED: "CLOSED",
 };
 
 function pickDisplayName(values: Array<string | null | undefined>) {
@@ -132,6 +134,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       title: true,
       authorDiscordId: true,
       targetName: true,
+      discordThreadId: true,
+      threadId: true,
     },
   });
   if (!complaint) {
@@ -165,14 +169,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   });
 
   // Enqueue notification Discord pour les décisions FINALES (TRAITE/NON_RESOLUE/
-  // REFUSE). Le worker poste un embed dans le channel staff-logs résumant la
-  // décision. Sans ça, cliquer sur les boutons panel ne produisait AUCUN effet
-  // visible côté Discord (d'où le ressenti "ça ne fais rien").
+  // REFUSE/CLOSED). Le worker : poste le résumé DANS LE THREAD de la plainte,
+  // l'archive, envoie un DM récapitulatif au plaignant, et trace dans staff-logs.
+  // Sans ça, clôturer côté panel ne produisait AUCUN effet visible sur Discord
+  // (ticket laissé ouvert, plaignant jamais notifié → clôtures manuelles).
   const discordDecision = DISCORD_DECISION_MAP[decisionRaw];
   const session2 = await getSession();
   const userId = (session2?.user as any)?.id ?? (session2 as any)?.userId ?? null;
   if (discordDecision && userId) {
     try {
+      const closedByName = await resolveClosedByDisplayName(actorDiscordId, FAMILY_ID);
       await enqueueComplaintDecision({
         familyId: FAMILY_ID,
         complaintId: updated.id,
@@ -181,6 +187,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         authorDiscordId: complaint.authorDiscordId ?? null,
         targetDiscordId: complaint.targetName ?? null,
         decidedByUserId: userId,
+        threadId: complaint.discordThreadId ?? complaint.threadId ?? null,
+        closedByName,
+        summary: summaryText,
       });
     } catch (err) {
       // Non-bloquant : la décision est sauvegardée en DB, l'enqueue Discord

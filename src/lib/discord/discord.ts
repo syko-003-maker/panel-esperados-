@@ -477,15 +477,23 @@ export async function enqueueSanctionNotify(params: {
 export async function enqueueComplaintDecision(params: {
   familyId: string;
   complaintId: string;
-  decision: "APPROVED" | "REJECTED" | "DISMISSED";
+  decision: "APPROVED" | "REJECTED" | "DISMISSED" | "CLOSED";
   complaintTitle: string;
   authorDiscordId?: string | null;
   targetDiscordId?: string | null;
   decidedByUserId: string;
+  /** Thread Discord de la plainte — le worker y poste le résumé puis l'archive. */
+  threadId?: string | null;
+  /** Nom lisible du staff qui a tranché (affiché dans le résumé). */
+  closedByName?: string | null;
+  /** Résumé/conclusion rédigé par le staff — transmis au plaignant. */
+  summary?: string | null;
   client?: PrismaClientLike;
 }) {
   const jobType = "COMPLAINT_DECISION";
-  const dedupeKey = `complaint_decision:${params.complaintId}`;
+  // Le dedupe inclut la décision : une plainte rouverte puis re-tranchée doit
+  // pouvoir notifier à nouveau (l'ancien dedupe bloquait toute 2e décision).
+  const dedupeKey = `complaint_decision:${params.complaintId}:${params.decision}`;
   const client = params.client ?? prisma;
 
   const meta: Record<string, string | null> = {
@@ -495,6 +503,9 @@ export async function enqueueComplaintDecision(params: {
     authorDiscordId: params.authorDiscordId ?? null,
     targetDiscordId: params.targetDiscordId ?? null,
     decidedByUserId: params.decidedByUserId,
+    threadId: params.threadId ?? null,
+    closedByName: params.closedByName ?? null,
+    summary: params.summary ?? null,
   };
 
   return createOutboxJob(client, {
