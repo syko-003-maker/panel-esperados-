@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { RecruitmentsListClient } from "./recruitments-list-client";
 import { PageShell } from "@/components/staff/ui";
 import { Users } from "lucide-react";
@@ -37,7 +38,7 @@ export default async function RecruitmentsPage() {
   const claimedUsers = claimedUserIds.length > 0
     ? await prisma.user.findMany({
         where: { id: { in: claimedUserIds } },
-        select: { id: true, name: true },
+        select: { id: true, name: true, image: true },
       })
     : [];
   // userId → discordId via Account
@@ -53,7 +54,7 @@ export default async function RecruitmentsPage() {
   const claimedMembers = claimedDiscordIds.length > 0
     ? await prisma.member.findMany({
         where: { discordId: { in: claimedDiscordIds } },
-        select: { discordId: true, rpName: true },
+        select: { discordId: true, rpName: true, discordAvatarHash: true },
       })
     : [];
   const rpNameByDiscordId = new Map(
@@ -64,6 +65,18 @@ export default async function RecruitmentsPage() {
     const discordId = discordIdByUserId.get(u.id);
     const rpName = discordId ? rpNameByDiscordId.get(discordId) : null;
     return [u.id, rpName ?? u.name ?? null];
+  }));
+  // Avatar : on privilégie le hash Member (tenu à jour par la sync) plutôt que
+  // User.image (figé au moment du login OAuth, souvent absent/périmé).
+  const avatarHashByDiscordId = new Map(
+    claimedMembers
+      .filter((m): m is typeof m & { discordId: string } => Boolean(m.discordId))
+      .map((m) => [m.discordId, m.discordAvatarHash])
+  );
+  const userAvatarMap = new Map(claimedUsers.map((u) => {
+    const discordId = discordIdByUserId.get(u.id) ?? null;
+    const hash = discordId ? (avatarHashByDiscordId.get(discordId) ?? null) : null;
+    return [u.id, getDiscordAvatarUrl(discordId, hash) ?? u.image ?? null];
   }));
 
   const data = recruitments.map((r, i) => {
@@ -81,6 +94,7 @@ export default async function RecruitmentsPage() {
       createdAt: r.createdAt.toISOString(),
       closedAt: r.closedAt?.toISOString() ?? null,
       claimedByName: claimedById ? (userNameMap.get(claimedById) ?? null) : null,
+      claimedByAvatar: claimedById ? (userAvatarMap.get(claimedById) ?? null) : null,
     };
   });
 

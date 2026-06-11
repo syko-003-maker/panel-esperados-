@@ -5,7 +5,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileSpreadsheet, MessageSquare, Search, Trash2, UserCheck, Users } from "lucide-react";
+import { Award, FileSpreadsheet, MessageSquare, Search, Trash2, UserCheck, Users } from "lucide-react";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
 import { DataTile } from "@/components/staff/ui/DataTile";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
@@ -28,7 +28,38 @@ type Recruitment = {
   createdAt: string;
   closedAt: string | null;
   claimedByName: string | null;
+  claimedByAvatar: string | null;
 };
+
+// Avatar Discord du recruteur, avec repli sur les initiales si pas d'image / 404.
+function RecruiterAvatar({ src, name, ring }: { src: string | null; name: string; ring: string }) {
+  const [failed, setFailed] = useState(false);
+  const initials = name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+  if (src && !failed) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={src}
+        alt={name}
+        onError={() => setFailed(true)}
+        className={`h-10 w-10 shrink-0 rounded-full object-cover ring-2 ${ring}`}
+      />
+    );
+  }
+  return (
+    <div
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-xs font-bold text-slate-300 ring-2 ${ring}`}
+    >
+      {initials || "?"}
+    </div>
+  );
+}
 
 // Mapping direct statut DB → badge
 const STATUS_BADGE: Record<DbStatus, { tone: "info" | "success" | "danger" | "warning" | "neutral"; label: string }> = {
@@ -73,6 +104,34 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
         return (a.rpName || "").localeCompare(b.rpName || "");
       });
   }, [recruitments, filter, sortBy, search, deletedIds]);
+
+  // Quota recruteurs : agrégation par recruteur (claimedByName). Reste en phase
+  // avec les suppressions/refus en direct via deletedIds/refusedIds.
+  const recruiterStats = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; avatar: string | null; accepted: number; refused: number; pending: number; total: number }
+    >();
+    recruitments
+      .filter((r) => !deletedIds.has(r.id))
+      .forEach((r) => {
+        const name = r.claimedByName;
+        if (!name) return;
+        const eff: DbStatus = refusedIds.has(r.id) ? "REJECTED" : r.status;
+        const cur = map.get(name) ?? { name, avatar: r.claimedByAvatar, accepted: 0, refused: 0, pending: 0, total: 0 };
+        if (!cur.avatar && r.claimedByAvatar) cur.avatar = r.claimedByAvatar;
+        cur.total += 1;
+        if (eff === "ACCEPTED") cur.accepted += 1;
+        else if (eff === "REJECTED") cur.refused += 1;
+        else if (eff === "PENDING") cur.pending += 1;
+        map.set(name, cur);
+      });
+    return [...map.values()].sort((a, b) => b.accepted - a.accepted || b.total - a.total);
+  }, [recruitments, deletedIds, refusedIds]);
+
+  const unassignedCount = recruitments.filter(
+    (r) => !deletedIds.has(r.id) && !r.claimedByName
+  ).length;
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -151,6 +210,99 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
         <DataTile label="Acceptés"   value={accepted} tone="success" />
         <DataTile label="Total"      value={total}    tone="default" />
       </div>
+
+      <SectionCard
+        title="Quota recruteurs"
+        description="Recrutements pris en charge par recruteur, classés par recrues acceptées."
+        icon={Award}
+      >
+        {recruiterStats.length === 0 ? (
+          <EmptyState
+            icon={<Award className="h-12 w-12" />}
+            title="Aucun recruteur"
+            description="Aucun recrutement n'est encore attribué à un recruteur."
+          />
+        ) : (
+          <div className="space-y-2.5">
+            {recruiterStats.map((s, i) => {
+              const max = recruiterStats[0].accepted || 1;
+              const pct = Math.max(5, Math.round((s.accepted / max) * 100));
+              const rate = s.total > 0 ? Math.round((s.accepted / s.total) * 100) : 0;
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+              const ringColor =
+                i === 0 ? "ring-amber-400/60"
+                : i === 1 ? "ring-slate-300/50"
+                : i === 2 ? "ring-orange-500/50"
+                : "ring-white/10";
+              const rankText =
+                i === 0 ? "text-amber-300"
+                : i === 1 ? "text-slate-200"
+                : i === 2 ? "text-orange-300"
+                : "text-slate-500";
+              const barGradient =
+                i === 0
+                  ? "from-amber-300 to-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.45)]"
+                  : "from-emerald-400/80 to-amber-500/70";
+              return (
+                <div
+                  key={s.name}
+                  className={`group rounded-2xl border px-4 py-3 transition-all hover:border-amber-500/30 hover:bg-white/[0.045] ${
+                    i === 0
+                      ? "border-amber-400/25 bg-amber-400/[0.04]"
+                      : "border-white/10 bg-white/[0.025]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-6 shrink-0 text-center text-sm font-bold ${rankText}`}>
+                      {medal ?? `#${i + 1}`}
+                    </span>
+                    <RecruiterAvatar src={s.avatar} name={s.name} ring={ringColor} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold text-amber-200">{s.name}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {s.total} pris en charge · {rate}% d&apos;acceptation
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-extrabold leading-none text-emerald-300">
+                          {s.accepted}
+                        </span>
+                        <span className="text-[11px] text-slate-500">acceptés</span>
+                      </div>
+                      {(s.refused > 0 || s.pending > 0) && (
+                        <div className="flex items-center gap-1.5">
+                          {s.refused > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-500/12 px-2 py-0.5 text-[10px] font-semibold text-red-300/90">
+                              ✗ {s.refused}
+                            </span>
+                          )}
+                          {s.pending > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2 py-0.5 text-[10px] font-semibold text-sky-300/90">
+                              ⏳ {s.pending}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-black/30">
+                    <div
+                      className={`h-full rounded-full bg-gradient-to-r ${barGradient}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {unassignedCount > 0 && (
+              <p className="pt-1 text-center text-xs text-slate-500">
+                + {unassignedCount} recrutement{unassignedCount > 1 ? "s" : ""} sans recruteur attribué
+              </p>
+            )}
+          </div>
+        )}
+      </SectionCard>
 
       {deleteError && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
