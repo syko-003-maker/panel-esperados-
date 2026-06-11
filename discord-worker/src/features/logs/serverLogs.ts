@@ -451,34 +451,32 @@ function formatTimeoutDuration(untilMs: number): string {
 
 export async function onMemberUpdate(old: GuildMember | PartialGuildMember, member: GuildMember): Promise<void> {
   if (!member) return;
-  // Si old est partial (pas en cache), ses rôles sont vides → faux positifs, on ignore
-  if (old.partial) return;
-  if (!("cache" in old.roles) || !("cache" in member.roles)) return;
 
-  // ── Mirror panel temps réel : tout changement de rôle/pseudo sur Discord
-  // est répercuté immédiatement dans Member.discordRoleIds + pseudo. Sans ça,
-  // un rôle posé à la main (ex: Recruteur) ou un rename n'était vu par le
-  // panel qu'à la prochaine resync horaire (voire jamais avant ce fix).
+  // ── Mirror panel temps réel : répercuté SYSTÉMATIQUEMENT, même quand `old`
+  // est partial. Après un restart du worker, le cache membres est vide → si
+  // on attendait le guard partial ci-dessous, un rôle posé à la main pendant
+  // cette fenêtre (ex: Recruteur) n'était jamais mirroré. On n'a besoin que
+  // du NOUVEL état pour le mirror.
   try {
     const guildId = member.guild.id;
-    const oldRoleIds = [...old.roles.cache.keys()].filter((id) => id !== guildId).sort();
     const newRoleIds = [...member.roles.cache.keys()].filter((id) => id !== guildId).sort();
-    const rolesChanged = oldRoleIds.join(",") !== newRoleIds.join(",");
-    const nickChanged = (old.nickname ?? null) !== (member.nickname ?? null);
-    if (rolesChanged || nickChanged) {
-      await prisma.member.updateMany({
-        where: { discordId: member.id },
-        data: {
-          discordInGuild: true,
-          discordRoleIds: newRoleIds,
-          discordRolesUpdatedAt: new Date(),
-          discordDisplayName:
-            member.nickname ?? member.user.globalName ?? member.user.username,
-          discordUsername: member.user.globalName ?? member.user.username,
-        },
-      });
-    }
+    await prisma.member.updateMany({
+      where: { discordId: member.id },
+      data: {
+        discordInGuild: true,
+        discordRoleIds: newRoleIds,
+        discordRolesUpdatedAt: new Date(),
+        discordDisplayName:
+          member.nickname ?? member.user.globalName ?? member.user.username,
+        discordUsername: member.user.globalName ?? member.user.username,
+      },
+    });
   } catch { /* non bloquant — la resync horaire rattrapera */ }
+
+  // Si old est partial (pas en cache), ses rôles sont vides → faux positifs
+  // pour les LOGS ci-dessous ; on s'arrête là (le mirror est déjà à jour).
+  if (old.partial) return;
+  if (!("cache" in old.roles) || !("cache" in member.roles)) return;
 
   // ── Timeout (mute Discord natif) ────────────────────────────────────────
   // communicationDisabledUntilTimestamp est posé quand un mod time-out un membre
