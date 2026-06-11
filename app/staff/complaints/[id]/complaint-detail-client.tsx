@@ -80,12 +80,76 @@ const STATUS_SURFACES: Record<ComplaintStatus, string> = {
 // fmtDate centralisé via @/lib/app-date-formatter
 import { formatAppDate as fmtDate } from "@/lib/app-date-formatter";
 
-function renderArchivedMessage(content: string) {
-  return content.replace(/<@&(\d{17,20})>/g, (raw, roleId: string) => {
-    const label = DISCORD_ROLE_LABELS[roleId];
-    return label ? `@${label}` : raw;
-  });
+function renderArchivedMessage(content: string, nameById: Map<string, string>) {
+  return content
+    // Mentions de rôle → @Label connu
+    .replace(/<@&(\d{17,20})>/g, (raw, roleId: string) => {
+      const label = DISCORD_ROLE_LABELS[roleId];
+      return label ? `@${label}` : "@rôle";
+    })
+    // Mentions utilisateur → @Nom (résolu depuis les participants du thread)
+    .replace(/<@!?(\d{17,20})>/g, (raw, userId: string) => {
+      const name = nameById.get(userId);
+      return name ? `@${name}` : "@utilisateur";
+    })
+    // Émojis custom <a:name:id> → :name:
+    .replace(/<a?:(\w+):\d{17,20}>/g, ":$1:")
+    // Mentions de salon
+    .replace(/<#\d{17,20}>/g, "#salon");
 }
+
+// Couleur de pseudo stable par auteur (même esprit que Discord).
+const NAME_PALETTE = [
+  "text-rose-300",
+  "text-sky-300",
+  "text-emerald-300",
+  "text-violet-300",
+  "text-orange-300",
+  "text-teal-300",
+  "text-fuchsia-300",
+] as const;
+const AVATAR_PALETTE = [
+  "bg-rose-500/25 ring-rose-400/40",
+  "bg-sky-500/25 ring-sky-400/40",
+  "bg-emerald-500/25 ring-emerald-400/40",
+  "bg-violet-500/25 ring-violet-400/40",
+  "bg-orange-500/25 ring-orange-400/40",
+  "bg-teal-500/25 ring-teal-400/40",
+  "bg-fuchsia-500/25 ring-fuchsia-400/40",
+] as const;
+
+function paletteIndex(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h % NAME_PALETTE.length;
+}
+
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "?";
+}
+
+function ChatAvatar({ id, name, highlight }: { id: string; name: string; highlight: boolean }) {
+  const cls = highlight
+    ? "bg-amber-500/25 ring-amber-400/50"
+    : AVATAR_PALETTE[paletteIndex(id)];
+  return (
+    <div
+      className={`flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full text-[11px] font-bold text-slate-100 ring-2 ${cls}`}
+      title={name}
+    >
+      {initialsOf(name)}
+    </div>
+  );
+}
+
+const DAY_FMT = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const TIME_FMT = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
 function DataTile({ label, value, accent = "text-foreground" }: { label: string; value: ReactNode; accent?: string }) {
   return (
@@ -265,37 +329,62 @@ export default function ComplaintDetailClient({
             </div>
           </div>
 
-          {/* Details grid */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Auteur */}
-            <SectionCard title="Auteur de la plainte" description="Identité et référence du plaignant" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DataTile label="Nom RP" value={complaint.authorRpName ?? "Non renseigné"} />
-                <DataTile label="Discord" value={complaint.authorTag ?? "Non renseigné"} accent="text-slate-200" />
-                {!complaint.authorTag && complaint.authorDiscordId && (
-                  <DataTile label="ID Discord" value={<span className="font-mono text-xs text-amber-200">{complaint.authorDiscordId}</span>} />
+          {/* Dossier : plaignant + motif, compact (fini les 4 cartes empilées) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <SectionCard
+              title="Plaignant"
+              description="Identité du déposant"
+              className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)] lg:col-span-2"
+            >
+              <div className="flex items-center gap-3">
+                <ChatAvatar
+                  id={complaint.authorDiscordId ?? "0"}
+                  name={complaint.authorRpName ?? complaint.authorTag ?? "?"}
+                  highlight
+                />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-amber-200">
+                    {complaint.authorRpName ?? "Nom RP inconnu"}
+                  </div>
+                  <div className="truncate text-xs text-slate-400">
+                    {complaint.authorTag ?? complaint.authorDiscordId ?? "Discord inconnu"}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  <span className="text-xs uppercase tracking-[0.14em] text-slate-500">Cible</span>
+                  <span className="truncate font-medium text-slate-100">
+                    {complaint.targetFrom ?? complaint.targetName ?? "Non renseignée"}
+                  </span>
+                </div>
+                {complaint.authorDiscordId && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                    <span className="text-xs uppercase tracking-[0.14em] text-slate-500">ID Discord</span>
+                    <span className="font-mono text-xs text-amber-200/90">{complaint.authorDiscordId}</span>
+                  </div>
                 )}
               </div>
             </SectionCard>
 
-            {/* Cible */}
-            <SectionCard title="Cible de la plainte" description="Personne ou identifiant visé par le signalement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-              <div className="grid gap-3">
-                <DataTile label="Pseudo ou identifiant" value={complaint.targetFrom ?? complaint.targetName ?? "Non renseigné"} />
-              </div>
-            </SectionCard>
-
-            {/* Raison */}
-            <SectionCard title="Raison" description="Motif principal déclaré dans la plainte" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-              <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-4">
-                <p className="text-sm leading-7 text-slate-100">{complaint.reason ?? "Aucune raison n'a été renseignée."}</p>
-              </div>
-            </SectionCard>
-
-            {/* Détails */}
-            <SectionCard title="Détails" description="Contexte archivé et précisions utiles" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-              <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-4">
-                <p className="text-sm leading-7 text-slate-100 whitespace-pre-wrap">{complaint.details ?? "Aucun détail complémentaire n'a été archivé."}</p>
+            <SectionCard
+              title="Motif & détails"
+              description="Ce qui a été déclaré à l'ouverture"
+              className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)] lg:col-span-3"
+            >
+              <div className="space-y-4">
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">Raison</div>
+                  <p className="mt-1.5 border-l-2 border-amber-500/40 pl-3 text-sm leading-7 text-slate-100">
+                    {complaint.reason ?? "Aucune raison n'a été renseignée."}
+                  </p>
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">Détails</div>
+                  <p className="mt-1.5 whitespace-pre-wrap border-l-2 border-white/15 pl-3 text-sm leading-7 text-slate-200">
+                    {complaint.details ?? "Aucun détail complémentaire n'a été archivé."}
+                  </p>
+                </div>
               </div>
             </SectionCard>
           </div>
@@ -319,54 +408,127 @@ export default function ComplaintDetailClient({
             </SectionCard>
           )}
 
-          {/* Historique messages */}
-          {messages.length > 0 && (
-            <SectionCard title="Historique des messages archivés" description={messageCountLabel} className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-              <div className="space-y-4 max-h-[34rem] overflow-y-auto pr-1">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.discordMessageId}
-                    className="rounded-2xl border border-white/10 bg-[rgba(14,5,7,0.72)] p-4 shadow-[0_12px_30px_rgba(0,0,0,0.30)]"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-100">
-                          {msg.authorRpName ?? msg.authorNameSnapshot}
+          {/* Conversation archivée — rendu type Discord */}
+          {messages.length > 0 && (() => {
+            // Annuaire id → nom pour résoudre les mentions <@id> du thread.
+            const nameById = new Map<string, string>();
+            for (const m of messages) {
+              if (m.authorDiscordId && !nameById.has(m.authorDiscordId)) {
+                nameById.set(m.authorDiscordId, m.authorRpName ?? m.authorNameSnapshot);
+              }
+            }
+            if (complaint.authorDiscordId) {
+              nameById.set(
+                complaint.authorDiscordId,
+                complaint.authorRpName ?? complaint.authorTag ?? nameById.get(complaint.authorDiscordId) ?? "Plaignant"
+              );
+            }
+
+            return (
+              <SectionCard
+                title="Conversation archivée"
+                description={`${messageCountLabel} — copie du thread Discord`}
+                className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
+              >
+                <div className="max-h-[36rem] overflow-y-auto rounded-2xl border border-white/10 bg-[rgba(8,3,5,0.6)]">
+                  <div className="px-3 py-3 sm:px-4">
+                    {messages.map((msg, i) => {
+                      const prev = i > 0 ? messages[i - 1] : null;
+                      const cur = new Date(msg.createdAtDiscord);
+                      const newDay =
+                        !prev || new Date(prev.createdAtDiscord).toDateString() !== cur.toDateString();
+                      // Regroupé : même auteur, < 7 min d'écart, même journée.
+                      const grouped =
+                        !newDay &&
+                        !!prev &&
+                        prev.authorDiscordId === msg.authorDiscordId &&
+                        cur.getTime() - new Date(prev.createdAtDiscord).getTime() < 7 * 60_000;
+                      const isPlaignant =
+                        !!complaint.authorDiscordId && msg.authorDiscordId === complaint.authorDiscordId;
+                      const displayName = msg.authorRpName ?? msg.authorNameSnapshot;
+                      const nameCls = isPlaignant
+                        ? "text-amber-300"
+                        : NAME_PALETTE[paletteIndex(msg.authorDiscordId || displayName)];
+
+                      return (
+                        <div key={msg.discordMessageId}>
+                          {newDay && (
+                            <div className="my-3 flex items-center gap-3 first:mt-1">
+                              <div className="h-px flex-1 bg-white/10" />
+                              <span className="text-[11px] font-medium capitalize text-slate-500">
+                                {DAY_FMT.format(cur)}
+                              </span>
+                              <div className="h-px flex-1 bg-white/10" />
+                            </div>
+                          )}
+
+                          <div
+                            className={`group flex gap-3 rounded-lg px-2 py-0.5 transition-colors hover:bg-white/[0.03] ${
+                              grouped ? "mt-0" : "mt-2.5"
+                            }`}
+                          >
+                            {grouped ? (
+                              <div className="w-9 shrink-0 pt-1 text-right text-[10px] leading-5 text-slate-600 opacity-0 transition-opacity group-hover:opacity-100">
+                                {TIME_FMT.format(cur)}
+                              </div>
+                            ) : (
+                              <div className="pt-0.5">
+                                <ChatAvatar
+                                  id={msg.authorDiscordId || displayName}
+                                  name={displayName}
+                                  highlight={isPlaignant}
+                                />
+                              </div>
+                            )}
+
+                            <div className="min-w-0 flex-1">
+                              {!grouped && (
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                  <span className={`text-sm font-semibold ${nameCls}`}>{displayName}</span>
+                                  {isPlaignant && (
+                                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-300">
+                                      Plaignant
+                                    </span>
+                                  )}
+                                  {msg.authorRpName && msg.authorNameSnapshot !== msg.authorRpName && (
+                                    <span className="text-[11px] text-slate-500">@{msg.authorNameSnapshot}</span>
+                                  )}
+                                  <span className="text-[11px] text-slate-500" title={cur.toLocaleString("fr-FR")}>
+                                    {TIME_FMT.format(cur)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {msg.deletedAtDiscord ? (
+                                <p className="text-sm italic leading-6 text-red-300/70 line-through decoration-red-400/40">
+                                  {renderArchivedMessage(msg.content || "[Message vide]", nameById)}
+                                  <span className="ml-2 align-middle text-[10px] uppercase tracking-wide text-red-400/80 no-underline">
+                                    supprimé
+                                  </span>
+                                </p>
+                              ) : (
+                                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-100/95">
+                                  {renderArchivedMessage(msg.content || "[Message vide]", nameById)}
+                                  {msg.editedAtDiscord && (
+                                    <span
+                                      className="ml-1.5 text-[10px] text-slate-500"
+                                      title={`Modifié le ${new Date(msg.editedAtDiscord).toLocaleString("fr-FR")}`}
+                                    >
+                                      (modifié)
+                                    </span>
+                                  )}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        {msg.authorRpName && (
-                          <div className="mt-0.5 text-xs text-slate-500">{msg.authorNameSnapshot}</div>
-                        )}
-                        <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">Message archivé</div>
-                      </div>
-                      <div className="text-xs text-slate-400 sm:text-right">
-                        {new Date(msg.createdAtDiscord).toLocaleString("fr-FR", {
-                          year: "numeric",
-                          month: "2-digit",
-                          day: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })}
-                      </div>
-                    </div>
-                    {msg.deletedAtDiscord && (
-                      <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300/90">
-                        <em>[Message supprimé le {new Date(msg.deletedAtDiscord).toLocaleString("fr-FR")}]</em>
-                      </div>
-                    )}
-                    {msg.editedAtDiscord && !msg.deletedAtDiscord && (
-                      <div className="mt-3 text-xs text-yellow-300/70">
-                        (Modifié le {new Date(msg.editedAtDiscord).toLocaleString("fr-FR")})
-                      </div>
-                    )}
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-card/60 px-4 py-3">
-                      <p className="text-sm leading-7 text-slate-100 whitespace-pre-wrap break-words">{renderArchivedMessage(msg.content || "[Message vide]")}</p>
-                    </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </SectionCard>
-          )}
+                </div>
+              </SectionCard>
+            );
+          })()}
 
           {messagesLoading && (
             <div className="text-xs text-muted-foreground">Chargement des messages...</div>
