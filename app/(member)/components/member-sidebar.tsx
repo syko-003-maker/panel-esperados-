@@ -55,7 +55,9 @@ function getSections(isLinked: boolean, isRecruiter: boolean): NavSection[] {
   ];
 
   if (isRecruiter) {
-    sections[0].items.push({ href: "/recrutement", label: "Recrutement", Icon: Briefcase });
+    // Même page que le staff (liste + quota recruteurs) — le recruteur garde
+    // sa sidebar membre, seul le contenu est la vue staff du recrutement.
+    sections[0].items.push({ href: "/staff/recruitments", label: "Recrutement", Icon: Briefcase });
   }
 
   return sections;

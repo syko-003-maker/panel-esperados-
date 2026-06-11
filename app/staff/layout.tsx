@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { StaffLayout } from "@/components/staff-layout";
+import { MemberLayoutShell } from "../(member)/components/member-layout-shell";
 import { redirect } from "next/navigation";
 import { canAccessStaffPanel } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
@@ -239,14 +240,23 @@ export default async function Layout({
   }
 
   // Determine access level from staffUser role.
-  //   RECRUITER → sidebar réduite (Dashboard + Recrutement uniquement)
-  //   ENCADRANT → sidebar complète mais actions sensibles masquées côté UI
-  //   *         → sidebar complète + actions complètes (Chef/EM/etc.)
+  //   RECRUITER → shell MEMBRE (sidebar membre + lien Recrutement) : un
+  //               recruteur reste un membre, il garde la même navigation
+  //               partout — seul le contenu des pages /staff/recruitments
+  //               lui est ouvert. (Avant : sidebar staff réduite ≠ sidebar
+  //               membre selon la page → navigation incohérente.)
+  //   ENCADRANT → sidebar staff complète mais actions sensibles masquées
+  //   *         → sidebar staff complète + actions complètes (Chef/EM/etc.)
   const roleCode = accessCheck.staffUser?.roleCode;
-  const accessLevel: "full" | "encadrant" | "recruiter" =
-    roleCode === "RECRUITER" ? "recruiter" :
-    roleCode === "ENCADRANT" ? "encadrant" :
-    "full";
+  if (roleCode === "RECRUITER") {
+    return (
+      <MemberLayoutShell isLinked={true} isRecruiter={true}>
+        {children}
+      </MemberLayoutShell>
+    );
+  }
+  const accessLevel: "full" | "encadrant" =
+    roleCode === "ENCADRANT" ? "encadrant" : "full";
 
   // Fetch RP name from member record
   const discordId = (session as any).discordId as string | null;

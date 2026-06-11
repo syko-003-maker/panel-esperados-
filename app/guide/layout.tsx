@@ -56,14 +56,14 @@ export default async function GuideLayout({
   }
 
   // Staff connecté → shell staff avec sa sidebar.
-  //   RECRUITER → sidebar réduite (Dashboard + Recrutement) ;
+  //   RECRUITER → shell MEMBRE (un recruteur garde sa sidebar membre partout,
+  //               cohérent avec /staff/layout) — il tombe dans la branche
+  //               membre ci-dessous avec isRecruiter=true ;
   //   ENCADRANT → sidebar complète mais actions sensibles masquées ;
   //   * (EM, Chef, etc.) → sidebar complète + write access.
-  if (isStaff) {
-    const accessLevel: "full" | "encadrant" | "recruiter" =
-      staffRoleCode === "RECRUITER" ? "recruiter" :
-      staffRoleCode === "ENCADRANT" ? "encadrant" :
-      "full";
+  if (isStaff && staffRoleCode !== "RECRUITER") {
+    const accessLevel: "full" | "encadrant" =
+      staffRoleCode === "ENCADRANT" ? "encadrant" : "full";
     return <StaffLayout accessLevel={accessLevel}>{children}</StaffLayout>;
   }
 
