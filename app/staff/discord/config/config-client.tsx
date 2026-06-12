@@ -244,7 +244,8 @@ function PickerSelect({
               <p className="px-2.5 py-3 text-center text-xs text-slate-500">Aucun résultat.</p>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
