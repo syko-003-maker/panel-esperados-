@@ -15,13 +15,15 @@
  *
  * Config env (worker .env.prod) :
  *  - GEMINI_API_KEY           (requis — gratuit sur aistudio.google.com)
- *  - REGLEMENT_AI_MODEL       (défaut: gemini-2.0-flash)
+ *  - REGLEMENT_AI_MODEL       (défaut: gemini-2.5-flash)
  *  - REGLEMENT_AI_DAILY_MAX   (défaut: 150 questions/jour, sous le quota gratuit)
  */
 
 import { getRulesCorpus } from "./rulesCorpus.js";
 
-const MODEL = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.0-flash").trim();
+// gemini-2.5-flash : seul palier avec vrai quota gratuit (les 2.0 sont à
+// limit:0 depuis 2026). thinkingBudget:0 = pas de "réflexion" → plus rapide.
+const MODEL = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.5-flash").trim();
 const DAILY_MAX = Number(process.env.REGLEMENT_AI_DAILY_MAX ?? "150") || 150;
 const COOLDOWN_MS = 30_000;
 const MAX_OUTPUT_TOKENS = 1000;
@@ -96,7 +98,13 @@ async function callGemini(system: string, question: string): Promise<{ status: n
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: question }] }],
-        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.3 },
+        generationConfig: {
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          temperature: 0.3,
+          // Les modèles 2.5 "réfléchissent" par défaut (lent + consomme des
+          // tokens). Inutile pour du Q&A de règlement → désactivé.
+          ...(MODEL.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
       }),
       signal: AbortSignal.timeout(45_000),
     }
