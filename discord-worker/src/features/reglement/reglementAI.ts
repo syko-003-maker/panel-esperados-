@@ -1,27 +1,30 @@
 /**
- * /reglement — Q&A règlement LYG propulsé par l'API Claude (Anthropic).
+ * /reglement — Q&A règlement LYG propulsé par Google Gemini (offre GRATUITE).
  *
- * Conception coût/perf :
- *  - Le corpus (~20-25k tokens) part dans le system prompt avec
- *    cache_control ttl 1h → relu depuis le cache à ~10 % du prix. Le system
- *    est STABLE (aucun timestamp/ID dedans) pour ne jamais invalider le cache.
- *  - max_tokens borné, réponses courtes exigées par le prompt.
+ * Pourquoi Gemini : clé API gratuite via Google AI Studio (aistudio.google.com),
+ * sans carte bancaire. Le quota gratuit (requêtes/jour) couvre largement
+ * l'usage d'une famille — et notre plafond quotidien reste en dessous.
+ *
+ * Conception :
+ *  - Le corpus (~50k caractères) part dans systemInstruction à chaque appel.
+ *    C'est gratuit, donc pas de stratégie de cache à gérer (les modèles 2.5
+ *    ont un cache implicite automatique de toute façon).
+ *  - Appel REST natif (fetch) — pas de SDK, clé passée en HEADER
+ *    (x-goog-api-key), jamais en query string.
  *  - Cooldown par utilisateur + plafond quotidien global.
  *
  * Config env (worker .env.prod) :
- *  - ANTHROPIC_API_KEY        (requis pour activer la commande)
- *  - REGLEMENT_AI_MODEL       (défaut: claude-opus-4-8 ; mettre
- *                              claude-haiku-4-5 pour diviser le coût par ~5)
- *  - REGLEMENT_AI_DAILY_MAX   (défaut: 200 questions/jour)
+ *  - GEMINI_API_KEY           (requis — gratuit sur aistudio.google.com)
+ *  - REGLEMENT_AI_MODEL       (défaut: gemini-2.0-flash)
+ *  - REGLEMENT_AI_DAILY_MAX   (défaut: 150 questions/jour, sous le quota gratuit)
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { getRulesCorpus } from "./rulesCorpus.js";
 
-const MODEL = (process.env.REGLEMENT_AI_MODEL ?? "claude-opus-4-8").trim();
-const DAILY_MAX = Number(process.env.REGLEMENT_AI_DAILY_MAX ?? "200") || 200;
+const MODEL = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.0-flash").trim();
+const DAILY_MAX = Number(process.env.REGLEMENT_AI_DAILY_MAX ?? "150") || 150;
 const COOLDOWN_MS = 30_000;
-const MAX_TOKENS = 1000;
+const MAX_OUTPUT_TOKENS = 1000;
 
 const SYSTEM_PERSONA = `Tu es l'assistant règlement officiel de la famille Los Esperados sur le serveur Garry's Mod DarkRP français LiveYourGame (LYG).
 
@@ -61,18 +64,45 @@ function checkLimits(userId: string): { ok: true } | { ok: false; reason: string
   return { ok: true };
 }
 
-// ── Client (lazy : ne crashe pas le worker si la clé manque) ────────────────
-let client: Anthropic | null = null;
-
 export function isReglementAIConfigured(): boolean {
-  return Boolean((process.env.ANTHROPIC_API_KEY ?? "").trim());
+  return Boolean((process.env.GEMINI_API_KEY ?? "").trim());
 }
 
-function getClient(): Anthropic {
-  if (!client) {
-    client = new Anthropic({ timeout: 45_000, maxRetries: 2 });
-  }
-  return client;
+// ── Appel Gemini (REST v1beta generateContent) ──────────────────────────────
+
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
+  }>;
+  promptFeedback?: { blockReason?: string };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    cachedContentTokenCount?: number;
+  };
+};
+
+async function callGemini(system: string, question: string): Promise<{ status: number; data: GeminiResponse | null }> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        // Clé en header, jamais en query string (logs/proxies).
+        "x-goog-api-key": (process.env.GEMINI_API_KEY ?? "").trim(),
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: question }] }],
+        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.3 },
+      }),
+      signal: AbortSignal.timeout(45_000),
+    }
+  );
+  const data = (await res.json().catch(() => null)) as GeminiResponse | null;
+  return { status: res.status, data };
 }
 
 export type ReglementAnswer =
@@ -99,58 +129,54 @@ export async function askReglement(userId: string, question: string): Promise<Re
   dailyCount += 1;
 
   try {
-    const response = await getClient().messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: [
-        { type: "text", text: SYSTEM_PERSONA },
-        {
-          type: "text",
-          text: `RÈGLEMENT COMPLET LYG :\n\n${corpus}`,
-          // Le corpus est volumineux et stable → cache 1h : les questions
-          // suivantes relisent le prefix à ~10 % du prix.
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [{ role: "user", content: question.slice(0, 500) }],
-    });
+    const system = `${SYSTEM_PERSONA}\n\nRÈGLEMENT COMPLET LYG :\n\n${corpus}`;
+    const { status, data } = await callGemini(system, question.slice(0, 500));
 
-    const answer = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
+    if (status === 429) {
+      return { ok: false, error: "Le quota gratuit de l'IA est momentanément atteint — réessaie dans une minute (ou demain si ça persiste)." };
+    }
+    if (status === 400 || status === 401 || status === 403) {
+      console.error("[reglement] clé/requête refusée par Gemini:", status, JSON.stringify(data).slice(0, 300));
+      return { ok: false, error: "Clé API invalide ou refusée — préviens le Chef de famille." };
+    }
+    if (status >= 500) {
+      return { ok: false, error: "Le service IA est indisponible — réessaie dans quelques minutes." };
+    }
+
+    if (data?.promptFeedback?.blockReason) {
+      return { ok: false, error: "Ta question a été bloquée par les filtres de sécurité de l'IA — reformule-la." };
+    }
+
+    const answer = (data?.candidates?.[0]?.content?.parts ?? [])
+      .map((p) => p.text ?? "")
+      .join("")
       .trim();
 
-    if (!answer) return { ok: false, error: "L'IA n'a pas pu formuler de réponse — réessaie en reformulant." };
+    if (!answer) {
+      console.warn("[reglement] réponse vide:", JSON.stringify(data).slice(0, 300));
+      return { ok: false, error: "L'IA n'a pas pu formuler de réponse — réessaie en reformulant." };
+    }
 
-    const cached = (response.usage.cache_read_input_tokens ?? 0) > 0;
+    const usage = data?.usageMetadata ?? {};
     console.log(
       JSON.stringify({
         event: "reglement_ai_answer",
         userId,
         model: MODEL,
-        in: response.usage.input_tokens,
-        cacheRead: response.usage.cache_read_input_tokens,
-        cacheWrite: response.usage.cache_creation_input_tokens,
-        out: response.usage.output_tokens,
+        in: usage.promptTokenCount ?? null,
+        cacheRead: usage.cachedContentTokenCount ?? 0,
+        out: usage.candidatesTokenCount ?? null,
         dailyCount,
       })
     );
 
-    return { ok: true, answer, cached };
+    return { ok: true, answer, cached: (usage.cachedContentTokenCount ?? 0) > 0 };
   } catch (err) {
-    if (err instanceof Anthropic.RateLimitError) {
-      return { ok: false, error: "L'IA est très sollicitée en ce moment — réessaie dans une minute." };
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/abort|timeout/i.test(msg)) {
+      return { ok: false, error: "L'IA met trop de temps à répondre — réessaie dans un instant." };
     }
-    if (err instanceof Anthropic.AuthenticationError) {
-      console.error("[reglement] clé API invalide");
-      return { ok: false, error: "Clé API invalide — préviens le Chef de famille." };
-    }
-    if (err instanceof Anthropic.APIError) {
-      console.error(`[reglement] API error ${err.status}:`, err.message);
-      return { ok: false, error: "Le service IA a renvoyé une erreur — réessaie dans quelques minutes." };
-    }
-    console.error("[reglement] exception:", err instanceof Error ? err.message : String(err));
+    console.error("[reglement] exception:", msg);
     return { ok: false, error: "Erreur inattendue — réessaie plus tard." };
   }
 }
