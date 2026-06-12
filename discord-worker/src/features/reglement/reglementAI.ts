@@ -38,6 +38,7 @@ Format de réponse OBLIGATOIRE :
 3. Termine par "📖 Règle :" suivi de la section et de la règle exacte qui s'applique (cite-la ou paraphrase-la fidèlement, avec son numéro si elle en a un).
 
 Règles de conduite :
+- Tu disposes des derniers échanges avec ce joueur. Si sa nouvelle question est une précision ou une suite de la discussion ("et si…", "dans ce cas…", "même question mais…"), réponds dans le CONTEXTE de la scène discutée juste avant — ne repars pas de zéro.
 - Ne JAMAIS inventer une règle. Si le règlement fourni ne couvre pas la question, dis-le franchement ("Le règlement ne précise rien là-dessus") et conseille de demander à un staff LYG ou à l'État-Major de la famille.
 - Si la question mélange plusieurs cas, traite chaque cas séparément et brièvement.
 - Si la question n'a aucun rapport avec le règlement ou le jeu, réponds en UNE phrase polie que tu ne réponds qu'aux questions de règlement.
@@ -66,6 +67,33 @@ function checkLimits(userId: string): { ok: true } | { ok: false; reason: string
   return { ok: true };
 }
 
+// ── Mémoire de conversation ─────────────────────────────────────────────────
+// Par joueur (clé = discordId, commune Discord + site) : les 3 derniers
+// échanges sont renvoyés à l'IA pour que "et si… ?" soit compris comme une
+// suite de la scène précédente. Expire après 15 min d'inactivité.
+const CONV_TTL_MS = 15 * 60_000;
+const CONV_MAX_TURNS = 3;
+const conversations = new Map<string, { updatedAt: number; turns: Array<{ q: string; a: string }> }>();
+
+function getRecentTurns(userId: string): Array<{ q: string; a: string }> {
+  const conv = conversations.get(userId);
+  if (!conv || Date.now() - conv.updatedAt > CONV_TTL_MS) {
+    conversations.delete(userId);
+    return [];
+  }
+  return conv.turns;
+}
+
+function rememberTurn(userId: string, q: string, a: string): void {
+  const turns = [...getRecentTurns(userId), { q, a }].slice(-CONV_MAX_TURNS);
+  conversations.set(userId, { updatedAt: Date.now(), turns });
+  // Petit ménage pour ne pas accumuler des conversations mortes.
+  if (conversations.size > 500) {
+    const cutoff = Date.now() - CONV_TTL_MS;
+    for (const [k, v] of conversations) if (v.updatedAt < cutoff) conversations.delete(k);
+  }
+}
+
 export function isReglementAIConfigured(): boolean {
   return Boolean((process.env.GEMINI_API_KEY ?? "").trim());
 }
@@ -85,7 +113,9 @@ type GeminiResponse = {
   };
 };
 
-async function callGemini(system: string, question: string): Promise<{ status: number; data: GeminiResponse | null }> {
+type ChatTurn = { role: "user" | "model"; parts: Array<{ text: string }> };
+
+async function callGemini(system: string, contents: ChatTurn[]): Promise<{ status: number; data: GeminiResponse | null }> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
     {
@@ -97,7 +127,7 @@ async function callGemini(system: string, question: string): Promise<{ status: n
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts: [{ text: question }] }],
+        contents,
         generationConfig: {
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           temperature: 0.3,
@@ -138,7 +168,14 @@ export async function askReglement(userId: string, question: string): Promise<Re
 
   try {
     const system = `${SYSTEM_PERSONA}\n\nRÈGLEMENT COMPLET LYG :\n\n${corpus}`;
-    const { status, data } = await callGemini(system, question.slice(0, 500));
+    const trimmedQuestion = question.slice(0, 500);
+    const contents: ChatTurn[] = [];
+    for (const t of getRecentTurns(userId)) {
+      contents.push({ role: "user", parts: [{ text: t.q }] });
+      contents.push({ role: "model", parts: [{ text: t.a }] });
+    }
+    contents.push({ role: "user", parts: [{ text: trimmedQuestion }] });
+    const { status, data } = await callGemini(system, contents);
 
     if (status === 429) {
       return { ok: false, error: "Le quota gratuit de l'IA est momentanément atteint — réessaie dans une minute (ou demain si ça persiste)." };
@@ -164,6 +201,8 @@ export async function askReglement(userId: string, question: string): Promise<Re
       console.warn("[reglement] réponse vide:", JSON.stringify(data).slice(0, 300));
       return { ok: false, error: "L'IA n'a pas pu formuler de réponse — réessaie en reformulant." };
     }
+
+    rememberTurn(userId, trimmedQuestion, answer);
 
     const usage = data?.usageMetadata ?? {};
     console.log(
