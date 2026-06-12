@@ -1,15 +1,23 @@
 "use client";
 
 import { getErrorMessage } from "@/lib/errors";
-
-import { useEffect, useState, useRef } from "react";
-import { Search, Copy, RotateCcw, Save, AlertCircle, Eye, FileText, Zap, CheckCircle2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef, useState } from "react";
+import {
+  AlertCircle,
+  Banknote,
+  CalendarClock,
+  CalendarOff,
+  CheckCircle2,
+  Inbox,
+  MessageSquareWarning,
+  MessagesSquare,
+  Pencil,
+  RotateCcw,
+  Save,
+  Scale,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge-new";
-import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/staff/ui/PageShell";
 
 type Template = {
@@ -23,50 +31,71 @@ type Template = {
   updatedAt: string;
 };
 
-// Traduction des clés techniques en labels lisibles pour la sidebar
+/* ──────────────────────────────────────────────────────────────────────
+ * Noms humains des modèles — aucune clé technique n'est affichée à l'écran.
+ * ────────────────────────────────────────────────────────────────────── */
 const KEY_LABELS: Record<string, string> = {
-  "recruitment.submitted":          "Recrutement soumis",
-  "recruitment.accepted":           "Recrutement accepté",
-  "recruitment.rejected":           "Recrutement refusé",
-  "complaint.created":              "Plainte créée",
-  "sanction.created":               "Sanction créée",
+  "recruitment.submitted":          "Candidature reçue",
+  "recruitment.accepted":           "Candidature acceptée",
+  "recruitment.rejected":           "Candidature refusée",
+  "complaint.created":              "Nouvelle plainte",
+  "sanction.created":               "Sanction appliquée",
   "absence.requested":              "Absence demandée",
   "absence.approved":               "Absence approuvée",
-  "ME_ABSENCE_CREATED":             "Absence créée (membre)",
-  "ME_ABSENCE_JUSTIFIED":           "Absence justifiée (membre)",
-  "absence_justification_created":  "Justificatif d'absence",
-  "sanction_justification_created": "Justificatif de sanction",
-  "ME_SANCTION_JUSTIFIED":          "Sanction justifiée (membre)",
+  "ME_ABSENCE_CREATED":             "Absence déclarée par un membre",
+  "ME_ABSENCE_JUSTIFIED":           "Absence justifiée par un membre",
+  "absence_justification_created":  "Justificatif d'absence déposé",
+  "sanction_justification_created": "Justificatif de sanction déposé",
+  "ME_SANCTION_JUSTIFIED":          "Sanction justifiée par un membre",
   "BANK_DEBT_PING_SINGLE":          "Rappel de dette",
   "meeting.scheduled":              "Réunion programmée",
 };
 
 function getKeyLabel(key: string): string {
-  return KEY_LABELS[key] ?? key;
+  return KEY_LABELS[key] ?? "Message automatique";
 }
 
-// Où chaque message part — affiché dans l'en-tête de l'éditeur pour qu'on
-// sache CE QU'ON ÉDITE sans devoir deviner depuis la clé technique.
+/* Quand et où chaque message part — la phrase affichée sous le nom. */
 const KEY_DESTINATIONS: Record<string, string> = {
-  "recruitment.submitted":          "Salon recrutement — à la réception d'une candidature",
-  "recruitment.accepted":           "Candidat (DM) + salon recrutement — quand la candidature est acceptée",
-  "recruitment.rejected":           "Candidat (DM) + salon recrutement — quand la candidature est refusée",
-  "complaint.created":              "Salon plaintes — à l'ouverture d'un ticket",
-  "sanction.created":               "Salon sanctions — quand une sanction est appliquée",
-  "absence.requested":              "Salon absences — quand un membre demande une absence",
-  "absence.approved":               "Salon absences — quand une absence est validée",
-  "ME_ABSENCE_CREATED":             "Salon absences — justificatif déposé depuis l'espace membre",
-  "ME_ABSENCE_JUSTIFIED":           "Salon absences — justificatif déposé depuis l'espace membre",
-  "absence_justification_created":  "Salon absences — justificatif déposé depuis l'espace membre",
-  "sanction_justification_created": "Salon sanctions — justificatif déposé depuis l'espace membre",
-  "ME_SANCTION_JUSTIFIED":          "Salon sanctions — justificatif déposé depuis l'espace membre",
-  "BANK_DEBT_PING_SINGLE":          "Membre endetté (ping) — rappel automatique de dette",
-  "meeting.scheduled":              "Salon réunions — annonce d'une réunion programmée",
+  "recruitment.submitted":          "Envoyé à la réception d'une candidature, dans le salon recrutement.",
+  "recruitment.accepted":           "Envoyé quand une candidature est acceptée, au candidat (DM) et dans le salon recrutement.",
+  "recruitment.rejected":           "Envoyé quand une candidature est refusée, au candidat (DM) et dans le salon recrutement.",
+  "complaint.created":              "Envoyé à l'ouverture d'une plainte, dans le salon plaintes.",
+  "sanction.created":               "Envoyé quand une sanction est appliquée, dans le salon sanctions.",
+  "absence.requested":              "Envoyé quand un membre demande une absence, dans le salon absences.",
+  "absence.approved":               "Envoyé quand une absence est validée, dans le salon absences.",
+  "ME_ABSENCE_CREATED":             "Envoyé quand un membre déclare une absence depuis son espace, dans le salon absences.",
+  "ME_ABSENCE_JUSTIFIED":           "Envoyé quand un membre justifie une absence depuis son espace, dans le salon absences.",
+  "absence_justification_created":  "Envoyé quand un justificatif d'absence est déposé, dans le salon absences.",
+  "sanction_justification_created": "Envoyé quand un justificatif de sanction est déposé, dans le salon sanctions.",
+  "ME_SANCTION_JUSTIFIED":          "Envoyé quand un membre justifie une sanction depuis son espace, dans le salon sanctions.",
+  "BANK_DEBT_PING_SINGLE":          "Envoyé automatiquement au membre endetté (avec ping), dans le salon alertes banque.",
+  "meeting.scheduled":              "Envoyé quand une réunion est programmée, dans le salon réunions.",
 };
 
-// Variables réellement disponibles PAR template. Avant : les 16 variables
-// étaient proposées partout → on insérait {{startAt}} dans une sanction et
-// rien ne se remplissait. Clé absente = toutes (prudence).
+/* ──────────────────────────────────────────────────────────────────────
+ * Variables : label français (la puce) + valeur d'exemple (l'aperçu).
+ * ────────────────────────────────────────────────────────────────────── */
+const VAR_INFO: Record<string, { label: string; fake: string }> = {
+  "{{mention}}":                { label: "Mention du joueur",   fake: "@JuanMorales" },
+  "{{rpName}}":                 { label: "Nom RP",              fake: "Juan Morales" },
+  "{{discordId}}":              { label: "ID Discord",          fake: "123456789012345678" },
+  "{{steamId}}":                { label: "SteamID",             fake: "76561198000000000" },
+  "{{familyName}}":             { label: "Nom de la famille",   fake: "Los Esperados" },
+  "{{age}}":                    { label: "Âge",                 fake: "23" },
+  "{{grade}}":                  { label: "Grade",               fake: "Soldado" },
+  "{{type}}":                   { label: "Type de sanction",    fake: "Avertissement" },
+  "{{reason}}":                 { label: "Motif",               fake: "Non-respect du règlement" },
+  "{{points}}":                 { label: "Points",              fake: "5" },
+  "{{startAt}}":                { label: "Date de début",       fake: "01/07/2026" },
+  "{{endAt}}":                  { label: "Date de fin",         fake: "15/07/2026" },
+  "{{scheduledAt}}":            { label: "Date et heure",       fake: "14/06/2026 21:00" },
+  "{{title}}":                  { label: "Titre",               fake: "Réunion du dimanche" },
+  "{{message}}":                { label: "Message du membre",   fake: "Je ne pouvais pas être présent." },
+  "{{deficitAmountFormatted}}": { label: "Montant de la dette", fake: "25 000 €" },
+};
+
+/* Variables réellement disponibles PAR modèle (clé absente = toutes, prudence). */
 const COMMON_VARS = ["{{mention}}", "{{rpName}}", "{{discordId}}", "{{familyName}}"];
 const VARS_BY_KEY: Record<string, string[]> = {
   "recruitment.submitted":          [...COMMON_VARS, "{{age}}", "{{steamId}}"],
@@ -85,277 +114,188 @@ const VARS_BY_KEY: Record<string, string[]> = {
   "meeting.scheduled":              ["{{mention}}", "{{title}}", "{{scheduledAt}}", "{{familyName}}"],
 };
 
-// Exemples pertinents par préfixe de clé (un exemple de dette n'a rien à
-// faire sur un template de réunion).
-const EXAMPLES_BY_PREFIX: Record<string, string[]> = {
-  "recruitment.accepted": ["✅ Recrutement accepté"],
-  "recruitment.rejected": ["❌ Recrutement refusé"],
-  "absence":              ["📅 Absence approuvée"],
-  "ME_ABSENCE":           ["📅 Absence approuvée"],
-  "sanction":             ["⚠️ Sanction appliquée"],
-  "ME_SANCTION":          ["⚠️ Sanction appliquée"],
-  "BANK_DEBT":            ["💰 Rappel de dette"],
+/* Contenus par défaut (miroir du backend) — pour le badge "Personnalisé"
+ * et le bouton "Rétablir le défaut". */
+const DEFAULT_CONTENTS: Record<string, string> = {
+  "recruitment.submitted":          "📥 Nouvelle candidature reçue\n\n👤 {{rpName}} (<@{{discordId}}>)\n🎮 Steam : {{steamId}}\n🎂 Âge : {{age}}",
+  "recruitment.accepted":           "✅ Candidature acceptée\n\n👤 {{rpName}} (<@{{discordId}}>)\n🎮 Steam : {{steamId}}\n\nBienvenue dans la famille !",
+  "recruitment.rejected":           "❌ Candidature refusée\n\n👤 {{rpName}} (<@{{discordId}}>)\n🎮 Steam : {{steamId}}",
+  "complaint.created":              "📋 Nouvelle plainte — {{title}}\n\nPlaignant : <@{{complainantId}}>\nContre : <@{{targetId}}>",
+  "sanction.created":               "⚠️ Sanction appliquée — {{type}}\n\nMembre : <@{{discordId}}>\nMotif : {{reason}}\nPoints : {{points}}",
+  "absence.requested":              "📅 Absence déclarée\n\nMembre : <@{{discordId}}>\nDu {{startAt}} au {{endAt}}",
+  "ME_ABSENCE_CREATED":             "📅 Absence enregistrée\n\nMembre : <@{{discordId}}>\nDu {{startAt}} au {{endAt}}",
+  "absence_justification_created":  "📎 Justificatif d'absence soumis\n\nMembre : <@{{discordId}}>",
+  "ME_ABSENCE_JUSTIFIED":           "📎 Justificatif d'absence soumis\n\nMembre : <@{{discordId}}>\nMessage : {{message}}",
+  "sanction_justification_created": "📎 Justificatif de sanction soumis\n\nMembre : <@{{discordId}}>",
+  "ME_SANCTION_JUSTIFIED":          "📎 Justificatif de sanction soumis\n\nMembre : <@{{discordId}}>\nMessage : {{message}}",
+  "BANK_DEBT_PING_SINGLE":          "{{mention}} tu es actuellement en déficit de **{{deficitAmountFormatted}}** sur le compte bancaire de la famille.\n\nMerci de régulariser ta situation dans les plus brefs délais. En cas de problème, contacte un État-Major.",
+  "absence.approved":               "✅ Absence approuvée\n\nMembre : <@{{discordId}}>\nDu {{startAt}} au {{endAt}}",
+  "meeting.scheduled":              "📅 Réunion programmée — {{title}}\n\nRendez-vous le {{scheduledAt}}",
 };
 
-// Variables réellement utilisées dans les templates backend
-// label = ce que l'utilisateur voit sur le bouton
-// key   = ce qui est inséré dans le contenu (et remplacé côté backend)
-// fake  = valeur simulée dans la prévisualisation
-const VARIABLE_DEFINITIONS = [
-  { key: "{{mention}}",               label: "Mention Discord",      fake: "@JuanMorales",                desc: "Ping le membre sur Discord"              },
-  { key: "{{rpName}}",                label: "Nom RP",               fake: "Juan Morales",                desc: "Nom de rôle-play du membre"              },
-  { key: "{{discordId}}",             label: "ID Discord",           fake: "123456789012345678",          desc: "Identifiant Discord numérique"           },
-  { key: "{{steamId}}",               label: "SteamID",              fake: "76561198000000000",           desc: "Identifiant Steam du membre"             },
-  { key: "{{grade}}",                 label: "Grade",                fake: "Soldado",                    desc: "Grade actuel du membre"                  },
-  { key: "{{age}}",                   label: "Âge",                  fake: "23",                         desc: "Âge du candidat"                         },
-  { key: "{{type}}",                  label: "Type de sanction",     fake: "AVERTISSEMENT",              desc: "Type de la sanction"                     },
-  { key: "{{reason}}",                label: "Motif",                fake: "Non-respect du règlement",   desc: "Motif de la sanction ou du refus"        },
-  { key: "{{points}}",                label: "Points",               fake: "5",                          desc: "Nombre de points de la sanction"         },
-  { key: "{{deficitAmountFormatted}}", label: "Montant du déficit",  fake: "25 000 €",                   desc: "Montant formaté du déficit bancaire"     },
-  { key: "{{startAt}}",               label: "Date de début",        fake: "01/04/2026",                 desc: "Date de début de l'absence"              },
-  { key: "{{endAt}}",                 label: "Date de fin",          fake: "30/04/2026",                 desc: "Date de fin de l'absence"                },
-  { key: "{{scheduledAt}}",           label: "Date prévue",          fake: "06/04/2026 21:00",           desc: "Date et heure de la réunion"             },
-  { key: "{{title}}",                 label: "Titre",                fake: "Réunion du dimanche",        desc: "Titre de la réunion ou de la plainte"    },
-  { key: "{{message}}",               label: "Message",              fake: "Je ne pouvais pas être présent.", desc: "Contenu du justificatif"            },
-  { key: "{{familyName}}",            label: "Nom de la famille",    fake: "Los Esperados",              desc: "Nom de la famille"                       },
+/* ──────────────────────────────────────────────────────────────────────
+ * Catégories — déduites des préfixes de clés. Ordre d'affichage fixe.
+ * ────────────────────────────────────────────────────────────────────── */
+type Category = {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  match: (key: string) => boolean;
+};
+
+const CATEGORIES: Category[] = [
+  { id: "recruitment", label: "Recrutement", icon: Inbox,                 match: (k) => k.startsWith("recruitment.") },
+  { id: "complaint",   label: "Plaintes",    icon: MessageSquareWarning,  match: (k) => k.startsWith("complaint.") },
+  { id: "sanction",    label: "Sanctions",   icon: Scale,                 match: (k) => k.startsWith("sanction") || k.startsWith("ME_SANCTION") },
+  { id: "absence",     label: "Absences",    icon: CalendarOff,           match: (k) => k.startsWith("absence") || k.startsWith("ME_ABSENCE") },
+  { id: "meeting",     label: "Réunions",    icon: CalendarClock,         match: (k) => k.startsWith("meeting.") },
+  { id: "bank",        label: "Banque",      icon: Banknote,              match: (k) => k.startsWith("BANK_") },
 ];
 
-// Exemples rapides préremplis — contenu réaliste avec vraies variables
-const TEMPLATE_EXAMPLES = [
-  {
-    name: "💰 Rappel de dette",
-    content: `{{mention}} tu es actuellement en déficit de **{{deficitAmountFormatted}}** sur le compte bancaire de la famille.
+const FALLBACK_CATEGORY: Category = {
+  id: "other",
+  label: "Autres messages",
+  icon: MessagesSquare,
+  match: () => true,
+};
 
-Merci de régulariser ta situation rapidement. En cas de problème, contacte un État-Major.`,
-  },
-  {
-    name: "✅ Recrutement accepté",
-    content: `🎉 Félicitations {{mention}} !
-
-Ton recrutement a été **accepté**. Bienvenue dans la famille **{{familyName}}** !
-Nom RP : **{{rpName}}**
-
-Un membre de l'État-Major va prendre contact avec toi prochainement.`,
-  },
-  {
-    name: "❌ Recrutement refusé",
-    content: `Bonjour {{mention}},
-
-Après examen de ta candidature, nous ne sommes pas en mesure de te recruter pour le moment.
-Nom RP : **{{rpName}}**
-
-Tu peux représenter ta candidature ultérieurement. Bonne continuation.`,
-  },
-  {
-    name: "📅 Absence approuvée",
-    content: `✅ Absence validée pour {{mention}}.
-
-Du **{{startAt}}** au **{{endAt}}**.
-
-Bon repos et à bientôt !`,
-  },
-  {
-    name: "⚠️ Sanction appliquée",
-    content: `{{mention}} une sanction a été appliquée sur ton profil.
-
-Type : **{{type}}**
-Motif : {{reason}}
-
-En cas de contestation, contacte un État-Major.`,
-  },
+/* Ordre logique des modèles à l'intérieur d'une catégorie. */
+const KEY_ORDER = [
+  "recruitment.submitted",
+  "recruitment.accepted",
+  "recruitment.rejected",
+  "complaint.created",
+  "sanction.created",
+  "sanction_justification_created",
+  "ME_SANCTION_JUSTIFIED",
+  "absence.requested",
+  "absence.approved",
+  "ME_ABSENCE_CREATED",
+  "absence_justification_created",
+  "ME_ABSENCE_JUSTIFIED",
+  "BANK_DEBT_PING_SINGLE",
+  "meeting.scheduled",
 ];
 
-export default function DiscordTemplatesClient() {
-  const [items, setItems] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+function keyOrderIndex(key: string): number {
+  const idx = KEY_ORDER.indexOf(key);
+  return idx === -1 ? KEY_ORDER.length : idx;
+}
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/staff/discord/templates?familyId=esperados", { cache: "no-store" });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Chargement échoué");
-      setItems(json.data ?? []);
-      if (!selectedId && json.data && json.data.length > 0) {
-        setSelectedId(json.data[0].id);
-      }
-    } catch (err: unknown) {
-      setItems([]);
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+/* ──────────────────────────────────────────────────────────────────────
+ * Aperçu façon Discord : variables remplacées par des exemples réalistes,
+ * gras **…** rendu, mentions stylées en pilule bleue.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* Motifs présents dans certains défauts mais qui ne sont pas des puces. */
+const PREVIEW_ONLY_FAKES: Record<string, string> = {
+  "<@{{discordId}}>":     "@JuanMorales",
+  "<@{{complainantId}}>": "@MariaSantos",
+  "<@{{targetId}}>":      "@DiegoFuentes",
+  "{{complainantId}}":    "@MariaSantos",
+  "{{targetId}}":         "@DiegoFuentes",
+  "{{absenceId}}":        "42",
+  "{{sanctionId}}":       "42",
+};
+
+function fillExamples(text: string): string {
+  let result = text;
+  for (const [pattern, fake] of Object.entries(PREVIEW_ONLY_FAKES)) {
+    result = result.replaceAll(pattern, fake);
   }
+  for (const [varKey, info] of Object.entries(VAR_INFO)) {
+    result = result.replaceAll(varKey, info.fake);
+  }
+  return result;
+}
 
-  useEffect(() => { load(); }, []);
-
-  const filteredItems = items.filter((item) => {
-    const label = getKeyLabel(item.key).toLowerCase();
-    const q = searchQuery.toLowerCase();
-    return (
-      label.includes(q) ||
-      item.key.toLowerCase().includes(q) ||
-      item.title?.toLowerCase().includes(q) ||
-      item.content.toLowerCase().includes(q)
-    );
-  });
-
-  const selectedTemplate = items.find((t) => t.id === selectedId);
-
-  return (
-    <PageShell
-      title="Messages Discord"
-      description="Personnalisez les messages envoyés automatiquement sur Discord"
-      icon={Copy}
-    >
-      {loading && (
-        <div className="text-center py-8 text-muted-foreground text-sm">
-          Chargement des modèles...
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <div>{error}</div>
-        </div>
-      )}
-
-      {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Colonne gauche : liste des modèles */}
-          <div className="md:col-span-1 space-y-3">
-            <Card className="p-3 bg-slate-900/40 border-slate-800 sticky top-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                <FileText className="h-3.5 w-3.5" />
-                Modèles ({filteredItems.length})
-              </div>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-slate-950 border-slate-800 pl-8 h-8 text-xs"
-                />
-              </div>
-            </Card>
-
-            <div className="space-y-1.5 max-h-[calc(100vh-260px)] overflow-y-auto pr-0.5">
-              {filteredItems.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">
-                  {searchQuery ? "Aucun résultat." : "Aucun modèle disponible."}
-                </p>
-              )}
-              {filteredItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedId(item.id)}
-                  className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all text-sm ${
-                    selectedId === item.id
-                      ? "border-primary/50 bg-primary/10 text-foreground"
-                      : "border-slate-800 bg-slate-900/40 text-foreground hover:border-slate-600 hover:bg-slate-800/40"
-                  }`}
-                >
-                  <div className="font-medium truncate">{getKeyLabel(item.key)}</div>
-                  {item.title && item.title !== getKeyLabel(item.key) && (
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">{item.title}</div>
-                  )}
-                  <div className={`mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${
-                    item.enabled
-                      ? "bg-green-500/10 border-green-500/30 text-green-300"
-                      : "bg-slate-500/10 border-slate-500/30 text-slate-400"
-                  }`}>
-                    {item.enabled ? "✓ Actif" : "✗ Inactif"}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Zone principale : éditeur */}
-          <div className="md:col-span-3">
-            {selectedTemplate ? (
-              <TemplateEditor key={selectedTemplate.id} item={selectedTemplate} onSaved={load} />
-            ) : (
-              <Card className="p-12 bg-slate-900/20 border-slate-800 text-center">
-                <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Sélectionnez un modèle à gauche pour l'éditer
-                </p>
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-    </PageShell>
+function renderMentionSegments(text: string, keyPrefix: string): React.ReactNode[] {
+  return text.split(/(@[\p{L}\p{N}_]+)/gu).map((part, i) =>
+    part.startsWith("@") ? (
+      <span
+        key={`${keyPrefix}-m${i}`}
+        className="rounded-[3px] bg-[#5865f2]/30 px-0.5 font-medium text-[#c9cdfb]"
+      >
+        {part}
+      </span>
+    ) : (
+      <span key={`${keyPrefix}-s${i}`}>{part}</span>
+    )
   );
 }
 
-function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void }) {
+function renderDiscordContent(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") && part.length >= 5 ? (
+      <strong key={`b${i}`} className="font-semibold text-white">
+        {renderMentionSegments(part.slice(2, -2), `b${i}`)}
+      </strong>
+    ) : (
+      <span key={`t${i}`}>{renderMentionSegments(part, `t${i}`)}</span>
+    )
+  );
+}
+
+function DiscordMessage({ content, compact = false }: { content: string; compact?: boolean }) {
+  const filled = fillExamples(content);
+  const time = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className={`rounded-xl border border-white/5 bg-[#313338] ${compact ? "px-3 py-2.5" : "p-4"}`}>
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#9b2335] to-[#5a1620] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
+            compact ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs"
+          }`}
+        >
+          LE
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
+            <span className="text-sm font-semibold text-white">Los Esperados</span>
+            <span className="rounded bg-[#5865f2] px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white">
+              App
+            </span>
+            <span className="text-[10px] text-[#949ba4]">Aujourd&apos;hui à {time}</span>
+          </div>
+          <div
+            className={`whitespace-pre-wrap break-words text-[#dbdee1] ${
+              compact ? "mt-0.5 line-clamp-4 text-[12.5px] leading-[1.45]" : "mt-1 text-[13.5px] leading-relaxed"
+            }`}
+          >
+            {filled.trim() ? (
+              renderDiscordContent(filled)
+            ) : (
+              <span className="italic text-[#80848e]">Ton message apparaîtra ici…</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Éditeur en place : deux zones (message + aperçu live), puces d'insertion.
+ * ────────────────────────────────────────────────────────────────────── */
+function TemplateEditor({
+  item,
+  onCancel,
+  onSaved,
+}: {
+  item: Template;
+  onCancel: () => void;
+  onSaved: (updated: Template) => void;
+}) {
   const [content, setContent] = useState(item.content);
-  const [title, setTitle] = useState(item.title ?? "");
   const [enabled, setEnabled] = useState(Boolean(item.enabled));
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const destination = KEY_DESTINATIONS[item.key] ?? null;
-  const allowedVarKeys = VARS_BY_KEY[item.key] ?? null;
-  const allowedVars = allowedVarKeys
-    ? VARIABLE_DEFINITIONS.filter((v) => allowedVarKeys.includes(v.key))
-    : VARIABLE_DEFINITIONS;
-  const exampleNames = Object.entries(EXAMPLES_BY_PREFIX).find(([prefix]) =>
-    item.key.startsWith(prefix)
-  )?.[1];
-  const relevantExamples = exampleNames
-    ? TEMPLATE_EXAMPLES.filter((ex) => exampleNames.includes(ex.name))
-    : TEMPLATE_EXAMPLES;
+  const chipKeys = VARS_BY_KEY[item.key] ?? Object.keys(VAR_INFO);
+  const defaultContent = DEFAULT_CONTENTS[item.key] ?? null;
+  const hasChanges = content !== item.content || enabled !== Boolean(item.enabled);
 
-  const hasChanges =
-    content !== item.content ||
-    title !== (item.title ?? "") ||
-    enabled !== item.enabled;
-
-  async function handleSave() {
-    setSaving(true);
-    setSaveSuccess(false);
-    setSaveError(null);
-    try {
-      const res = await fetch(
-        `/api/staff/discord/templates/${encodeURIComponent(item.key)}?familyId=esperados`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content, title, enabled }),
-        }
-      );
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Sauvegarde échouée");
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2500);
-      await onSaved();
-    } catch (err: unknown) {
-      setSaveError(getErrorMessage(err));
-      setTimeout(() => setSaveError(null), 6000);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleReset() {
-    setContent(item.content);
-    setTitle(item.title ?? "");
-    setEnabled(item.enabled);
-    setSaveError(null);
-  }
-
-  // Insère la variable à la position du curseur dans le textarea
   function insertVariable(varKey: string) {
     const textarea = textareaRef.current;
     if (!textarea) {
@@ -373,204 +313,298 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
     }, 0);
   }
 
-  function renderPreview(text: string): string {
-    let result = text;
-    VARIABLE_DEFINITIONS.forEach((v) => {
-      result = result.replaceAll(v.key, v.fake);
-    });
-    return result;
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(
+        `/api/staff/discord/templates/${encodeURIComponent(item.key)}?familyId=esperados`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content, enabled }),
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Sauvegarde échouée");
+      onSaved(json.data as Template);
+    } catch (err: unknown) {
+      setSaveError(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const usedVars = allowedVars.filter((v) => content.includes(v.key));
-
   return (
-    <div className="space-y-4">
-      {/* En-tête */}
-      <Card className="p-4 bg-slate-900/40 border-slate-800">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-base font-semibold text-foreground">
-              {getKeyLabel(item.key)}
-            </span>
-            <span className="text-xs font-mono text-muted-foreground bg-slate-800/60 px-2 py-0.5 rounded">
-              {item.key}
-            </span>
-            {hasChanges && (
-              <span className="text-xs text-amber-400 border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 rounded">
-                ⚠ Modifications non sauvegardées
-              </span>
-            )}
+    <div className="mt-4 space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Gauche : le message */}
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Ton message
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleReset} disabled={!hasChanges || saving}>
-              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-              Annuler
-            </Button>
-            <Button onClick={handleSave} disabled={!hasChanges || saving} size="sm">
-              {saving ? (
-                "Sauvegarde..."
-              ) : saveSuccess ? (
-                <><CheckCircle2 className="h-3.5 w-3.5 mr-1.5 text-green-300" />Enregistré</>
-              ) : (
-                <><Save className="h-3.5 w-3.5 mr-1.5" />Enregistrer</>
-              )}
-            </Button>
-          </div>
-        </div>
-        {destination && (
-          <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-200/90">
-            <span aria-hidden>📍</span> {destination}
-          </p>
-        )}
-        {saveError && (
-          <div className="mt-2 flex items-start gap-2 text-sm text-red-300 border border-red-500/30 bg-red-500/10 rounded px-3 py-2">
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            {saveError}
-          </div>
-        )}
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Gauche : paramètres + exemples rapides */}
-        <div className="space-y-4">
-          <Card className="p-4 bg-slate-900/40 border-slate-800 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                Titre du modèle
-              </label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex : Rappel de dette"
-                className="bg-slate-950 border-slate-800 text-sm"
-              />
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-800 bg-slate-900/20">
-              <div>
-                <div className="text-sm font-medium text-foreground">Activer ce modèle</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Le message sera envoyé automatiquement</div>
-              </div>
-              <Switch checked={enabled} onCheckedChange={setEnabled} />
-            </div>
-          </Card>
-
-          {/* Exemples rapides */}
-          <Card className="p-3 bg-slate-900/40 border-slate-800">
-            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              <Zap className="h-3 w-3" />
-              Exemples préremplis
-            </div>
-            <div className="space-y-1.5">
-              {relevantExamples.map((ex) => (
+          <div className="flex flex-wrap gap-1.5">
+            {chipKeys.map((varKey) => {
+              const info = VAR_INFO[varKey];
+              if (!info) return null;
+              const used = content.includes(varKey);
+              return (
                 <button
-                  key={ex.name}
+                  key={varKey}
                   type="button"
-                  onClick={() => { setTitle(ex.name.replace(/^[\p{Emoji}\s]+/u, "").trim()); setContent(ex.content); }}
-                  className="w-full text-left px-3 py-2 text-xs rounded-lg border border-slate-700 hover:bg-slate-800/60 hover:border-slate-600 transition-colors text-foreground"
-                >
-                  {ex.name}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-2">
-              Cliquer remplace le contenu actuel.
-            </p>
-          </Card>
-        </div>
-
-        {/* Centre : éditeur + aperçu live (toujours visibles, fini les onglets) */}
-        <div className="space-y-4">
-          <Card className="p-4 bg-slate-900/40 border-slate-800 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Contenu du message
-              </label>
-              <span className="text-xs text-muted-foreground">{content.length} car.</span>
-            </div>
-            <Textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Rédige ton message ici — insère des éléments dynamiques via les boutons ci-contre →"
-              className="flex-1 font-mono text-xs resize-y bg-slate-950 border-slate-800"
-              style={{ minHeight: 200 }}
-            />
-          </Card>
-
-          <Card className="p-4 bg-slate-900/40 border-slate-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Aperçu en direct (données exemples)
-              </span>
-            </div>
-            <div className="rounded-xl border border-slate-700 bg-[#313338] p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#9b2335] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                  LE
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-sm font-semibold text-white">Los Esperados</span>
-                    <span className="rounded bg-[#5865f2] px-1 py-px text-[9px] font-semibold uppercase text-white">App</span>
-                    <span className="text-[10px] text-slate-400">Aujourd'hui à {new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-                  </div>
-                  <div className="text-[13px] text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-                    {content ? renderPreview(content) : <span className="text-slate-500 italic">Aucun contenu</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {usedVars.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-slate-800">
-                <p className="text-[10px] text-muted-foreground mb-1.5">Éléments dynamiques utilisés :</p>
-                <div className="flex flex-wrap gap-1">
-                  {usedVars.map((v) => (
-                    <span key={v.key} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
-                      {v.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* Droite : boutons d'insertion */}
-        <div className="space-y-4">
-          <Card className="p-3 bg-slate-900/40 border-slate-800">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Insérer un élément dynamique
-            </p>
-            <p className="text-[11px] text-muted-foreground mb-3">
-              Cliquez pour insérer à la position du curseur dans l'éditeur.
-            </p>
-            <p className="text-[10px] text-muted-foreground mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2 py-1.5">
-              Seules les variables qui fonctionnent pour <strong>ce</strong> message sont listées.
-            </p>
-            <div className="space-y-1.5">
-              {allowedVars.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => insertVariable(v.key)}
-                  title={`${v.desc} — insère : ${v.key}`}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-medium transition-all hover:border-primary/50 hover:bg-primary/10 ${
-                    content.includes(v.key)
-                      ? "border-primary/30 bg-primary/5 text-primary"
-                      : "border-slate-700 bg-slate-900/40 text-foreground hover:text-primary"
+                  onClick={() => insertVariable(varKey)}
+                  title={`Exemple : ${info.fake}`}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    used
+                      ? "border-amber-400/50 bg-amber-500/15 text-amber-200"
+                      : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-200"
                   }`}
                 >
-                  <span>{v.label}</span>
-                  <span className="text-[10px] font-mono text-muted-foreground ml-2 shrink-0 opacity-60">
-                    {v.key}
-                  </span>
+                  {info.label}
                 </button>
-              ))}
-            </div>
-          </Card>
+              );
+            })}
+          </div>
+          <Textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Rédige ton message ici…"
+            className="min-h-[220px] resize-y rounded-xl border-white/10 bg-[rgba(10,4,6,0.85)] text-[13px] leading-relaxed focus-visible:ring-amber-500/40"
+          />
+        </div>
+
+        {/* Droite : aperçu live */}
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Aperçu Discord
+          </div>
+          <DiscordMessage content={content} />
+        </div>
+      </div>
+
+      {saveError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>{saveError}</div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-white/8 pt-4">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+          Envoi automatique activé
+        </label>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {defaultContent && content !== defaultContent && (
+            <button
+              type="button"
+              onClick={() => setContent(defaultContent)}
+              disabled={saving}
+              className="btn-press inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Rétablir le défaut
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="btn-press btn-press-neutral rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !hasChanges || !content.trim()}
+            className="btn-press btn-press-amber inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-gradient-to-b from-amber-500/25 to-amber-600/10 px-4 py-2 text-sm font-semibold text-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Carte d'un modèle : nom humain, phrase de contexte, aperçu compact,
+ * et édition en place quand on clique sur Modifier.
+ * ────────────────────────────────────────────────────────────────────── */
+function TemplateCard({
+  item,
+  editing,
+  onEdit,
+  onCancel,
+  onSaved,
+}: {
+  item: Template;
+  editing: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSaved: (updated: Template) => void;
+}) {
+  const defaultContent = DEFAULT_CONTENTS[item.key] ?? null;
+  const customized = defaultContent !== null && item.content !== defaultContent;
+  const destination = KEY_DESTINATIONS[item.key] ?? null;
+
+  return (
+    <article
+      className={`premium-surface-elevated relative overflow-hidden rounded-2xl border bg-white/[0.03] p-4 backdrop-blur transition-colors sm:p-5 ${
+        editing ? "border-amber-500/30 lg:col-span-2" : "border-white/8"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[15px] font-semibold tracking-tight text-slate-100">
+              {getKeyLabel(item.key)}
+            </h3>
+            {customized && (
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                Personnalisé
+              </span>
+            )}
+            {!item.enabled && (
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-400">
+                Désactivé
+              </span>
+            )}
+          </div>
+          {destination && <p className="mt-1 text-xs leading-5 text-slate-400">{destination}</p>}
+        </div>
+        {!editing && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="btn-press btn-press-amber inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-amber-500/40 hover:text-amber-200"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Modifier
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <TemplateEditor item={item} onCancel={onCancel} onSaved={onSaved} />
+      ) : (
+        <div className={`mt-3 ${item.enabled ? "" : "opacity-60"}`}>
+          <DiscordMessage content={item.content} compact />
+        </div>
+      )}
+    </article>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Page : liste des modèles regroupés par catégorie.
+ * ────────────────────────────────────────────────────────────────────── */
+export default function DiscordTemplatesClient() {
+  const [items, setItems] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/staff/discord/templates?familyId=esperados", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Chargement échoué");
+      setItems(json.data ?? []);
+    } catch (err: unknown) {
+      setItems([]);
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  function handleSaved(updated: Template) {
+    setItems((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setEditingKey(null);
+    setToast("Message enregistré");
+    window.setTimeout(() => setToast(null), 2500);
+  }
+
+  const sorted = [...items].sort((a, b) => keyOrderIndex(a.key) - keyOrderIndex(b.key));
+  const remaining = new Set(sorted.map((t) => t.key));
+  const groups = [...CATEGORIES, FALLBACK_CATEGORY]
+    .map((cat) => {
+      const catItems = sorted.filter((t) => remaining.has(t.key) && cat.match(t.key));
+      catItems.forEach((t) => remaining.delete(t.key));
+      return { cat, items: catItems };
+    })
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <PageShell
+      title="Messages Discord"
+      description="Personnalise les messages que le bot envoie automatiquement — chaque carte montre un aperçu fidèle de ce qui partira sur Discord."
+      icon={MessagesSquare}
+    >
+      {loading && (
+        <div className="py-12 text-center text-sm text-muted-foreground">Chargement des modèles…</div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>{error}</div>
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="space-y-8 pb-12">
+          <p className="text-[13px] leading-5 text-slate-400">
+            Clique sur <span className="font-medium text-slate-200">Modifier</span>, puis sur une puce
+            pour insérer une info qui sera remplacée automatiquement au moment de l&apos;envoi.
+          </p>
+
+          {groups.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">Aucun modèle disponible.</p>
+          )}
+
+          {groups.map(({ cat, items: catItems }) => (
+            <section key={cat.id} className="space-y-3">
+              <div className="flex items-center gap-2.5 px-0.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#7a1f2b]/45 bg-gradient-to-br from-[#7a1f2b]/35 to-[#4a0f18]/20 shadow-[0_6px_16px_-6px_rgba(155,35,53,0.5),inset_0_1px_0_rgba(255,255,255,0.07)]">
+                  <cat.icon className="h-4 w-4 text-amber-300 drop-shadow-[0_0_4px_rgba(245,158,11,0.45)]" />
+                </div>
+                <h2 className="text-base font-semibold tracking-tight text-slate-50">{cat.label}</h2>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {catItems.map((item) => (
+                  <TemplateCard
+                    key={item.id}
+                    item={item}
+                    editing={editingKey === item.key}
+                    onEdit={() => setEditingKey(item.key)}
+                    onCancel={() => setEditingKey(null)}
+                    onSaved={handleSaved}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-[#0d1a12]/95 px-4 py-2.5 text-sm text-emerald-200 shadow-[0_18px_50px_rgba(0,0,0,0.6)] backdrop-blur">
+          <CheckCircle2 className="h-4 w-4" />
+          {toast}
+        </div>
+      )}
+    </PageShell>
   );
 }
