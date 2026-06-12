@@ -18,6 +18,7 @@ import { IDS } from "./ids.js";
 import { runManualSync } from "./syncRoles.js";
 import { postLinkPanel } from "./contactPanel.js";
 import { handleReglementPost } from "./features/reglement/reglementRole.js";
+import { askReglement } from "./features/reglement/reglementAI.js";
 import { logAdminCommand } from "./lib/admin-command-log.js";
 import {
   buildModerationCommands,
@@ -230,6 +231,19 @@ const commands = [
         .setRequired(false)
     )
     .setDMPermission(false),
+
+  // /reglement — Q&A règlement LYG par IA, ouvert à tout le monde
+  new SlashCommandBuilder()
+    .setName("reglement")
+    .setDescription("Pose ta question sur le règlement LYG — l'IA répond avec la règle exacte")
+    .addStringOption((opt) =>
+      opt
+        .setName("question")
+        .setDescription("Ta question (ex : j'ai le droit de braquer la supérette seul ?)")
+        .setRequired(true)
+        .setMaxLength(300)
+    )
+    .setDMPermission(false),
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -284,6 +298,46 @@ Nous étudierons ta candidature rapidement.
     )
     .setFooter({ text: "Los Esperados" })
     .setTimestamp();
+}
+
+// ─────────────────────────────────────────────────────────────
+// /reglement — Q&A règlement par IA
+// ─────────────────────────────────────────────────────────────
+
+async function handleReglement(interaction: ChatInputCommandInteraction): Promise<void> {
+  const question = interaction.options.getString("question", true).trim();
+
+  // Réponse publique : la question ET la réponse profitent à tout le salon.
+  await interaction.deferReply();
+
+  const result = await askReglement(interaction.user.id, question);
+
+  if (!result.ok) {
+    await interaction.editReply({ content: `⏳ ${result.error}` });
+    return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(0xc9940a)
+    .setAuthor({
+      name: "Règlement LYG — Assistant",
+      iconURL: "https://losesperados.fr/branding/los-esperados.png",
+    })
+    .addFields({ name: "❓ Question", value: question.slice(0, 1024), inline: false })
+    .setDescription(result.answer.slice(0, 4096))
+    .setFooter({
+      text: "Réponse générée par IA à partir du règlement officiel — en cas de doute, demande à un staff.",
+    })
+    .setTimestamp();
+
+  await interaction.editReply({ embeds: [embed] });
+
+  log("reglement_command", {
+    userId: interaction.user.id,
+    userTag: interaction.user.tag,
+    questionLength: question.length,
+    cached: result.cached,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -394,6 +448,8 @@ export async function handleCommand(
       return handleRecruitmentAnnouncementCommand(interaction);
     case "syncname":
       return handleSyncNameCommand(interaction, client);
+    case "reglement":
+      return handleReglement(interaction);
     case "bank":
       return handleBankCommand(interaction);
     case "reglement-post": {
