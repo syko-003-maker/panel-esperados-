@@ -3,6 +3,7 @@
 import { useEffect, useState, Component, type ReactNode } from "react";
 import Link from "next/link";
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
+import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
 import {
   Crown,
   AlertCircle,
@@ -327,6 +328,9 @@ export default function DashboardClient() {
 
       {/* Mini-chat Assistant Règlement (même IA que /reglement sur Discord) */}
       <ReglementQuickChat fullToolHref="/reglement" />
+
+      {/* Staff LYG connectés en jeu (discret) */}
+      <StaffOnlineStrip />
 
       {/* Situation bancaire — toujours affichée si les données sont disponibles */}
       {debt !== undefined && (() => {

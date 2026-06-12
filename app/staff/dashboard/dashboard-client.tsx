@@ -1,6 +1,7 @@
 "use client";
 
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
+import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -379,6 +380,9 @@ export default function StaffDashboardClient() {
 
       {/* ── Mini-chat Assistant Règlement (même moteur que /reglement Discord) ── */}
       <ReglementQuickChat fullToolHref="/staff/reglement" />
+
+      {/* Staff LYG connectés en jeu (discret) */}
+      <StaffOnlineStrip />
 
       {/* ── Content grid ── */}
       <motion.div
