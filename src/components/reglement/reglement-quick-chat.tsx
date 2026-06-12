@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BookOpen, Loader2, Send } from "lucide-react";
-import { renderAnswer } from "./reglement-assistant";
+import { AnswerView } from "./reglement-assistant";
 
 /**
  * Mini-chat règlement pour les dashboards (membre + staff) : on pose sa
@@ -123,8 +123,8 @@ export default function ReglementQuickChat({ fullToolHref = "/reglement" }: { fu
               ❓ <span className="text-slate-300">{current.question}</span>
             </p>
           </div>
-          <div className="max-h-56 overflow-y-auto px-4 py-3 text-sm text-slate-200">
-            {renderAnswer(current.answer)}
+          <div className="max-h-56 overflow-y-auto px-4 py-3">
+            <AnswerView text={current.answer} />
           </div>
         </div>
       )}
