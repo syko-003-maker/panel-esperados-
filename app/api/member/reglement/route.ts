@@ -17,9 +17,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  // Réservé aux membres liés (comme le calculateur / les justificatifs).
+  // Membres liés OU staff (le mini-chat vit aussi sur le dashboard staff).
+  // La clé de quota reste le discordId → cooldown partagé Discord + site.
   const linkedMember = await getMemberScopeOrNull(session);
-  if (!linkedMember?.discordId) {
+  let discordId = linkedMember?.discordId ?? null;
+  if (!discordId) {
+    const sessionDiscordId = String((session as any)?.discordId ?? (session.user as any)?.discordId ?? "").trim();
+    if (sessionDiscordId) {
+      const { canAccessStaffPanel } = await import("@/lib/rbac");
+      const access = await canAccessStaffPanel(session).catch(() => null);
+      if (access?.canAccess) discordId = sessionDiscordId;
+    }
+  }
+  if (!discordId) {
     return NextResponse.json({ ok: false, error: "MEMBER_NOT_LINKED" }, { status: 403 });
   }
 
@@ -41,7 +51,7 @@ export async function POST(req: NextRequest) {
     const res = await fetch(`${WORKER_INTERNAL_URL}/internal/reglement/ask`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-ingest-secret": secret },
-      body: JSON.stringify({ userId: linkedMember.discordId, question }),
+      body: JSON.stringify({ userId: discordId, question }),
       signal: AbortSignal.timeout(50_000),
     });
     const data = await res.json().catch(() => null);

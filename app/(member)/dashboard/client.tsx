@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Component, type ReactNode } from "react";
 import Link from "next/link";
+import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import {
   AlertCircle,
   CalendarOff,
@@ -13,7 +14,6 @@ import {
   User,
   Hash,
   Wallet,
-  BookOpen,
 } from "lucide-react";
 
 type DashboardResponse =
@@ -322,25 +322,8 @@ export default function DashboardClient() {
         </div>
       </div>
 
-      {/* Accès rapide : Assistant Règlement (même IA que /reglement sur Discord) */}
-      <Link
-        href="/reglement"
-        className="group flex items-center gap-4 rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-500/[0.10] via-amber-500/[0.05] to-transparent p-5 backdrop-blur-sm transition-all hover:border-amber-500/45 hover:from-amber-500/[0.15]"
-      >
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/15">
-          <BookOpen className="h-5 w-5 text-amber-300" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-slate-50">Assistant Règlement LYG</p>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Une question sur les règles ? L&apos;IA te répond avec le verdict et la règle exacte.
-          </p>
-        </div>
-        <span className="flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 transition-colors group-hover:bg-amber-500/20">
-          Poser ma question
-          <ArrowRight className="h-3.5 w-3.5" />
-        </span>
-      </Link>
+      {/* Mini-chat Assistant Règlement (même IA que /reglement sur Discord) */}
+      <ReglementQuickChat fullToolHref="/reglement" />
 
       {/* Situation bancaire — toujours affichée si les données sont disponibles */}
       {debt !== undefined && (() => {

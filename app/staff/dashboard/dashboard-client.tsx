@@ -1,5 +1,6 @@
 "use client";
 
+import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -375,6 +376,9 @@ export default function StaffDashboardClient() {
           <KpiCard icon={Landmark}     label="Banque famille"          value={familyBankBalance}      tone="bank"    href="/staff/stats"        loading={loading} isAmount />
         </motion.div>
       </motion.div>
+
+      {/* ── Mini-chat Assistant Règlement (même moteur que /reglement Discord) ── */}
+      <ReglementQuickChat fullToolHref="/staff/reglement" />
 
       {/* ── Content grid ── */}
       <motion.div

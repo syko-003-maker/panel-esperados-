@@ -19,7 +19,7 @@ const SUGGESTIONS = [
 ];
 
 /** Rendu minimal : **gras** → <strong>, conservation des sauts de ligne. */
-function renderAnswer(text: string) {
+export function renderAnswer(text: string) {
   return text.split("\n").map((line, li) => (
     <p key={li} className={line.trim() === "" ? "h-2" : "leading-7"}>
       {line.split(/(\*\*[^*]+\*\*)/g).map((part, pi) =>
