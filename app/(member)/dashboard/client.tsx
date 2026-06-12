@@ -4,6 +4,7 @@ import { useEffect, useState, Component, type ReactNode } from "react";
 import Link from "next/link";
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import {
+  Crown,
   AlertCircle,
   CalendarOff,
   Banknote,
@@ -226,6 +227,8 @@ export default function DashboardClient() {
 
   const { member, bank, sanctions, absences, debt } = data;
   const transactions = Array.isArray(bank?.lastTransactions) ? bank.lastTransactions : [];
+  const leadership: Array<{ tier: string; members: Array<{ rpName: string | null; avatarUrl: string | null }> }> =
+    Array.isArray((data as any)?.leadership) ? (data as any).leadership : [];
 
   return (
   <DashboardErrorBoundary>
@@ -403,9 +406,10 @@ export default function DashboardClient() {
         );
       })()}
 
-      {/* Recent transactions */}
+      {/* Transactions (réduites) + Hiérarchie famille côte à côte */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
       {transactions.length > 0 && (
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm overflow-hidden">
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm overflow-hidden lg:col-span-3">
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
             <h2 className="text-sm font-semibold text-slate-200">Dernières transactions</h2>
             <Link
@@ -462,6 +466,47 @@ export default function DashboardClient() {
           </div>
         </div>
       )}
+
+      {/* Hiérarchie famille — qui contacter, du Chef aux Encadrants */}
+      {leadership.length > 0 && (
+        <div className={`rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm overflow-hidden ${transactions.length > 0 ? "lg:col-span-2" : "lg:col-span-5"}`}>
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-white/8">
+            <Crown className="h-4 w-4 text-amber-300" />
+            <h2 className="text-sm font-semibold text-slate-200">Hiérarchie famille</h2>
+          </div>
+          <div className="divide-y divide-white/[0.04]">
+            {leadership.map((tier) => (
+              <div key={tier.tier} className="px-5 py-3">
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-[0.16em] ${
+                    tier.tier === "Chef famille" ? "text-amber-300" :
+                    tier.tier === "Sous-Chef famille" ? "text-amber-200/80" :
+                    tier.tier === "Chef État-Major" ? "text-rose-300" :
+                    tier.tier === "État-Major" ? "text-rose-200/70" :
+                    "text-sky-300/80"
+                  }`}
+                >
+                  {tier.tier}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+                  {tier.members.map((m, i) => (
+                    <span key={i} className="flex items-center gap-1.5 text-sm text-slate-200">
+                      {m.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.avatarUrl} alt="" className="h-5 w-5 rounded-full ring-1 ring-white/15" />
+                      ) : (
+                        <span className="h-5 w-5 rounded-full bg-white/10 ring-1 ring-white/15" />
+                      )}
+                      {m.rpName ?? "—"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </div>
 
       {/* Account info */}
       <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5">

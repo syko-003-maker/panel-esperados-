@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { getMemberDebt } from "@/lib/bank-debts";
+import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 
 /**
  * GET /api/member/dashboard
@@ -211,6 +212,49 @@ export async function GET(req: NextRequest) {
       // Non bloquant : le déficit reste à 0 si le calcul échoue
     }
 
+    // ── Hiérarchie famille : qui contacter, visible directement par le membre.
+    // Construit depuis le mirror des rôles Discord. Chacun apparaît une seule
+    // fois, dans son tier le plus haut (Chef > Sous-Chef > Chef EM > EM > Encadrant).
+    const LEADERSHIP_TIERS: Array<{ tier: string; roleId: string }> = [
+      { tier: "Chef famille", roleId: "1429607761720770623" },
+      { tier: "Sous-Chef famille", roleId: "1488610892282335314" },
+      { tier: "Chef État-Major", roleId: "1312845999366209686" }, // Consejero
+      { tier: "État-Major", roleId: "1312845999366209683" },
+      { tier: "Encadrant", roleId: "1497293700831903774" },
+    ];
+    let leadership: Array<{ tier: string; members: Array<{ rpName: string | null; avatarUrl: string | null }> }> = [];
+    try {
+      const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+      const leaders = await prisma.member.findMany({
+        where: {
+          familyId: familyDbId,
+          isActive: true,
+          isGhost: false,
+          discordInGuild: true,
+          discordRoleIds: { hasSome: LEADERSHIP_TIERS.map((t) => t.roleId) },
+        },
+        select: { rpName: true, discordId: true, discordAvatarHash: true, discordRoleIds: true },
+      });
+      const seen = new Set<string>();
+      leadership = LEADERSHIP_TIERS.map(({ tier, roleId }) => ({
+        tier,
+        members: leaders
+          .filter((m) => {
+            if (!m.discordId || seen.has(m.discordId)) return false;
+            if (!(m.discordRoleIds as string[]).includes(roleId)) return false;
+            seen.add(m.discordId);
+            return true;
+          })
+          .sort((a, b) => (a.rpName ?? "").localeCompare(b.rpName ?? ""))
+          .map((m) => ({
+            rpName: m.rpName,
+            avatarUrl: getDiscordAvatarUrl(m.discordId, m.discordAvatarHash),
+          })),
+      })).filter((t) => t.members.length > 0);
+    } catch {
+      // Non bloquant : le dashboard reste utilisable sans la hiérarchie.
+    }
+
     return NextResponse.json({
       ok: true,
       member: {
@@ -222,6 +266,7 @@ export async function GET(req: NextRequest) {
       sanctions,
       absences,
       debt,
+      leadership,
     });
   } catch (error) {
     console.error("[api/member/dashboard] error:", error);
