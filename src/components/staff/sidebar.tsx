@@ -23,6 +23,7 @@ import {
   Car,
   Crown,
   Calculator,
+  BookOpen,
 } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
@@ -56,6 +57,7 @@ const SIDEBAR_ITEMS = [
     section: "Outils",
     items: [
       { icon: Calculator, label: "Calculateur Printer", href: "/staff/printers" },
+      { icon: BookOpen, label: "Assistant Règlement", href: "/staff/reglement" },
       { icon: Settings, label: "Paramètres", href: "/staff/settings" },
     ],
   },

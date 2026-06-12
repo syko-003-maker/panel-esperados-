@@ -9,6 +9,7 @@ import type { Client } from "discord.js";
 import { sendContactNotification } from "./contact-notification.js";
 import { postLinkRequestMessage } from "./link-request-post.js";
 import { renameMemberIfPossible, formatRenameResult } from "./features/rename/renameMember.js";
+import { askReglement } from "./features/reglement/reglementAI.js";
 
 const WORKER_SECRET = process.env.INGEST_SECRET || process.env.DISCORD_WORKER_SECRET;
 const PORT = parseInt(process.env.WORKER_HTTP_PORT || "3001", 10);
@@ -220,6 +221,38 @@ export function initWorkerServer(client: Client): { start: () => Promise<void>; 
    *   embeds?: any[]
    * }
    */
+
+  /**
+   * POST /internal/reglement/ask
+   * Q&A règlement pour le PANEL (même moteur que /reglement Discord :
+   * corpus partagé, cooldown 30s et plafond quotidien COMMUNS aux deux
+   * surfaces — userId = discordId du membre).
+   * Auth : x-ingest-secret.
+   */
+  app.post("/internal/reglement/ask", async (req: Request, res: Response) => {
+    try {
+      const xSecret = req.headers["x-ingest-secret"] as string;
+      if (!WORKER_SECRET || xSecret !== WORKER_SECRET) {
+        return res.status(401).json({ ok: false, error: "Unauthorized" });
+      }
+
+      const userId = String(req.body?.userId ?? "").trim();
+      const question = String(req.body?.question ?? "").trim();
+      if (!userId || question.length < 3) {
+        return res.status(400).json({ ok: false, error: "INVALID_BODY" });
+      }
+
+      const result = await askReglement(userId, question.slice(0, 300));
+      if (!result.ok) {
+        return res.json({ ok: false, error: result.error });
+      }
+      return res.json({ ok: true, answer: result.answer });
+    } catch (error: unknown) {
+      logError("reglement_ask_endpoint_error", error, { endpoint: "/internal/reglement/ask" });
+      return res.status(500).json({ ok: false, error: "INTERNAL_ERROR" });
+    }
+  });
+
   app.post("/internal/discord/postMessage", async (req: Request, res: Response) => {
     try {
       const xSecret = req.headers["x-ingest-secret"] as string;
