@@ -2,6 +2,7 @@
 
 import { getErrorMessage } from "@/lib/errors";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   Banknote,
@@ -96,17 +97,52 @@ function PickerSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Position du menu en coordonnées viewport : rendu via portal dans <body>
+  // pour échapper à l'overflow-hidden des cartes et aux stacking contexts
+  // créés par leurs backdrop-blur (sinon le menu passe derrière les cartes
+  // voisines / se fait rogner).
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; up: boolean } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const current = options.find((o) => o.id === value) ?? null;
 
+  const MENU_MAX_H = 320; // recherche + liste max-h-60
+
+  function toggleOpen() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const r = rootRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const up = window.innerHeight - r.bottom < MENU_MAX_H + 16 && r.top > MENU_MAX_H + 16;
+    setMenuPos({ top: up ? r.top - 6 : r.bottom + 6, left: r.left, width: r.width, up });
+    setQuery("");
+    setOpen(true);
+  }
+
   useEffect(() => {
+    if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    // Un scroll/resize déplacerait le bouton sous le menu fixe → on referme.
+    function onScrollOrResize(e?: Event) {
+      if (e && menuRef.current?.contains(e.target as Node)) return; // scroll interne de la liste OK
+      setOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -123,7 +159,7 @@ function PickerSelect({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => { setOpen((o) => !o); setQuery(""); }}
+        onClick={toggleOpen}
         className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
           open ? "border-amber-500/40 bg-[rgba(10,4,6,0.95)]" : "border-white/10 bg-[rgba(10,4,6,0.85)] hover:border-white/20"
         } disabled:cursor-not-allowed disabled:opacity-50`}
@@ -158,8 +194,18 @@ function PickerSelect({
         </span>
       </button>
 
-      {open && (
-        <div className="absolute z-30 mt-1.5 w-full overflow-hidden rounded-xl border border-white/15 bg-[#120608] shadow-[0_18px_50px_rgba(0,0,0,0.6)]">
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            transform: menuPos.up ? "translateY(-100%)" : undefined,
+          }}
+          className="z-[200] overflow-hidden rounded-xl border border-white/15 bg-[#120608] shadow-[0_18px_50px_rgba(0,0,0,0.6)]"
+        >
           <div className="relative border-b border-white/10 p-2">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
