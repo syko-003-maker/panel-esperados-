@@ -14,10 +14,5 @@ export default async function StaffSettingsTemplatesPage() {
     );
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      <h1>Discord Templates</h1>
-      <DiscordTemplatesClient />
-    </div>
-  );
+  return <DiscordTemplatesClient />;
 }

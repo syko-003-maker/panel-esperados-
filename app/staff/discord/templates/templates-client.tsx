@@ -45,6 +45,58 @@ function getKeyLabel(key: string): string {
   return KEY_LABELS[key] ?? key;
 }
 
+// Où chaque message part — affiché dans l'en-tête de l'éditeur pour qu'on
+// sache CE QU'ON ÉDITE sans devoir deviner depuis la clé technique.
+const KEY_DESTINATIONS: Record<string, string> = {
+  "recruitment.submitted":          "Salon recrutement — à la réception d'une candidature",
+  "recruitment.accepted":           "Candidat (DM) + salon recrutement — quand la candidature est acceptée",
+  "recruitment.rejected":           "Candidat (DM) + salon recrutement — quand la candidature est refusée",
+  "complaint.created":              "Salon plaintes — à l'ouverture d'un ticket",
+  "sanction.created":               "Salon sanctions — quand une sanction est appliquée",
+  "absence.requested":              "Salon absences — quand un membre demande une absence",
+  "absence.approved":               "Salon absences — quand une absence est validée",
+  "ME_ABSENCE_CREATED":             "Salon absences — justificatif déposé depuis l'espace membre",
+  "ME_ABSENCE_JUSTIFIED":           "Salon absences — justificatif déposé depuis l'espace membre",
+  "absence_justification_created":  "Salon absences — justificatif déposé depuis l'espace membre",
+  "sanction_justification_created": "Salon sanctions — justificatif déposé depuis l'espace membre",
+  "ME_SANCTION_JUSTIFIED":          "Salon sanctions — justificatif déposé depuis l'espace membre",
+  "BANK_DEBT_PING_SINGLE":          "Membre endetté (ping) — rappel automatique de dette",
+  "meeting.scheduled":              "Salon réunions — annonce d'une réunion programmée",
+};
+
+// Variables réellement disponibles PAR template. Avant : les 16 variables
+// étaient proposées partout → on insérait {{startAt}} dans une sanction et
+// rien ne se remplissait. Clé absente = toutes (prudence).
+const COMMON_VARS = ["{{mention}}", "{{rpName}}", "{{discordId}}", "{{familyName}}"];
+const VARS_BY_KEY: Record<string, string[]> = {
+  "recruitment.submitted":          [...COMMON_VARS, "{{age}}", "{{steamId}}"],
+  "recruitment.accepted":           [...COMMON_VARS, "{{age}}", "{{steamId}}"],
+  "recruitment.rejected":           [...COMMON_VARS, "{{age}}", "{{steamId}}", "{{reason}}"],
+  "complaint.created":              [...COMMON_VARS, "{{title}}", "{{message}}"],
+  "sanction.created":               [...COMMON_VARS, "{{type}}", "{{reason}}", "{{points}}", "{{grade}}"],
+  "sanction_justification_created": [...COMMON_VARS, "{{type}}", "{{reason}}", "{{message}}"],
+  "ME_SANCTION_JUSTIFIED":          [...COMMON_VARS, "{{type}}", "{{reason}}", "{{message}}"],
+  "absence.requested":              [...COMMON_VARS, "{{startAt}}", "{{endAt}}", "{{message}}"],
+  "absence.approved":               [...COMMON_VARS, "{{startAt}}", "{{endAt}}"],
+  "ME_ABSENCE_CREATED":             [...COMMON_VARS, "{{startAt}}", "{{endAt}}", "{{message}}"],
+  "ME_ABSENCE_JUSTIFIED":           [...COMMON_VARS, "{{startAt}}", "{{endAt}}", "{{message}}"],
+  "absence_justification_created":  [...COMMON_VARS, "{{startAt}}", "{{endAt}}", "{{message}}"],
+  "BANK_DEBT_PING_SINGLE":          ["{{mention}}", "{{rpName}}", "{{deficitAmountFormatted}}", "{{familyName}}"],
+  "meeting.scheduled":              ["{{mention}}", "{{title}}", "{{scheduledAt}}", "{{familyName}}"],
+};
+
+// Exemples pertinents par préfixe de clé (un exemple de dette n'a rien à
+// faire sur un template de réunion).
+const EXAMPLES_BY_PREFIX: Record<string, string[]> = {
+  "recruitment.accepted": ["✅ Recrutement accepté"],
+  "recruitment.rejected": ["❌ Recrutement refusé"],
+  "absence":              ["📅 Absence approuvée"],
+  "ME_ABSENCE":           ["📅 Absence approuvée"],
+  "sanction":             ["⚠️ Sanction appliquée"],
+  "ME_SANCTION":          ["⚠️ Sanction appliquée"],
+  "BANK_DEBT":            ["💰 Rappel de dette"],
+};
+
 // Variables réellement utilisées dans les templates backend
 // label = ce que l'utilisateur voit sur le bouton
 // key   = ce qui est inséré dans le contenu (et remplacé côté backend)
@@ -251,8 +303,19 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"edit" | "preview">("edit");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const destination = KEY_DESTINATIONS[item.key] ?? null;
+  const allowedVarKeys = VARS_BY_KEY[item.key] ?? null;
+  const allowedVars = allowedVarKeys
+    ? VARIABLE_DEFINITIONS.filter((v) => allowedVarKeys.includes(v.key))
+    : VARIABLE_DEFINITIONS;
+  const exampleNames = Object.entries(EXAMPLES_BY_PREFIX).find(([prefix]) =>
+    item.key.startsWith(prefix)
+  )?.[1];
+  const relevantExamples = exampleNames
+    ? TEMPLATE_EXAMPLES.filter((ex) => exampleNames.includes(ex.name))
+    : TEMPLATE_EXAMPLES;
 
   const hasChanges =
     content !== item.content ||
@@ -318,7 +381,7 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
     return result;
   }
 
-  const usedVars = VARIABLE_DEFINITIONS.filter((v) => content.includes(v.key));
+  const usedVars = allowedVars.filter((v) => content.includes(v.key));
 
   return (
     <div className="space-y-4">
@@ -354,6 +417,11 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
             </Button>
           </div>
         </div>
+        {destination && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-200/90">
+            <span aria-hidden>📍</span> {destination}
+          </p>
+        )}
         {saveError && (
           <div className="mt-2 flex items-start gap-2 text-sm text-red-300 border border-red-500/30 bg-red-500/10 rounded px-3 py-2">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -393,7 +461,7 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
               Exemples préremplis
             </div>
             <div className="space-y-1.5">
-              {TEMPLATE_EXAMPLES.map((ex) => (
+              {relevantExamples.map((ex) => (
                 <button
                   key={ex.name}
                   type="button"
@@ -410,90 +478,62 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
           </Card>
         </div>
 
-        {/* Centre : éditeur + éléments dynamiques */}
+        {/* Centre : éditeur + aperçu live (toujours visibles, fini les onglets) */}
         <div className="space-y-4">
-          {/* Onglets édit / prévisualisation */}
-          <div className="flex rounded-lg border border-slate-800 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setActiveTab("edit")}
-              className={`flex-1 py-2 text-xs font-semibold transition-colors ${
-                activeTab === "edit"
-                  ? "bg-slate-800 text-foreground"
-                  : "bg-slate-900/40 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              ✏️ Éditeur
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("preview")}
-              className={`flex-1 py-2 text-xs font-semibold transition-colors ${
-                activeTab === "preview"
-                  ? "bg-slate-800 text-foreground"
-                  : "bg-slate-900/40 text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              👁 Aperçu
-            </button>
-          </div>
+          <Card className="p-4 bg-slate-900/40 border-slate-800 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Contenu du message
+              </label>
+              <span className="text-xs text-muted-foreground">{content.length} car.</span>
+            </div>
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Rédige ton message ici — insère des éléments dynamiques via les boutons ci-contre →"
+              className="flex-1 font-mono text-xs resize-y bg-slate-950 border-slate-800"
+              style={{ minHeight: 200 }}
+            />
+          </Card>
 
-          {activeTab === "edit" ? (
-            <Card className="p-4 bg-slate-900/40 border-slate-800 flex flex-col" style={{ minHeight: 340 }}>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Contenu du message
-                </label>
-                <span className="text-xs text-muted-foreground">{content.length} car.</span>
-              </div>
-              <Textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Rédigez votre message ici, puis insérez des éléments dynamiques via les boutons ci-contre →"
-                className="flex-1 font-mono text-xs resize-none bg-slate-950 border-slate-800"
-                style={{ minHeight: 260 }}
-              />
-            </Card>
-          ) : (
-            <Card className="p-4 bg-slate-900/40 border-slate-800 flex flex-col" style={{ minHeight: 340 }}>
-              <div className="flex items-center gap-2 mb-3">
-                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Aperçu avec données exemples
-                </span>
-              </div>
-              {/* Bloc style Discord */}
-              <div className="flex-1 rounded-xl border border-slate-700 bg-[#36393f] p-4 overflow-y-auto">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                    LE
+          <Card className="p-4 bg-slate-900/40 border-slate-800">
+            <div className="flex items-center gap-2 mb-3">
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Aperçu en direct (données exemples)
+              </span>
+            </div>
+            <div className="rounded-xl border border-slate-700 bg-[#313338] p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#9b2335] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                  LE
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-sm font-semibold text-white">Los Esperados</span>
+                    <span className="rounded bg-[#5865f2] px-1 py-px text-[9px] font-semibold uppercase text-white">App</span>
+                    <span className="text-[10px] text-slate-400">Aujourd'hui à {new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-sm font-semibold text-white">Los Esperados</span>
-                      <span className="text-[10px] text-slate-400">Aujourd'hui à {new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-                    </div>
-                    <div className="text-[13px] text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-                      {content ? renderPreview(content) : <span className="text-slate-500 italic">Aucun contenu</span>}
-                    </div>
+                  <div className="text-[13px] text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+                    {content ? renderPreview(content) : <span className="text-slate-500 italic">Aucun contenu</span>}
                   </div>
                 </div>
               </div>
-              {usedVars.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-800">
-                  <p className="text-[10px] text-muted-foreground mb-1.5">Éléments dynamiques utilisés :</p>
-                  <div className="flex flex-wrap gap-1">
-                    {usedVars.map((v) => (
-                      <span key={v.key} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
-                        {v.label}
-                      </span>
-                    ))}
-                  </div>
+            </div>
+            {usedVars.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-800">
+                <p className="text-[10px] text-muted-foreground mb-1.5">Éléments dynamiques utilisés :</p>
+                <div className="flex flex-wrap gap-1">
+                  {usedVars.map((v) => (
+                    <span key={v.key} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                      {v.label}
+                    </span>
+                  ))}
                 </div>
-              )}
-            </Card>
-          )}
+              </div>
+            )}
+          </Card>
         </div>
 
         {/* Droite : boutons d'insertion */}
@@ -505,13 +545,16 @@ function TemplateEditor({ item, onSaved }: { item: Template; onSaved: () => void
             <p className="text-[11px] text-muted-foreground mb-3">
               Cliquez pour insérer à la position du curseur dans l'éditeur.
             </p>
+            <p className="text-[10px] text-muted-foreground mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2 py-1.5">
+              Seules les variables qui fonctionnent pour <strong>ce</strong> message sont listées.
+            </p>
             <div className="space-y-1.5">
-              {VARIABLE_DEFINITIONS.map((v) => (
+              {allowedVars.map((v) => (
                 <button
                   key={v.key}
                   type="button"
-                  onClick={() => { setActiveTab("edit"); setTimeout(() => insertVariable(v.key), 50); }}
-                  title={`Insère : ${v.key}`}
+                  onClick={() => insertVariable(v.key)}
+                  title={`${v.desc} — insère : ${v.key}`}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-medium transition-all hover:border-primary/50 hover:bg-primary/10 ${
                     content.includes(v.key)
                       ? "border-primary/30 bg-primary/5 text-primary"

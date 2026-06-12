@@ -14,10 +14,5 @@ export default async function StaffSettingsOutboxPage() {
     );
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      <h1>Discord Outbox</h1>
-      <DiscordOutboxClient />
-    </div>
-  );
+  return <DiscordOutboxClient />;
 }

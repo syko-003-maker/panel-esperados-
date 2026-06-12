@@ -14,10 +14,5 @@ export default async function StaffSettingsConfigPage() {
     );
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      <h1>Discord Config</h1>
-      <DiscordConfigClient />
-    </div>
-  );
+  return <DiscordConfigClient />;
 }
