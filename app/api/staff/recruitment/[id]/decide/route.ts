@@ -10,6 +10,7 @@ import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recru
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { lygFamilyAdd } from "@/lib/lyg/family-admin";
+import { BLOCKING_SANCTION_TYPES } from "@/lib/sanctions";
 import { createAuditLog } from "@/lib/audit";
 
 const DECISIONS = ["ACCEPT", "REJECT"] as const;
@@ -282,9 +283,42 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const memberForCleanup = await prisma.member
         .findFirst({
           where: { discordId: candidateDiscordId },
-          select: { discordRoleIds: true },
+          select: { id: true, discordRoleIds: true },
         })
         .catch(() => null);
+
+      // Sanctions bloquantes encore ACTIVES (DEMOTE / RESERVISTE / BLACKLIST) :
+      // un ré-recrutement accepté les rend obsolètes. Sans cette clôture, la
+      // sanction restait ACTIVE et bloquait toute nouvelle sanction du même
+      // type (cas Roger Delafonte : démote → ré-recruté → re-démote impossible).
+      if (memberForCleanup?.id) {
+        try {
+          const closed = await prisma.sanction.updateMany({
+            where: {
+              memberId: memberForCleanup.id,
+              status: "ACTIVE",
+              clearedAt: null,
+              type: { in: [...BLOCKING_SANCTION_TYPES] },
+            },
+            data: {
+              status: "CLOSED",
+              clearedAt: new Date(),
+              clearedStatus: "APPLIED",
+              clearedError: "Auto-clôture — ré-recrutement accepté, sanction obsolète",
+            },
+          });
+          if (closed.count > 0) {
+            logInfo("recruitment_decide_sanctions_autoclosed", {
+              requestId,
+              recruitmentId: id,
+              memberId: memberForCleanup.id,
+              closedCount: closed.count,
+            });
+          }
+        } catch (err) {
+          logError("recruitment_decide_sanctions_autoclose_failed", { requestId, recruitmentId: id }, err);
+        }
+      }
       const currentRoles = Array.isArray(memberForCleanup?.discordRoleIds)
         ? memberForCleanup!.discordRoleIds
         : [];

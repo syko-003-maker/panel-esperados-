@@ -283,6 +283,29 @@ export async function POST(req: Request) {
           select: { id: true, discordRoleIds: true, grade: true, gradeLevel: true, roleDiscordId: true },
         }).catch(() => null);
 
+        // Même règle que la route panel : un ré-recrutement accepté clôture
+        // les sanctions bloquantes encore actives (sinon re-démote impossible).
+        if (memberForCleanup?.id) {
+          try {
+            await prisma.sanction.updateMany({
+              where: {
+                memberId: memberForCleanup.id,
+                status: "ACTIVE",
+                clearedAt: null,
+                type: { in: ["DEMOTE", "RESERVISTE", "BLACKLIST"] },
+              },
+              data: {
+                status: "CLOSED",
+                clearedAt: new Date(),
+                clearedStatus: "APPLIED",
+                clearedError: "Auto-clôture — ré-recrutement accepté, sanction obsolète",
+              },
+            });
+          } catch {
+            /* non bloquant */
+          }
+        }
+
         const currentRoles = Array.isArray(memberForCleanup?.discordRoleIds)
           ? memberForCleanup!.discordRoleIds
           : [];
