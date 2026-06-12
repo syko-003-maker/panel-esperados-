@@ -25,7 +25,7 @@ import { getRulesCorpus } from "./rulesCorpus.js";
 // limit:0 depuis 2026). thinkingBudget:0 = pas de "réflexion" → plus rapide.
 const MODEL = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.5-flash").trim();
 const DAILY_MAX = Number(process.env.REGLEMENT_AI_DAILY_MAX ?? "150") || 150;
-const COOLDOWN_MS = 30_000;
+const COOLDOWN_MS = 5_000;
 const MAX_OUTPUT_TOKENS = 1000;
 
 const SYSTEM_PERSONA = `Tu es l'assistant règlement officiel de la famille Los Esperados sur le serveur Garry's Mod DarkRP français LiveYourGame (LYG).

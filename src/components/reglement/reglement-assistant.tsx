@@ -243,7 +243,7 @@ export default function ReglementAssistant() {
             </button>
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
-            <span>1 question / 30 s · réponse en quelques secondes</span>
+            <span>1 question / 5 s · réponse en quelques secondes</span>
             <span>{question.length}/300</span>
           </div>
         </form>
