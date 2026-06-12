@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
-import { questionBank } from "@/lib/recruitment/questionBank";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
+import { listRecruitmentModels, resolveModelForRecruitment } from "@/lib/recruitment/models";
 import { buildRecruitmentNotes, extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 
 const INVALID_JSON = Symbol("INVALID_JSON");
@@ -57,7 +57,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const notes = parseRecruitmentNotes(recruitment.notes ?? null);
   const evaluation = extractRecruitmentEvaluation(notes, recruitment.payload);
-  const totals = computeRecruitmentTotals(evaluation.scoresJson);
+  // Modèle de recrutement : celui choisi pour ce ticket, sinon le défaut.
+  const model = await resolveModelForRecruitment(notes.modelId ?? null);
+  const activeModels = await listRecruitmentModels({ activeOnly: true });
+  const totals = computeRecruitmentTotals(evaluation.scoresJson, model.questions);
   const statusLabel =
     recruitment.status === "ACCEPTED"
       ? "CLOSED_ACCEPTED"
@@ -94,7 +97,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     staffNotes: notes.staffNotes ?? null,
   };
 
-  return NextResponse.json({ ok: true, ticket, totals, questionBank, viewer });
+  return NextResponse.json({
+    ok: true,
+    ticket,
+    totals,
+    questionBank: model.questions,
+    model: {
+      id: model.id,
+      name: model.name,
+      minOn20: model.minOn20,
+      totalMaxPoints: model.totalMaxPoints,
+      // chosen = explicitement sélectionné pour CE ticket (sinon défaut implicite)
+      chosen: Boolean(notes.modelId),
+    },
+    activeModels,
+    viewer,
+  });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -149,6 +167,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.staffNotes = raw ? raw : null;
   }
 
+  if ("modelId" in body) {
+    const raw = (body as any).modelId;
+    if (raw === null) {
+      updates.modelId = null;
+    } else {
+      const modelId = String(raw ?? "").trim();
+      const found = modelId
+        ? await prisma.recruitmentModel.findFirst({
+            where: { id: modelId, isActive: true },
+            select: { id: true },
+          })
+        : null;
+      if (!found) {
+        return NextResponse.json({ ok: false, error: "MODEL_NOT_FOUND" }, { status: 404 });
+      }
+      updates.modelId = found.id;
+    }
+    shouldUpdateTotals = true;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ ok: false, error: "NO_FIELDS" }, { status: 400 });
   }
@@ -172,8 +210,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const notes = parseRecruitmentNotes(updated.notes ?? null);
   const evaluation = extractRecruitmentEvaluation(notes, null);
+  const model = await resolveModelForRecruitment(notes.modelId ?? null);
   const totals = computeRecruitmentTotals(
-    shouldUpdateTotals ? scoresJsonNext : evaluation.scoresJson
+    shouldUpdateTotals ? scoresJsonNext : evaluation.scoresJson,
+    model.questions
   );
   const statusLabel =
     updated.status === "ACCEPTED"

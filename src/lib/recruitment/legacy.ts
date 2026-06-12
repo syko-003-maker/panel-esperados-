@@ -2,6 +2,8 @@ export type RecruitmentLegacyNotes = {
   staffNotes?: string | null;
   claimedById?: string | null;
   claimedAt?: string | null;
+  /** Modèle de recrutement choisi pour ce ticket (RecruitmentModel.id). */
+  modelId?: string | null;
   answersJson?: Record<string, string>;
   scoresJson?: Record<string, number>;
 };
@@ -276,6 +278,7 @@ export function buildRecruitmentNotes(
   const hasStructured =
     Boolean(next.claimedById) ||
     Boolean(next.claimedAt) ||
+    Boolean(next.modelId) ||
     Boolean(next.answersJson && Object.keys(next.answersJson).length > 0) ||
     Boolean(next.scoresJson && Object.keys(next.scoresJson).length > 0);
 
@@ -287,6 +290,7 @@ export function buildRecruitmentNotes(
     staffNotes,
     claimedById: normalizeNoteString(next.claimedById),
     claimedAt: normalizeNoteString(next.claimedAt),
+    modelId: normalizeNoteString(next.modelId),
     answersJson: next.answersJson ?? null,
     scoresJson: next.scoresJson ?? null,
   });

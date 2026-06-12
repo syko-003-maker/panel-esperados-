@@ -93,14 +93,17 @@ function formatStep(step: number | undefined) {
 
 function computeTotals(scores: Record<string, number>, questions: Question[]) {
   let totalPoints = 0;
+  let maxPoints = 0;
   for (const question of questions) {
+    maxPoints += Number(question.pointsMax) || 0;
     const raw = scores[question.id];
     if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
     totalPoints += Math.min(Math.max(raw, 0), question.pointsMax);
   }
-  const totalOn20Raw = TOTAL_MAX_POINTS > 0 ? (totalPoints / TOTAL_MAX_POINTS) * 20 : 0;
+  if (maxPoints <= 0) maxPoints = TOTAL_MAX_POINTS;
+  const totalOn20Raw = maxPoints > 0 ? (totalPoints / maxPoints) * 20 : 0;
   const totalOn20 = Math.round(totalOn20Raw * 100) / 100;
-  return { totalPoints, totalOn20 };
+  return { totalPoints, totalOn20, maxPoints };
 }
 
 export default function RecruitmentDetailClient({
@@ -114,6 +117,10 @@ export default function RecruitmentDetailClient({
 }) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [questionBank, setQuestionBank] = useState<Question[]>([]);
+  const [model, setModel] = useState<{ id: string | null; name: string; minOn20: number; totalMaxPoints: number; chosen: boolean } | null>(null);
+  const [activeModels, setActiveModels] = useState<Array<{ id: string; name: string; description: string | null; minOn20: number; questionCount: number; totalMaxPoints: number }>>([]);
+  const [forcePick, setForcePick] = useState(false);
+  const [pickingModelId, setPickingModelId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<Viewer>({ userId: null, isChef: false });
   const [scores, setScores] = useState<Record<string, number>>({});
   const [staffNotes, setStaffNotes] = useState("");
@@ -150,10 +157,42 @@ export default function RecruitmentDetailClient({
 
   const totals = useMemo(() => computeTotals(scores, questionBank), [scores, questionBank]);
 
+  const minOn20 = model?.minOn20 ?? MIN_ON20;
+  const maxPoints = totals.maxPoints;
+  const scoresEmpty = Object.keys(scores).length === 0;
+
   const isClosed = ticket?.status === "CLOSED_ACCEPTED" || ticket?.status === "CLOSED_REJECTED";
   const isClaimedByViewer = Boolean(ticket?.claimedById && viewer.userId && ticket?.claimedById === viewer.userId);
   const canEdit = Boolean(ticket && !isClosed && (!ticket.claimedById || isClaimedByViewer || viewer.isChef));
   const canDecide = Boolean(ticket && !isClosed && (isClaimedByViewer || viewer.isChef));
+
+  // Choix du type de recrutement : imposé tant qu'aucun modèle n'est choisi
+  // ET qu'il existe plusieurs modèles actifs (sinon le défaut s'applique
+  // silencieusement). Un ticket déjà noté garde son modèle.
+  const mustChooseModel = Boolean(
+    ticket && !isClosed && canEdit && activeModels.length > 1 && scoresEmpty && (forcePick || !model?.chosen)
+  );
+
+  async function chooseModel(modelId: string) {
+    if (pickingModelId) return;
+    setPickingModelId(modelId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/staff/recruitment/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ticket) throw new Error(json?.error || "Impossible de choisir ce modèle");
+      setForcePick(false);
+      await load();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPickingModelId(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -164,6 +203,8 @@ export default function RecruitmentDetailClient({
       if (!res.ok || !data?.ticket) throw new Error((data as any)?.error || "Échec du chargement");
       setTicket(data.ticket);
       setQuestionBank(data.questionBank ?? []);
+      setModel((data as any).model ?? null);
+      setActiveModels((data as any).activeModels ?? []);
       setViewer(data.viewer ?? { userId: null, isChef: false });
       setScores(normalizeScores(data.ticket.scoresJson));
       setStaffNotes(data.ticket.staffNotes ?? "");
@@ -354,15 +395,18 @@ export default function RecruitmentDetailClient({
               <div className="space-y-1 text-sm">
                 <div>
                   <span className="text-muted-foreground">Total : </span>
-                  <span className="text-foreground font-medium">{totals.totalPoints.toFixed(1)} / {TOTAL_MAX_POINTS}</span>
+                  <span className="text-foreground font-medium">{totals.totalPoints.toFixed(1)} / {maxPoints}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Note : </span>
-                  <span className={`font-bold ${totals.totalOn20 < MIN_ON20 ? "text-red-400" : "text-green-400"}`}>
+                  <span className={`font-bold ${totals.totalOn20 < minOn20 ? "text-red-400" : "text-green-400"}`}>
                     {totals.totalOn20.toFixed(2)} / 20
-                    {totals.totalOn20 < MIN_ON20 ? " ⚠ insuffisant" : ""}
+                    {totals.totalOn20 < minOn20 ? " ⚠ insuffisant" : ""}
                   </span>
                 </div>
+                {model && (
+                  <div className="text-xs text-muted-foreground">Modèle : <span className="text-slate-200">{model.name}</span></div>
+                )}
                 {lastSavedAt && (
                   <div className="text-xs text-muted-foreground">Sauvegardé à {fmtDate(lastSavedAt)}</div>
                 )}
@@ -384,13 +428,67 @@ export default function RecruitmentDetailClient({
             )}
           </div>
 
+          {mustChooseModel && (
+            <SectionCard
+              title="Type de recrutement"
+              description="Plusieurs modèles de test existent — choisis celui à utiliser pour cet entretien avant de commencer la notation."
+              icon={ClipboardList}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                {activeModels.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={Boolean(pickingModelId)}
+                    onClick={() => chooseModel(m.id)}
+                    className={`group rounded-2xl border px-4 py-4 text-left transition-all hover:border-amber-500/40 hover:bg-amber-500/[0.05] disabled:opacity-60 ${
+                      pickingModelId === m.id
+                        ? "border-amber-500/50 bg-amber-500/[0.07] animate-pulse"
+                        : "border-white/10 bg-white/[0.03]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-amber-200">{m.name}</span>
+                      <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                        {m.questionCount} questions
+                      </span>
+                    </div>
+                    {m.description && (
+                      <p className="mt-1.5 text-xs leading-5 text-slate-400">{m.description}</p>
+                    )}
+                    <div className="mt-2.5 flex items-center gap-3 text-[11px] text-slate-500">
+                      <span>{m.totalMaxPoints} pts max</span>
+                      <span>· seuil {m.minOn20}/20</span>
+                      <span className="ml-auto font-semibold text-amber-300/80 opacity-0 transition-opacity group-hover:opacity-100">
+                        Utiliser ce modèle →
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </SectionCard>
+          )}
+
+          {!mustChooseModel && (
           <SectionCard
             title="Test de recrutement"
             description="Conduisez l'entretien oral à l'aide des réponses attendues ci-dessous. Posez chaque question au candidat et notez-le en fonction de sa réponse."
             icon={ClipboardList}
             actions={
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge tone={totals.totalOn20 >= MIN_ON20 ? "success" : "danger"}>
+                {model && (
+                  <StatusBadge tone="info">{model.name}</StatusBadge>
+                )}
+                {canEdit && scoresEmpty && activeModels.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setForcePick(true)}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-amber-500/30 hover:text-amber-200"
+                  >
+                    Changer de modèle
+                  </button>
+                )}
+                <StatusBadge tone={totals.totalOn20 >= minOn20 ? "success" : "danger"}>
                   {totals.totalOn20.toFixed(2)}/20
                 </StatusBadge>
               </div>
@@ -399,30 +497,31 @@ export default function RecruitmentDetailClient({
             <MotionSection className="grid gap-3 md:grid-cols-3" delay={0.02}>
               <DataTile
                 label="Score global"
-                tone={totals.totalOn20 >= MIN_ON20 ? "success" : "warning"}
-                value={<span className="text-xl font-semibold text-slate-50">{totals.totalPoints.toFixed(1)} / {TOTAL_MAX_POINTS}</span>}
+                tone={totals.totalOn20 >= minOn20 ? "success" : "warning"}
+                value={<span className="text-xl font-semibold text-slate-50">{totals.totalPoints.toFixed(1)} / {maxPoints}</span>}
               />
               <DataTile
                 label="Note sur 20"
-                tone={totals.totalOn20 >= MIN_ON20 ? "success" : "danger"}
+                tone={totals.totalOn20 >= minOn20 ? "success" : "danger"}
                 value={<span className="text-xl font-semibold text-slate-50">{totals.totalOn20.toFixed(2)} / 20</span>}
               />
               <DataTile
                 label="Seuil minimum"
-                tone={totals.totalOn20 >= MIN_ON20 ? "info" : "warning"}
-                value={<span className="text-xl font-semibold text-slate-50">{MIN_ON20.toFixed(0)} / 20</span>}
+                tone={totals.totalOn20 >= minOn20 ? "info" : "warning"}
+                value={<span className="text-xl font-semibold text-slate-50">{minOn20.toFixed(0)} / 20</span>}
               />
             </MotionSection>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <StatusBadge tone={totals.totalOn20 >= MIN_ON20 ? "success" : "danger"}>
-                {totals.totalOn20 >= MIN_ON20 ? "Seuil atteint" : "Sous le seuil"}
+              <StatusBadge tone={totals.totalOn20 >= minOn20 ? "success" : "danger"}>
+                {totals.totalOn20 >= minOn20 ? "Seuil atteint" : "Sous le seuil"}
               </StatusBadge>
             </div>
           </SectionCard>
+          )}
 
           {/* Questions */}
-          {(Object.keys(sections) as Array<"GENERAL" | "TRAP">).map((section) => (
+          {!mustChooseModel && (Object.keys(sections) as Array<"GENERAL" | "TRAP">).map((section) => (
             sections[section].length > 0 && (
               <MotionSection key={section} delay={section === "GENERAL" ? 0.04 : 0.08}>
               <SectionCard

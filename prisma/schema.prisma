@@ -1392,3 +1392,23 @@ model LygCall {
   @@index([createdAt])
   @@index([service, createdAt])
 }
+
+/// Modèles de recrutement (questionnaires d'entretien).
+/// Plusieurs modèles possibles : au lancement du test, le recruteur choisit
+/// lequel utiliser (le modèle par défaut est pris s'il n'y en a qu'un).
+/// `questions` : Array<{ id, section: "GENERAL"|"TRAP", label, pointsMax,
+/// expectedAnswer?, hint?, step? }> — même forme que l'ancien questionBank.
+model RecruitmentModel {
+  id          String   @id @default(cuid())
+  familyId    String
+  name        String
+  description String?
+  questions   Json
+  minOn20     Float    @default(14)
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([familyId])
+}

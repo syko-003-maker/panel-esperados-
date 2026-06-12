@@ -175,7 +175,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const updatedNotes = parseRecruitmentNotes(updated.notes ?? null);
   const evaluation = extractRecruitmentEvaluation(updatedNotes, null);
   const recruiterId = updatedNotes.claimedById ?? userId;
-  const totals = computeRecruitmentTotals(evaluation.scoresJson);
+  const { resolveModelForRecruitment } = await import("@/lib/recruitment/models");
+  const evalModel = await resolveModelForRecruitment(updatedNotes.modelId ?? null);
+  const totals = computeRecruitmentTotals(evaluation.scoresJson, evalModel.questions);
 
   // ── Auto-add WL famille LYG (synchrone, AVANT enqueue Discord) ────────
   // On veut connaître le résultat avant d'envoyer l'embed Discord, pour
