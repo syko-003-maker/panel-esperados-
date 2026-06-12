@@ -5,7 +5,7 @@ import { getMemberScopeOrNull } from "@/server/member/scope";
 /**
  * POST /api/member/reglement — Assistant règlement (même moteur que la
  * commande Discord /reglement). Le panel proxifie vers le worker, qui porte
- * le corpus + l'appel Gemini + les quotas (cooldown 30s et plafond quotidien
+ * le corpus + l'appel Gemini + les quotas (cooldown et plafond quotidien
  * PARTAGÉS entre Discord et le site, par discordId).
  */
 

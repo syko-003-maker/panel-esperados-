@@ -21,9 +21,14 @@
 
 import { getRulesCorpus } from "./rulesCorpus.js";
 
-// gemini-2.5-flash : seul palier avec vrai quota gratuit (les 2.0 sont à
-// limit:0 depuis 2026). thinkingBudget:0 = pas de "réflexion" → plus rapide.
-const MODEL = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.5-flash").trim();
+// Le quota gratuit est de ~20 requêtes/JOUR *par modèle* (les 2.0 sont à
+// limit:0 depuis 2026). On chaîne donc plusieurs modèles : si l'un est à
+// court de quota (429), on bascule automatiquement sur le suivant —
+// le quota effectif est la somme des compteurs.
+const MODEL_CHAIN = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.5-flash-lite,gemini-2.5-flash,gemini-2.5-pro")
+  .split(",")
+  .map((m) => m.trim())
+  .filter(Boolean);
 const DAILY_MAX = Number(process.env.REGLEMENT_AI_DAILY_MAX ?? "150") || 150;
 const COOLDOWN_MS = 5_000;
 const MAX_OUTPUT_TOKENS = 1000;
@@ -115,9 +120,9 @@ type GeminiResponse = {
 
 type ChatTurn = { role: "user" | "model"; parts: Array<{ text: string }> };
 
-async function callGemini(system: string, contents: ChatTurn[]): Promise<{ status: number; data: GeminiResponse | null }> {
+async function callGemini(model: string, system: string, contents: ChatTurn[]): Promise<{ status: number; data: GeminiResponse | null }> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: "POST",
       headers: {
@@ -133,7 +138,8 @@ async function callGemini(system: string, contents: ChatTurn[]): Promise<{ statu
           temperature: 0.3,
           // Les modèles 2.5 "réfléchissent" par défaut (lent + consomme des
           // tokens). Inutile pour du Q&A de règlement → désactivé.
-          ...(MODEL.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          // Exception : 2.5-pro refuse thinkingBudget:0 (réflexion obligatoire).
+          ...(model.startsWith("gemini-2.5") && !model.includes("pro") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         },
       }),
       signal: AbortSignal.timeout(45_000),
@@ -175,13 +181,22 @@ export async function askReglement(userId: string, question: string): Promise<Re
       contents.push({ role: "model", parts: [{ text: t.a }] });
     }
     contents.push({ role: "user", parts: [{ text: trimmedQuestion }] });
-    const { status, data } = await callGemini(system, contents);
+
+    let status = 0;
+    let data: GeminiResponse | null = null;
+    let usedModel = MODEL_CHAIN[0];
+    for (const model of MODEL_CHAIN) {
+      usedModel = model;
+      ({ status, data } = await callGemini(model, system, contents));
+      if (status !== 429) break;
+      console.warn(`[reglement] quota du jour épuisé sur ${model} (429) — bascule sur le modèle suivant`);
+    }
 
     if (status === 429) {
-      return { ok: false, error: "Le quota gratuit de l'IA est momentanément atteint — réessaie dans une minute (ou demain si ça persiste)." };
+      return { ok: false, error: "Les quotas gratuits du jour de l'IA sont épuisés — réessaie demain, ou demande directement à un staff." };
     }
     if (status === 400 || status === 401 || status === 403) {
-      console.error("[reglement] clé/requête refusée par Gemini:", status, JSON.stringify(data).slice(0, 300));
+      console.error(`[reglement] clé/requête refusée par Gemini (${usedModel}):`, status, JSON.stringify(data).slice(0, 300));
       return { ok: false, error: "Clé API invalide ou refusée — préviens le Chef de famille." };
     }
     if (status >= 500) {
@@ -209,7 +224,7 @@ export async function askReglement(userId: string, question: string): Promise<Re
       JSON.stringify({
         event: "reglement_ai_answer",
         userId,
-        model: MODEL,
+        model: usedModel,
         in: usage.promptTokenCount ?? null,
         cacheRead: usage.cachedContentTokenCount ?? 0,
         out: usage.candidatesTokenCount ?? null,
