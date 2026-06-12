@@ -130,16 +130,16 @@ export default function ReglementAssistant() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5 px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 sm:px-6">
       {/* ── Héro ── */}
       <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-amber-500/[0.12] via-[#1a0a0e]/60 to-transparent shadow-[0_20px_70px_rgba(2,6,23,0.45)]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(201,148,10,0.16),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(122,31,43,0.22),transparent_42%)]" />
-        <div className="relative flex items-center gap-4 px-6 py-6 sm:px-8">
+        <div className="relative flex items-center gap-5 px-6 py-7 sm:px-9 sm:py-8">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-amber-500/35 bg-amber-500/15 shadow-[0_0_28px_rgba(201,148,10,0.25)]">
             <BookOpen className="h-7 w-7 text-amber-300" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-50">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
               Assistant <span className="text-amber-300">Règlement</span> LYG
             </h1>
             <p className="mt-1 text-sm leading-6 text-slate-400">
@@ -153,10 +153,10 @@ export default function ReglementAssistant() {
       {/* ── Console de chat ── */}
       <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(12,5,7,0.55)] shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur-sm">
         {/* Conversation */}
-        <div ref={scrollRef} className="max-h-[55vh] min-h-[280px] overflow-y-auto px-4 py-5 sm:px-6">
+        <div ref={scrollRef} className="max-h-[64vh] min-h-[52vh] overflow-y-auto px-4 py-6 sm:px-8">
           {history.length === 0 && !loading ? (
             /* État vide : invitation + suggestions */
-            <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-5 text-center">
+            <div className="flex h-full min-h-[46vh] flex-col items-center justify-center gap-6 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-full border border-amber-500/25 bg-amber-500/10 shadow-[0_0_36px_rgba(201,148,10,0.18)]">
                 <Sparkles className="h-7 w-7 text-amber-300/90" />
               </div>
@@ -164,13 +164,13 @@ export default function ReglementAssistant() {
                 <p className="text-sm font-semibold text-slate-200">Pose ta première question</p>
                 <p className="mt-1 text-xs text-slate-500">…ou pars d&apos;un exemple :</p>
               </div>
-              <div className="grid w-full max-w-xl gap-2 sm:grid-cols-2">
+              <div className="grid w-full max-w-2xl gap-2.5 sm:grid-cols-2">
                 {SUGGESTIONS.map((sugg) => (
                   <button
                     key={sugg}
                     type="button"
                     onClick={() => ask(sugg)}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left text-xs leading-5 text-slate-300 transition-all hover:border-amber-500/35 hover:bg-amber-500/[0.07] hover:text-amber-100"
+                    className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-[13px] leading-5 text-slate-300 transition-all hover:border-amber-500/35 hover:bg-amber-500/[0.07] hover:text-amber-100"
                   >
                     {sugg}
                   </button>
@@ -221,7 +221,7 @@ export default function ReglementAssistant() {
             e.preventDefault();
             ask(question);
           }}
-          className="border-t border-white/10 bg-white/[0.02] px-4 py-3.5 sm:px-6"
+          className="border-t border-white/10 bg-white/[0.02] px-4 py-4 sm:px-8"
         >
           <div className="flex gap-2">
             <input
