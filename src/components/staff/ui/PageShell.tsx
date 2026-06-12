@@ -36,11 +36,11 @@ export function PageShell({ title, description, icon: Icon, actions, children }:
                 </div>
               )}
               <div className="space-y-1">
-                <h1 className="title-gradient text-2xl font-bold leading-tight tracking-tight sm:text-[26px]">
+                <h1 className="text-2xl font-bold leading-tight tracking-tight text-slate-50 sm:text-[26px]">
                   {title}
                 </h1>
                 {description && (
-                  <p className="max-w-2xl text-[13px] leading-5 text-slate-400">{description}</p>
+                  <p className="max-w-2xl text-[13px] leading-5 text-slate-300/85">{description}</p>
                 )}
                 {/* Ligne d'accent sous le titre */}
                 <div className="mt-2 h-px w-16 bg-gradient-to-r from-[#9b2335]/80 via-amber-500/40 to-transparent" />

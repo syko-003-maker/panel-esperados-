@@ -410,15 +410,6 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 30%);
 }
 
-/* Titre : gradient ambre/blanc/bordeaux pour donner du caractère */
-.title-gradient {
-  background: linear-gradient(135deg, #fde68a 0%, #ffffff 45%, #f5d0d6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35));
-}
-
 /* ──────────────────────────────────────────────────────────────────────
  * Boutons premium : .btn-press = translateY hover + scale press cohérents
  * + variantes tonales (.btn-press-bordeaux / -amber / -neutral) qui ajoutent
