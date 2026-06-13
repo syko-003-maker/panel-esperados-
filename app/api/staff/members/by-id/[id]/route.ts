@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const { id } = await params;

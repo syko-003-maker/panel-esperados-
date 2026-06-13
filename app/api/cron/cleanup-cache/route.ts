@@ -25,8 +25,9 @@ export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
   const providedSecret =
-    authHeader?.replace("Bearer ", "") ??
-    req.nextUrl.searchParams.get("secret");
+    authHeader?.replace("Bearer ", "");
+  // Plus de secret accepté en query string (fuite dans les logs d'accès) —
+  // header Authorization: Bearer uniquement (c'est ce qu'utilise le timer systemd).
 
   if (!cronSecret || providedSecret !== cronSecret) {
     return NextResponse.json(

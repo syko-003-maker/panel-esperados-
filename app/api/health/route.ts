@@ -14,7 +14,7 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     dbOk = true;
   } catch (e) {
-    dbError = e instanceof Error ? e.message : "Unknown DB error";
+    dbError = process.env.NODE_ENV === "production" ? "db_error" : e instanceof Error ? e.message : "Unknown DB error";
   }
 
   // Worker — vérifié via 2 signaux indépendants :

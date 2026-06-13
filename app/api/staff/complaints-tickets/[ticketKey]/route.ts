@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/auth";
-import { requirePrivileged } from "@/lib/guards";
+import { requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import type { ComplaintStatus } from "@prisma/client";
 
@@ -28,7 +28,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ ticketKey: string }> }
 ) {
-  const guard = await requirePrivileged();
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

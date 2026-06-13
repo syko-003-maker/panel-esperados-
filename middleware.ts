@@ -70,6 +70,18 @@ const RATE_LIMIT_RULES: Array<{
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Surface de debug neutralisée en production (défense en profondeur :
+  // les routes ont leurs propres guards, mais rien ne doit répondre ici).
+  if (
+    process.env.NODE_ENV === "production" &&
+    (pathname.startsWith("/api/debug/") || pathname === "/api/me/roles")
+  ) {
+    return new NextResponse(JSON.stringify({ error: "Not Found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Trouver la règle applicable
   const rule = RATE_LIMIT_RULES.find((r) => r.pattern.test(pathname));
   if (rule) {
@@ -104,5 +116,7 @@ export const config = {
     "/api/admin/:path*",
     "/api/discord/resync",
     "/api/discord/role-jobs/:path*",
+    "/api/debug/:path*",
+    "/api/me/roles",
   ],
 };

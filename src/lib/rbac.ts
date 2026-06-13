@@ -156,11 +156,10 @@ export async function getStaffUser(
         orderBy: { priority: "desc" },
       });
 
-      const fallbackRole = mappedRole || await prisma.staffRole.findFirst({
-        where: { familyId: resolvedFamilyId, isActive: true },
-        orderBy: { priority: "desc" },
-      });
-
+      // Pas de repli sur le rôle le plus prioritaire : un staff dont le rôle
+      // Discord n'est pas mappé n'obtient AUCUN rôle RBAC auto-provisionné
+      // (sinon : escalade silencieuse vers le rôle le plus élevé).
+      const fallbackRole = mappedRole;
       if (!fallbackRole) {
         return null;
       }

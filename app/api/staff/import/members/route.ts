@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePrivileged } from "@/lib/guards";
+import { requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { normalizeSteamId64 } from "@/lib/validation/steamid";
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
  * Import members from CSV or JSON
  */
 export async function POST(req: NextRequest) {
-  const guard = await requirePrivileged();
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const session = guard.session as any;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireChef } from "@/lib/guards";
+import { requireChef, requireChefFamille } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { purgeGdprData, exportGdprData, isGdprPurgeEnabled } from "@/lib/gdpr";
 
@@ -9,7 +9,7 @@ import { purgeGdprData, exportGdprData, isGdprPurgeEnabled } from "@/lib/gdpr";
  * THIS IS IRREVERSIBLE
  */
 export async function POST(req: NextRequest) {
-  const guard = await requireChef();
+  const guard = await requireChefFamille();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

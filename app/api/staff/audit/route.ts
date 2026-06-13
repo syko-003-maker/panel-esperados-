@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
   const guard = await requirePrivileged();
   if (guard instanceof Response) return guard;
 
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  // familyId client ignoré : pas de lecture cross-famille des journaux.
+  const familyId = DEFAULT_FAMILY_ID;
   const entity = req.nextUrl.searchParams.get("entity");
   const entityId = req.nextUrl.searchParams.get("entityId");
   const actorType = req.nextUrl.searchParams.get("actorType");

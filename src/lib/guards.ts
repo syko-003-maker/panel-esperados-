@@ -341,9 +341,6 @@ export const requireChefOrEtatMajor = requireStaffFull;
  */
 export async function requireStaffFull(): Promise<GuardResult> {
   logDiscordRoleConfig("requireStaffFull");
-  if (process.env.THEME_DEBUG_BYPASS === "1" && process.env.NODE_ENV !== "production") {
-    return { session: null };
-  }
   const session = await getSession();
   if (!session) {
     return new Response(null, {

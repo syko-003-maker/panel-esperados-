@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRecruiterOrAbove } from "@/lib/guards";
+import { requireRecruiterOrAbove, requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
 import { listRecruitmentModels, resolveModelForRecruitment } from "@/lib/recruitment/models";
@@ -253,7 +253,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireRecruiterOrAbove();
+  const guard = await requireFullWriter();
   if (guard instanceof Response) return guard;
 
   const existing = await prisma.recruitment.findUnique({

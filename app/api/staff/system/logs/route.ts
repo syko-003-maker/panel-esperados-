@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireChefFamille } from "@/lib/guards";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -71,7 +71,7 @@ async function fetchLogs(source: Source, limit: number): Promise<LogLine[]> {
 }
 
 export async function GET(req: Request) {
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requireChefFamille();
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);

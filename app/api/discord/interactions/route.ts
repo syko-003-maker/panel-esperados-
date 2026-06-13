@@ -139,7 +139,9 @@ export async function POST(req: Request) {
 
   const rawBody = await req.text();
 
-  const isValid = verifyKey(rawBody, signature, timestamp, publicKey);
+  // verifyKey (v4) est async — sans await, la Promise est toujours truthy
+  // et la vérification de signature était totalement contournée.
+  const isValid = await verifyKey(rawBody, signature, timestamp, publicKey);
   if (!isValid) {
     logError("interaction_signature_invalid", { requestId });
     return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });

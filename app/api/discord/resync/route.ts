@@ -260,7 +260,11 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  // Get resync status
+  // Get resync status — réservé au worker (même secret que le POST).
+  const secret = req.headers.get("x-worker-secret");
+  if (!WORKER_SECRET || secret !== WORKER_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   return NextResponse.json({
     locked: resyncLock,
     lastResyncAt,

@@ -5,6 +5,7 @@ import { requireActiveMember, GRADE_LEVELS } from "@/lib/guards";
 export async function POST(req: NextRequest) {
   try {
     const user = await requireActiveMember(GRADE_LEVELS.STAFF);
+    if (user instanceof Response) return user;
 
     const body = await req.json().catch(() => ({}));
     const { ticketKind, ticketId, threadId } = body;

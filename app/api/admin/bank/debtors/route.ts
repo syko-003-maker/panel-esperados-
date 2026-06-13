@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { NextResponse } from "next/server";
-import { requireStaffAccess } from "@/lib/rbac";
+import { requireStaffFull } from "@/lib/guards";
 import { getOrCreateDiscordConfig } from "@/lib/discord/discord";
 import { getDebtRows } from "@/lib/bank-debts";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
@@ -10,7 +10,7 @@ import { logError, makeRequestId } from "@/lib/obs";
 
 export async function GET(req: Request) {
   const requestId = makeRequestId();
-  const guard = await requireStaffAccess();
+  const guard = await requireStaffFull();
   if (guard instanceof Response) return guard;
 
   try {

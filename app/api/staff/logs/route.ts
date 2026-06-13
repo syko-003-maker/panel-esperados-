@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     const pageSize = Math.min(Math.max(Number.isFinite(pageSizeRaw) ? pageSizeRaw : 50, 1), 100);
     const skip = (page - 1) * pageSize;
 
-    const familyId = searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+    // familyId client ignoré : pas de lecture cross-famille des journaux.
+    const familyId = DEFAULT_FAMILY_ID;
     const entity = searchParams.get("entity") ?? undefined;
     const actorId = searchParams.get("actorId") ?? undefined;
 
