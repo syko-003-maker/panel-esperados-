@@ -460,7 +460,8 @@ export function initWorkerServer(client: Client): { start: () => Promise<void>; 
     start: async () => {
       return new Promise((resolve, reject) => {
         try {
-          server = app!.listen(PORT, () => {
+          // Bind loopback uniquement : seul le panel (même machine) consomme ce port.
+          server = app!.listen(PORT, "127.0.0.1", () => {
             log("worker_http_server_started", { port: PORT });
             resolve();
           });
