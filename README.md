@@ -23,8 +23,9 @@
 **Panel Esperados** est un outil de gestion communautaire complet pour une famille RP sur **Garry's Mod** (serveur LiveYourGame). Il réunit en une seule plateforme :
 
 - un **panel staff** (membres, sanctions, absences, réunions, plaintes, recrutement, stats) ;
-- un **espace membre** (solde bancaire, justificatifs, calculateur d'investissement) ;
+- un **espace membre** (solde bancaire, justificatifs, calculateur d'investissement, hiérarchie) ;
 - un **bot Discord** autonome (modération, logs enrichis, anti-spam, synchronisation des rôles) ;
+- un **assistant Règlement par IA** (`/reglement` sur Discord **et** sur le site) qui répond aux questions de règles avec le verdict et l'article exact ;
 - une **intégration temps réel** avec un site tiers (whitelists et armes in-game gérées à distance).
 
 C'est un vrai produit full-stack en production — pas une démo — pensé pour la **fiabilité** (file de jobs avec rejeu), la **sécurité** (auth OAuth, RBAC, chiffrement, audit) et la **maintenabilité**.
@@ -62,11 +63,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 
 | | |
 |---|---|
-| **~105 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **212** routes API | **52** modèles de données (Prisma) |
-| **72** pages | **12** migrations versionnées |
-| **108** composants React | **7** boucles de fond (sync, pollers, keep-alive) |
-| **19** fichiers de tests (Vitest) | **129** commits — **1** développeur |
+| **~103 000** lignes de TypeScript | **2** services en production (web + worker) |
+| **216** routes API | **53** modèles de données (Prisma) |
+| **75** pages | **13** migrations versionnées |
+| **20** commandes Discord (dont `/reglement` IA) | **7** boucles de fond (sync, pollers, keep-alive) |
+| **17** fichiers de tests (Vitest) | **153** commits — **1** développeur |
 
 ---
 
@@ -112,13 +113,16 @@ flowchart LR
 
 **📱 Espace membre**
 - Dashboard bancaire (solde visuel)
+- **Hiérarchie famille** + **staff LYG en ligne** (live)
 - Justifier une absence / sanction
+- **Assistant Règlement IA** (mini-chat intégré)
 - Calculateur de rentabilité
 - Guides publics (build, conduite…)
 
 </td><td valign="top" width="33%">
 
 **🤖 Bot Discord**
+- **`/reglement`** : assistant de règles par IA
 - Logs serveur enrichis (audit log)
 - Modération (ban/kick/mute/warn)
 - Anti-spam (flood, mentions, phishing)
@@ -140,8 +144,9 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🪞 Mirror Discord temps réel.** Les rôles et pseudos Discord sont répliqués en base **à l'événement** (gateway) + resync horaire de rattrapage : poser un rôle à la main sur Discord met à jour les accès du panel en ~1 s, et l'UI ne peut jamais diverger des guards serveur (même source de vérité).
 - **🛡️ RBAC multi-tiers** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur) avec **guards par route serveur**, **journalisation des accès refusés** (pas seulement des accès réussis) et une **page d'administration des accès** (rôles appliqués sur Discord en un clic, audités).
 - **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
+- **🤖 Assistant Règlement par IA (RAG maison, 0 €).** Le corpus complet du règlement (3 pages web + 1 Google Doc) est extrait, nettoyé et mis en cache, puis injecté à un LLM **Gemini en offre gratuite**. Réponses structurées (verdict + explication + article cité), **mémoire de conversation** par joueur (les questions de suivi gardent le contexte), **bascule automatique entre modèles** quand un quota journalier est épuisé, et **quotas partagés Discord ↔ site** (un seul moteur derrière la commande `/reglement` et le mini-chat du site).
 - **⏱️ Pollers conscients du quota.** ~57 requêtes / 15 min vers l'API tierce — **sous le budget de 100 req/15 min** — avec backoff automatique sur HTTP 429 et garde anti-chevauchement (`isRunning`).
-- **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, DB bindée en `127.0.0.1`, secrets git-ignorés, IP masquée derrière Cloudflare.
+- **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (les 216 endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
 
 ---
 
