@@ -40,7 +40,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/01-staff-dashboard.png" alt="Dashboard staff"/><br/><sub><b>Dashboard staff</b> — KPI temps réel</sub></td>
+    <td width="50%"><img src="docs/screenshots/01-staff-dashboard.png" alt="Dashboard staff"/><br/><sub><b>Dashboard staff</b> — KPI temps réel, assistant Règlement &amp; staff en ligne</sub></td>
+    <td width="50%"><img src="docs/screenshots/07-member-dashboard.png" alt="Espace membre"/><br/><sub><b>Espace membre</b> — solde, hiérarchie famille &amp; mini-chat règlement</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/08-reglement-assistant.png" alt="Assistant Règlement IA"/><br/><sub><b>Assistant Règlement IA</b> — verdict + article exact (Gemini gratuit)</sub></td>
     <td width="50%"><img src="docs/screenshots/02-members.png" alt="Liste des membres"/><br/><sub><b>Membres</b> — filtres, statut « en jeu » live</sub></td>
   </tr>
   <tr>
@@ -52,8 +56,8 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
     <td width="50%"><img src="docs/screenshots/06-sanctions.png" alt="Sanctions"/><br/><sub><b>Sanctions</b> — création &amp; suivi (workflow + Discord)</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/07-member-dashboard.png" alt="Espace membre"/><br/><sub><b>Espace membre</b> — solde bancaire &amp; raccourcis</sub></td>
-    <td width="50%" valign="middle"><sub>🤖 <b>Bot Discord</b> — logs enrichis, modération, anti-spam et message de hiérarchie auto-actualisé.<br/><em>(capture à ajouter depuis Discord — voir le <a href="docs/screenshots/CAPTURE_GUIDE.md">guide</a>)</em></sub></td>
+    <td width="50%"><img src="docs/screenshots/09-discord-templates.png" alt="Templates Discord"/><br/><sub><b>Pages Discord</b> — templates avec aperçu live &amp; pickers par nom</sub></td>
+    <td width="50%" valign="middle"><sub>🤖 <b>Bot Discord</b> — logs enrichis, modération, anti-spam, commande <code>/reglement</code> par IA et message de hiérarchie auto-actualisé.<br/><em>(capture à ajouter depuis Discord — voir le <a href="docs/screenshots/CAPTURE_GUIDE.md">guide</a>)</em></sub></td>
   </tr>
 </table>
 
