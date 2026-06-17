@@ -48,7 +48,16 @@ async function fetchWarnsFromLyg(steamId: string): Promise<{ total: number; warn
     trackLygCall(res.ok, res.status, "/api/warns/:steamId");
 
     if (res.status === 429) return "rate_limited";
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Avant : échec totalement silencieux → une panne de token/URL est
+      // restée invisible 24 jours (warns IG non synchronisés). On logge
+      // désormais clairement, surtout l'auth (401/403).
+      console.error(
+        `[lygWarnPoller] LYG ${res.status} sur /warns/${steamId}` +
+        (res.status === 401 || res.status === 403 ? " — TOKEN LYG invalide/expiré ? vérifier LYG_TOKEN dans discord-worker/.env.prod" : "")
+      );
+      return null;
+    }
 
     const json = await res.json().catch(() => null);
     if (!json) return null;
@@ -57,7 +66,8 @@ async function fetchWarnsFromLyg(steamId: string): Promise<{ total: number; warn
       total: json.total ?? 0,
       warns: (json.data ?? []) as LygWarnRaw[],
     };
-  } catch {
+  } catch (err) {
+    console.error(`[lygWarnPoller] échec réseau /warns/${steamId}:`, err instanceof Error ? err.message : String(err));
     return null;
   }
 }

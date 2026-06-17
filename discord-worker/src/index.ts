@@ -564,7 +564,9 @@ client.once("ready", async () => {
     }
   }, 1000);
 
-  // Schedule LYG warn polling every 5 minutes
+  // Poll des warns IG LYG toutes les 60 min (budget partagé 100 req/15 min ;
+  // ~60 membres = ~60 req/cycle). Requiert LYG_TOKEN dans l'env du worker —
+  // sans lui, pollLygWarnsInner sort immédiatement (warns non synchronisés).
   let lastLygWarnPoll = 0;
   setInterval(() => {
     const now = Date.now();
