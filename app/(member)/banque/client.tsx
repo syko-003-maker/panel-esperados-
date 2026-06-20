@@ -15,9 +15,9 @@ type BankLogsResponse =
   | { ok: false; error: string };
 
 function formatType(type: number) {
-  if (type === 1) return "Crédit";
+  if (type === 1) return "Retrait";
   if (type === 0) return "Débit";
-  if (type === 2) return "Dépôt";
+  if (type === 2) return "Remboursement";
   return `Type ${type}`;
 }
 
