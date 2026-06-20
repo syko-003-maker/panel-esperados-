@@ -40,14 +40,14 @@ function formatDate(dateStr: string) {
 }
 
 function TxIcon({ type }: { type: number }) {
-  if (type === 1) return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />;
-  if (type === 0) return <TrendingDown className="h-3.5 w-3.5 text-red-400" />;
+  if (type === 2) return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />; // Remboursement (+)
+  if (type === 1 || type === 0) return <TrendingDown className="h-3.5 w-3.5 text-red-400" />; // Retrait / Débit (−)
   return <Minus className="h-3.5 w-3.5 text-slate-400" />;
 }
 
 function txColor(type: number) {
-  if (type === 1) return "text-emerald-300";
-  if (type === 0) return "text-red-300";
+  if (type === 2) return "text-emerald-300"; // Remboursement (+)
+  if (type === 1 || type === 0) return "text-red-300"; // Retrait / Débit (−)
   return "text-blue-300";
 }
 
@@ -151,7 +151,7 @@ export function BankPageClient() {
                     </div>
                   </div>
                   <span className={`font-semibold tabular-nums text-sm ${txColor(log.type)}`}>
-                    {log.type === 1 ? "+" : "−"}{formatAmount(Math.abs(log.money))}
+                    {log.type === 2 ? "+" : "−"}{formatAmount(Math.abs(log.money))}
                   </span>
                 </div>
               ))}
@@ -186,7 +186,7 @@ export function BankPageClient() {
                         </span>
                       </td>
                       <td className={`px-5 py-3.5 text-right font-semibold tabular-nums ${txColor(log.type)}`}>
-                        {log.type === 1 ? "+" : "−"}
+                        {log.type === 2 ? "+" : "−"}
                         {formatAmount(Math.abs(log.money))}
                       </td>
                     </tr>

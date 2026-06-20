@@ -115,8 +115,8 @@ function formatDate(dateStr: string) {
 }
 
 function TxIcon({ type }: { type: number }) {
-  if (type === 1) return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />;
-  if (type === 0) return <TrendingDown className="h-3.5 w-3.5 text-red-400" />;
+  if (type === 2) return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />; // Remboursement (+)
+  if (type === 1 || type === 0) return <TrendingDown className="h-3.5 w-3.5 text-red-400" />; // Retrait / Débit (−)
   return <Minus className="h-3.5 w-3.5 text-slate-400" />;
 }
 
@@ -124,8 +124,8 @@ function txColor(type: number) {
   // Couleurs plus claires + drop-shadow léger pour mieux ressortir sur le
   // fond bordeaux sombre du panel. text-emerald-200/red-200 sont plus
   // visibles que -300 sur des cartes white/[0.03].
-  if (type === 1) return "text-emerald-200 drop-shadow-[0_0_6px_rgba(52,211,153,0.35)]";
-  if (type === 0) return "text-red-200 drop-shadow-[0_0_6px_rgba(248,113,113,0.40)]";
+  if (type === 2) return "text-emerald-200 drop-shadow-[0_0_6px_rgba(52,211,153,0.35)]"; // Remboursement (+)
+  if (type === 1 || type === 0) return "text-red-200 drop-shadow-[0_0_6px_rgba(248,113,113,0.40)]"; // Retrait / Débit (−)
   return "text-slate-200";
 }
 
@@ -435,7 +435,7 @@ export default function DashboardClient() {
                   </div>
                 </div>
                 <span className={`font-semibold tabular-nums text-sm ${txColor(tx.type)}`}>
-                  {tx.type === 1 ? "+" : "−"}{formatAmount(Math.abs(tx.amount))}
+                  {tx.type === 2 ? "+" : "−"}{formatAmount(Math.abs(tx.amount))}
                 </span>
               </div>
             ))}
@@ -461,7 +461,7 @@ export default function DashboardClient() {
                       </span>
                     </td>
                     <td className={`px-5 py-3 text-right font-semibold tabular-nums ${txColor(tx.type)}`}>
-                      {tx.type === 1 ? "+" : "−"}{formatAmount(Math.abs(tx.amount))}
+                      {tx.type === 2 ? "+" : "−"}{formatAmount(Math.abs(tx.amount))}
                     </td>
                   </tr>
                 ))}
