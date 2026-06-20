@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "rm -rf .next && next build",
     "start": "node -r dotenv/config node_modules/next/dist/bin/next start",
     "start:prod": "npm run build && cross-env NODE_ENV=production DOTENV_CONFIG_PATH=.env.prod DOTENV_CONFIG_OVERRIDE=true concurrently --names \"next,worker,tunnel\" --prefix \"[{name}]\" \"npm run start\" \"npm run discord:start\" \"C:\\\\cloudflared.exe tunnel run los-esperados\"",
     "dev:promote-staff": "npx tsx scripts/dev-promote-staff.ts",
