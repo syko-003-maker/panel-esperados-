@@ -22,7 +22,7 @@ const REGLEMENT_RULES: { titre: string; detail: string }[] = [
   { titre: "Sanctions IG", detail: "Toute sanction reçue en jeu doit être déclarée sur le site." },
   { titre: "Absences", detail: "Toute absence générale ou de réunion doit être déclarée sur le site." },
   { titre: "@Ping interdits", detail: "Sauf pour mobiliser du monde pour une action RP." },
-  { titre: "Pénalité par mort", detail: "150 000 € à déposer en banque familiale par mort." },
+  { titre: "Pénalité par mort", detail: "150 000 € à déposer en banque familiale à chaque mort." },
   { titre: "Vocal obligatoire", detail: "Vous devez être en vocal Discord quand vous jouez (sauf si une demande à l'État-Major a été faite)." },
   { titre: "Rôle \"en test\"", detail: "Durée 1 semaine — toute faute = exclusion immédiate." },
 ];
