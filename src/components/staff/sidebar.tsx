@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { MotionButtonFrame, MotionListItem } from "@/components/staff/ui/motion";
+import PerfModeToggle from "@/components/perf-mode-toggle";
 import {
   LayoutDashboard,
   Users,
@@ -203,8 +204,9 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* Logout Button — collé sous le dernier item, pas en bas de la sidebar */}
-      <div className="mt-2 px-3 py-3 border-t border-white/8">
+      {/* Mode léger (PC faibles) + Déconnexion */}
+      <div className="mt-2 px-3 py-3 border-t border-white/8 space-y-2">
+        <PerfModeToggle />
         <MotionButtonFrame className="w-full">
           <Button
             variant="ghost"

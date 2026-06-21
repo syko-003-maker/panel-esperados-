@@ -73,6 +73,11 @@ export default function RootLayout({
         id="app-v4-canvas-theme"
         suppressHydrationWarning
       >
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "try{if(localStorage.getItem('perf-lite')==='1')document.documentElement.classList.add('perf-lite')}catch(e){}",
+          }}
+        />
         <AppBackground />
         {children}
       </body>

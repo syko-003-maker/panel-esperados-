@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import PerfModeToggle from "@/components/perf-mode-toggle";
 import {
   LayoutDashboard,
   Banknote,
@@ -140,7 +141,8 @@ export function MemberSidebar({
         </div>
       )}
 
-      <div className="px-3 py-4 border-t border-white/10">
+      <div className="px-3 py-4 border-t border-white/10 space-y-2">
+        <PerfModeToggle />
         <div className="w-full">
           <button
             onClick={() => signOut({ redirect: true, callbackUrl: "/login" })}

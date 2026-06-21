@@ -545,3 +545,25 @@ a[role="button"]:not([data-no-press]):not([aria-disabled="true"]):active {
     transition: none;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Mode léger (.perf-lite sur <html>) — pour PC / GPU faibles.
+ * Coupe le flou temps réel (backdrop-filter = effet le plus coûteux) et les
+ * animations décoratives. Les spinners (animate-spin) sont préservés.
+ * Activé via le bouton "Mode léger", mémorisé dans localStorage.
+ * ────────────────────────────────────────────────────────────────────── */
+html.perf-lite *,
+html.perf-lite *::before,
+html.perf-lite *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html.perf-lite *:not([class*="animate-spin"]),
+html.perf-lite *:not([class*="animate-spin"])::before,
+html.perf-lite *:not([class*="animate-spin"])::after {
+  animation: none !important;
+}
+html.perf-lite * {
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
