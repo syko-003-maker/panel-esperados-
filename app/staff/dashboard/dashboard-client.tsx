@@ -393,39 +393,29 @@ export default function StaffDashboardClient() {
         custom={0.18}
       >
 
-        {/* Actions urgentes */}
-        <Section title="Actions urgentes" icon={AlertCircle} href="#" linkLabel="" count={urgentCount}>
-          <div className="flex flex-col gap-2 p-3">
-            {loading ? <SectionSkeleton /> : (
-              <>
-                {openComplaints > 0 && (
-                  <AlertStrip href="/staff/complaints" color="red"
-                    label={`${openComplaints} plainte${openComplaints > 1 ? "s" : ""} ouverte${openComplaints > 1 ? "s" : ""}`}
-                    sub="Nécessite une prise en charge" />
-                )}
-                {openRecruitments > 0 && (
-                  <AlertStrip href="/staff/recruitments" color="amber"
-                    label={`${openRecruitments} recrutement${openRecruitments > 1 ? "s" : ""} à décider`}
-                    sub="Candidatures en attente de validation" />
-                )}
-                {sanctionsArr.length > 0 && (
-                  <AlertStrip href="/staff/sanctions" color="amber"
-                    label={`${sanctionsArr.length} sanction${sanctionsArr.length > 1 ? "s" : ""} active${sanctionsArr.length > 1 ? "s" : ""}`}
-                    sub="Sanctions en cours à surveiller" />
-                )}
-                {pendingArr.length > 0 && (
-                  <AlertStrip href="/staff/absences" color="sky"
-                    label={`${pendingArr.length} absence${pendingArr.length > 1 ? "s" : ""} en attente`}
-                    sub="À approuver ou refuser" />
-                )}
-                {urgentCount === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
-                    <CheckCircle2 className="h-8 w-8 text-emerald-500/40" />
-                    <p className="text-sm text-slate-500">Tout est à jour</p>
+        {/* Solde de la banque familiale (positif / négatif d'un coup d'œil) */}
+        <Section title="Banque famille" icon={Landmark} href="/staff/stats" linkLabel="Détails">
+          <div className="p-4">
+            {loading ? <SectionSkeleton /> : (() => {
+              const balance = familyBankBalance ?? 0;
+              const positive = balance >= 0;
+              return (
+                <div className={`flex items-center gap-4 rounded-2xl border p-5 ${positive ? "border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.12] to-emerald-500/[0.04]" : "border-red-500/45 bg-gradient-to-br from-red-500/[0.18] to-red-500/[0.06]"}`}>
+                  <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${positive ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+                    <Landmark className="h-6 w-6" />
                   </div>
-                )}
-              </>
-            )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Solde de la banque familiale</p>
+                    <p className={`mt-0.5 text-2xl font-bold tabular-nums sm:text-3xl ${positive ? "text-emerald-300" : "text-red-300"}`}>
+                      {formatMoney(balance)}
+                    </p>
+                    <p className={`mt-0.5 text-xs font-medium ${positive ? "text-emerald-400/80" : "text-red-400/90"}`}>
+                      {positive ? "✓ Solde positif" : "⚠ Solde négatif — déficit"}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Section>
 

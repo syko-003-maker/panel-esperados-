@@ -512,6 +512,8 @@ export default function DashboardClient() {
       )}
       </div>
 
+      {/* Compte + progression des rangs côte à côte */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* Account info */}
       <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">
@@ -547,6 +549,33 @@ export default function DashboardClient() {
             </div>
           )}
         </dl>
+      </div>
+
+      {/* Progression des rangs (résumé — détail complet sur le dossier) */}
+      <div className="rounded-2xl border border-amber-500/15 bg-gradient-to-br from-amber-500/[0.06] via-white/[0.02] to-transparent backdrop-blur-sm p-5">
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-amber-300/90">
+          📈 Progression des rangs
+        </h3>
+
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Grades de base · WL-4</p>
+        <p className="mt-1.5 text-[13px] leading-6 text-slate-300">
+          Novato → Soldado → Guardia → Asesino → Caporal → Veterano
+        </p>
+        <p className="mt-1 text-xs text-amber-200/70">⏳ 2 semaines minimum par palier avant promotion.</p>
+
+        <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Validation des semaines</p>
+        <div className="mt-1.5 space-y-1 text-[13px] text-slate-300">
+          <p>✅ <span className="font-semibold text-slate-100">5 h</span> de jeu = 1 semaine</p>
+          <p>✅ <span className="font-semibold text-slate-100">20 h</span> = 2 semaines <span className="text-emerald-300/80">(Double UP)</span></p>
+          <p>✅ <span className="font-semibold text-slate-100">40 h</span> = 3 semaines</p>
+        </div>
+
+        <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Grades supérieurs 🎖️</p>
+        <p className="mt-1.5 text-[13px] leading-6 text-slate-300">
+          Subteniente <span className="text-amber-200/80">3 sem.</span> · Teniente <span className="text-amber-200/80">4</span> · Capitán <span className="text-amber-200/80">5</span> · Mayor <span className="text-amber-200/80">6</span>
+        </p>
+        <p className="mt-1 text-xs text-slate-500">+ implication active &amp; avis favorable de l&apos;État-Major.</p>
+      </div>
       </div>
     </div>
   </DashboardErrorBoundary>
