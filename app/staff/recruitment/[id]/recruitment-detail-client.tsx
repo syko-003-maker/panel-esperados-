@@ -11,6 +11,22 @@ import { SectionCard } from "@/components/staff/ui/SectionCard";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Règlement intérieur à rappeler au nouveau membre après acceptation.
+ * Source unique → affichage de la modale ET texte copié, aligné sur le
+ * dossier officiel (/dossier/los-esperados.html).
+ */
+const REGLEMENT_RULES: { titre: string; detail: string }[] = [
+  { titre: "Respect de l'État-Major", detail: "Aucun manque de respect toléré, sanction immédiate." },
+  { titre: "Spécialité obligatoire", detail: "À partir de Soldado, choisir une spécialité." },
+  { titre: "Sanctions IG", detail: "Toute sanction reçue en jeu doit être déclarée sur le site." },
+  { titre: "Absences", detail: "Toute absence générale ou de réunion doit être déclarée sur le site." },
+  { titre: "@Ping interdits", detail: "Sauf pour mobiliser du monde pour une action RP." },
+  { titre: "Pénalité par mort", detail: "150 000 € à déposer en banque familiale par mort." },
+  { titre: "Vocal obligatoire", detail: "Vous devez être en vocal Discord quand vous jouez (sauf si une demande à l'État-Major a été faite)." },
+  { titre: "Rôle \"en test\"", detail: "Durée 1 semaine — toute faute = exclusion immédiate." },
+];
+
 type Question = {
   id: string;
   section: "GENERAL" | "TRAP";
@@ -754,29 +770,27 @@ export default function RecruitmentDetailClient({
             <div className="border-b border-white/10 px-6 py-4">
               <h2 className="text-base font-semibold text-slate-50">Rappel à communiquer au nouveau membre</h2>
             </div>
-            <div className="px-6 py-5 space-y-3 text-sm text-slate-200">
-              <p className="font-semibold text-slate-100">📌 Règlement – Rappel important</p>
-              <ul className="space-y-2 text-slate-300">
-                <li>• <span className="text-slate-100 font-medium">SPE obligatoire</span> : Négociation / Conduite / Construction</li>
-                <li>• <span className="text-slate-100 font-medium">300 minutes minimum</span> par semaine</li>
-                <li>• <span className="text-slate-100 font-medium">Réunion obligatoire</span> 1 semaine sur 2</li>
-                <li>• En cas de sanction (ban / warn / jail) → signaler dans le salon <span className="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded">sanctions</span></li>
-                <li>• Si absence réunion ou playtime insuffisant → prévenir dans le salon <span className="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded">absences</span></li>
-                <li>• <span className="text-slate-100 font-medium">150 000$</span> à chaque spawn, remboursable via la commande <span className="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded">!famille</span></li>
-              </ul>
+            <div className="max-h-[60vh] overflow-y-auto px-6 py-5 space-y-3 text-sm text-slate-200">
+              <p className="font-semibold text-slate-100">📌 Règlement intérieur – Rappel important</p>
+              <ol className="space-y-2">
+                {REGLEMENT_RULES.map((r, i) => (
+                  <li key={i} className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                    <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-amber-300/90">{String(i + 1).padStart(2, "0")}</span>
+                    <span>
+                      <span className="block font-semibold text-slate-100">{r.titre}</span>
+                      <span className="block text-slate-400">{r.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
             </div>
             <div className="border-t border-white/10 px-6 py-4 flex items-center justify-end gap-3">
               <button
                 onClick={() => {
                   const text = [
-                    "📌 Règlement – Rappel important",
+                    "📌 Règlement intérieur – Rappel important",
                     "",
-                    "• SPE obligatoire : Négociation / Conduite / Construction",
-                    "• 300 minutes minimum par semaine",
-                    "• Réunion obligatoire 1 semaine sur 2",
-                    "• En cas de sanction (ban / warn / jail) → signaler dans le salon sanctions",
-                    "• Si absence réunion ou playtime insuffisant → prévenir dans le salon absences",
-                    "• 150 000$ à chaque spawn, remboursable via la commande !famille",
+                    ...REGLEMENT_RULES.map((r, i) => `${String(i + 1).padStart(2, "0")}. ${r.titre} — ${r.detail}`),
                   ].join("\n");
                   navigator.clipboard.writeText(text).then(() => {
                     setCopied(true);
