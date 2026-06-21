@@ -297,6 +297,22 @@ function isRecruitmentPending(status: string): boolean {
 export default function StaffDashboardClient() {
   const { data, loading, error, refresh } = useDashboardData();
 
+  // Solde personnel du staff connecté (via /api/member/dashboard).
+  // undefined = en cours, null = compte non lié à une fiche membre.
+  const [personalBalance, setPersonalBalance] = React.useState<number | null | undefined>(undefined);
+  React.useEffect(() => {
+    let active = true;
+    fetch("/api/member/dashboard", { cache: "no-store" })
+      .then((r) => r.json().catch(() => null))
+      .then((j) => {
+        if (!active) return;
+        if (j?.ok && j.debt && typeof j.debt.net === "number") setPersonalBalance(j.debt.net);
+        else setPersonalBalance(null);
+      })
+      .catch(() => { if (active) setPersonalBalance(null); });
+    return () => { active = false; };
+  }, []);
+
   const { complaints, recruitments, sanctions, pendingAbsences, membersCount, membersSource, membersError, familyBankBalance, debtors } = data;
 
   const complaintsArr  = Array.isArray(complaints)      ? complaints      : [];
@@ -393,21 +409,26 @@ export default function StaffDashboardClient() {
         custom={0.18}
       >
 
-        {/* Solde de la banque familiale (positif / négatif d'un coup d'œil) */}
-        <Section title="Banque famille" icon={Landmark} href="/staff/stats" linkLabel="Détails">
+        {/* Mon solde bancaire personnel (positif / négatif d'un coup d'œil) */}
+        <Section title="Mon solde bancaire" icon={Landmark} href="/banque" linkLabel="Détails">
           <div className="p-4">
-            {loading ? <SectionSkeleton /> : (() => {
-              const balance = familyBankBalance ?? 0;
-              const positive = balance >= 0;
+            {personalBalance === undefined ? (
+              <SectionSkeleton />
+            ) : personalBalance === null ? (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-slate-400">
+                Ton compte staff n&apos;est pas lié à une fiche membre — solde personnel indisponible.
+              </div>
+            ) : (() => {
+              const positive = personalBalance >= 0;
               return (
                 <div className={`flex items-center gap-4 rounded-2xl border p-5 ${positive ? "border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.12] to-emerald-500/[0.04]" : "border-red-500/45 bg-gradient-to-br from-red-500/[0.18] to-red-500/[0.06]"}`}>
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${positive ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
                     <Landmark className="h-6 w-6" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Solde de la banque familiale</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Mon solde personnel</p>
                     <p className={`mt-0.5 text-2xl font-bold tabular-nums sm:text-3xl ${positive ? "text-emerald-300" : "text-red-300"}`}>
-                      {formatMoney(balance)}
+                      {positive ? "+" : "−"}{Math.abs(personalBalance).toLocaleString("fr-FR")} €
                     </p>
                     <p className={`mt-0.5 text-xs font-medium ${positive ? "text-emerald-400/80" : "text-red-400/90"}`}>
                       {positive ? "✓ Solde positif" : "⚠ Solde négatif — déficit"}
