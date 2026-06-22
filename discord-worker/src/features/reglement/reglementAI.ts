@@ -197,7 +197,21 @@ export async function askReglement(userId: string, question: string): Promise<Re
     }
 
     if (status === 429) {
-      return { ok: false, error: "Les quotas gratuits du jour de l'IA sont épuisés — réessaie demain, ou demande directement à un staff." };
+      // Le 429 gratuit est le plus souvent une limite PAR MINUTE (tokens/req),
+      // pas par jour : Google fournit un retryDelay. On le lit pour donner un
+      // message honnête (« réessaie dans Xs ») au lieu d'un « reviens demain ».
+      let retrySec = 0;
+      try {
+        const details = (data as any)?.error?.details ?? [];
+        for (const d of details) {
+          const m = typeof d?.retryDelay === "string" ? d.retryDelay.match(/(\d+)/) : null;
+          if (m) retrySec = Math.max(retrySec, parseInt(m[1], 10));
+        }
+      } catch { /* ignore */ }
+      if (retrySec > 0 && retrySec <= 120) {
+        return { ok: false, error: `L'IA est très sollicitée là — réessaie dans ${retrySec <= 60 ? "une minute" : Math.ceil(retrySec / 60) + " minutes"}.` };
+      }
+      return { ok: false, error: "Le quota gratuit de l'IA est atteint pour le moment — réessaie dans quelques minutes (ou demain si ça persiste)." };
     }
     if (status === 400 || status === 401 || status === 403) {
       console.error(`[reglement] clé/requête refusée par Gemini (${usedModel}):`, status, JSON.stringify(data).slice(0, 300));
