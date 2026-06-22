@@ -182,14 +182,18 @@ export async function askReglement(userId: string, question: string): Promise<Re
     }
     contents.push({ role: "user", parts: [{ text: trimmedQuestion }] });
 
+    // Bascule sur le modèle suivant en cas de quota (429) OU d'erreur serveur
+    // (500/503 « modèle surchargé » — très fréquent sur l'offre gratuite).
+    // Avant : on n'enchaînait que sur 429, donc un simple 503 sur flash-lite
+    // affichait « service indisponible » alors que flash/pro auraient répondu.
     let status = 0;
     let data: GeminiResponse | null = null;
     let usedModel = MODEL_CHAIN[0];
     for (const model of MODEL_CHAIN) {
       usedModel = model;
       ({ status, data } = await callGemini(model, system, contents));
-      if (status !== 429) break;
-      console.warn(`[reglement] quota du jour épuisé sur ${model} (429) — bascule sur le modèle suivant`);
+      if (status !== 429 && status < 500) break;
+      console.warn(`[reglement] ${model} indisponible (HTTP ${status}) — bascule sur le modèle suivant`);
     }
 
     if (status === 429) {
