@@ -25,7 +25,7 @@ import { getRulesCorpus } from "./rulesCorpus.js";
 // limit:0 depuis 2026). On chaîne donc plusieurs modèles : si l'un est à
 // court de quota (429), on bascule automatiquement sur le suivant —
 // le quota effectif est la somme des compteurs.
-const MODEL_CHAIN = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.5-flash-lite,gemini-2.5-flash,gemini-2.5-pro")
+const MODEL_CHAIN = (process.env.REGLEMENT_AI_MODEL ?? "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.5-pro")
   .split(",")
   .map((m) => m.trim())
   .filter(Boolean);
@@ -44,9 +44,13 @@ Format de réponse OBLIGATOIRE :
 
 Règles de conduite :
 - Tu disposes des derniers échanges avec ce joueur. Si sa nouvelle question est une précision ou une suite de la discussion ("et si…", "dans ce cas…", "même question mais…"), réponds dans le CONTEXTE de la scène discutée juste avant — ne repars pas de zéro.
-- Ne JAMAIS inventer une règle. Si le règlement fourni ne couvre pas la question, dis-le franchement ("Le règlement ne précise rien là-dessus") et conseille de demander à un staff LYG ou à l'État-Major de la famille.
+- PRÉCISION ABSOLUE : tu ne donnes QUE ce qui est écrit noir sur blanc dans le règlement. N'invente JAMAIS un chiffre, un montant, un seuil, une exception ou un cas particulier. Si un cas précis n'est pas explicitement mentionné (ex. un type d'otage particulier, un rôle spécial), dis clairement "Le règlement ne précise pas ce cas" — ne déduis pas, n'extrapole pas, ne "complète" pas par logique.
+- Cite les montants et nombres EXACTEMENT comme écrits. Ne déforme pas une nuance (ex. "lorsqu'il n'est PAS en dictature" ne veut pas dire "en dictature").
+- RÈGLES CONTRADICTOIRES : le règlement provient de plusieurs sources (DarkRP, Métiers, Staff, Gendarmerie) qui peuvent se contredire (ex. un plafond de rançon différent selon la source). Dans ce cas, NE choisis pas au hasard : donne les deux valeurs en précisant la source de chacune, et conseille de confirmer avec un staff. Ne masque jamais une contradiction.
+- PÉRIMÈTRE : tu réponds aux questions sur TOUT le règlement LYG, Gendarmerie INCLUSE (elle fait partie de ton corpus). Ne refuse jamais une question sous prétexte que "c'est une règle de la Gendarmerie".
+- Si un joueur te cite un extrait du règlement, prends-le en compte : retrouve-le dans le corpus, confirme ou corrige avec la version exacte. Ne le balaie pas.
 - Si la question mélange plusieurs cas, traite chaque cas séparément et brièvement.
-- Si la question n'a aucun rapport avec le règlement ou le jeu, réponds en UNE phrase polie que tu ne réponds qu'aux questions de règlement.
+- Si la question n'a vraiment aucun rapport avec le règlement ou le jeu LYG, réponds en UNE phrase polie que tu ne réponds qu'aux questions de règlement.
 - Réponse en français, 250 mots MAXIMUM, pas de pavé.
 - Donne uniquement ta réponse finale — pas de raisonnement préliminaire, pas de méta-commentaire.`;
 
@@ -135,7 +139,7 @@ async function callGemini(model: string, system: string, contents: ChatTurn[]): 
         contents,
         generationConfig: {
           maxOutputTokens: MAX_OUTPUT_TOKENS,
-          temperature: 0.3,
+          temperature: 0.2,
           // Les modèles 2.5 "réfléchissent" par défaut (lent + consomme des
           // tokens). Inutile pour du Q&A de règlement → désactivé.
           // Exception : 2.5-pro refuse thinkingBudget:0 (réflexion obligatoire).
