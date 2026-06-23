@@ -8,18 +8,10 @@ export function extractDiscordAvatarHash(imageUrl: string | null | undefined): s
 export function getDiscordAvatarUrl(discordId: string | null | undefined, avatarHash: string | null | undefined): string | null {
   if (!discordId) return null;
 
-  // Avatar custom
-  if (avatarHash) {
-    const ext = avatarHash.startsWith("a_") ? "gif" : "png";
-    return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.${ext}?size=64`;
-  }
-
-  // Avatar Discord par défaut (basé sur l'ID utilisateur, sans BigInt)
-  try {
-    // Les 4 derniers chiffres de l'ID suffisent pour la distribution mod 6
-    const index = parseInt(discordId.slice(-4), 10) % 6;
-    return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
-  } catch {
-    return `https://cdn.discordapp.com/embed/avatars/0.png`;
-  }
+  // Route via le proxy /api/avatar : il résout le hash EN DIRECT (cache 1 h)
+  // et retombe sur l'avatar par défaut, donc l'image n'est jamais cassée même
+  // si `avatarHash` (stocké) est périmé. On passe le hash connu en indice (?h)
+  // pour un affichage instantané pendant que le proxy rafraîchit.
+  const q = avatarHash ? `?h=${encodeURIComponent(avatarHash)}` : "";
+  return `/api/avatar/${discordId}${q}`;
 }
