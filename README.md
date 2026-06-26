@@ -68,10 +68,10 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 | | |
 |---|---|
 | **~103 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **216** routes API | **53** modèles de données (Prisma) |
+| **217** routes API | **53** modèles de données (Prisma) |
 | **75** pages | **13** migrations versionnées |
 | **20** commandes Discord (dont `/reglement` IA) | **7** boucles de fond (sync, pollers, keep-alive) |
-| **17** fichiers de tests (Vitest) | **153** commits — **1** développeur |
+| **17** fichiers de tests (Vitest) | **175** commits — **1** développeur |
 
 ---
 
@@ -148,9 +148,11 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🪞 Mirror Discord temps réel.** Les rôles et pseudos Discord sont répliqués en base **à l'événement** (gateway) + resync horaire de rattrapage : poser un rôle à la main sur Discord met à jour les accès du panel en ~1 s, et l'UI ne peut jamais diverger des guards serveur (même source de vérité).
 - **🛡️ RBAC multi-tiers** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur) avec **guards par route serveur**, **journalisation des accès refusés** (pas seulement des accès réussis) et une **page d'administration des accès** (rôles appliqués sur Discord en un clic, audités).
 - **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
+- **🖼️ Avatars increvables** : un proxy unique (`/api/avatar/:id`) résout le hash Discord **en direct** (cache 1 h) et retombe sur l'avatar par défaut — l'image n'est jamais cassée, même quand un membre change sa photo. Une seule fonction route tous les écrans.
+- **🪶 Mode léger** : une bascule (mémorisée par navigateur) coupe flous et animations pour les PC/GPU faibles, sans toucher à la mise en page — fluidité sur le matériel modeste.
 - **🤖 Assistant Règlement par IA (RAG maison, 0 €).** Le corpus complet du règlement (3 pages web + 1 Google Doc) est extrait, nettoyé et mis en cache, puis injecté à un LLM **Gemini en offre gratuite**. Réponses structurées (verdict + explication + article cité), **mémoire de conversation** par joueur (les questions de suivi gardent le contexte), **bascule automatique entre modèles** quand un quota journalier est épuisé, et **quotas partagés Discord ↔ site** (un seul moteur derrière la commande `/reglement` et le mini-chat du site).
 - **⏱️ Pollers conscients du quota.** ~57 requêtes / 15 min vers l'API tierce — **sous le budget de 100 req/15 min** — avec backoff automatique sur HTTP 429 et garde anti-chevauchement (`isRunning`).
-- **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (les 216 endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
+- **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (les 217 endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
 
 ---
 
