@@ -12,7 +12,7 @@
 ![Discord.js](https://img.shields.io/badge/discord.js-14-5865F2?logo=discord&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
 
-*Développé en solo · ~3,5 mois · de la conception au déploiement en production.*
+*Développé en solo · ~4,5 mois · de la conception au déploiement en production.*
 
 </div>
 
