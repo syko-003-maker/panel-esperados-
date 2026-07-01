@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { enqueueMemberAbsenceCreated } from "@/lib/discord/discord";
+import { sendPushToStaff } from "@/lib/push";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELED", "EXPIRED"] as const;
@@ -328,6 +329,14 @@ export async function POST(req: Request) {
 
     return created;
   });
+
+  // Notifie le staff qu'une absence est à valider (fire-and-forget).
+  void sendPushToStaff({
+    title: "📅 Absence à valider",
+    body: `${scope.rpName || "Un membre"} a déposé une demande d'absence (${type}).`,
+    url: "/staff/absences",
+    tag: "absence-filed-" + absence.id,
+  }).catch(() => {});
 
   return NextResponse.json({ ok: true, absence: toResponseAbsence(absence) });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { sendPushToDiscordIds } from "@/lib/push";
 import { requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
@@ -374,6 +375,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     logInfo("absence_decided", { requestId, id, status: updated.status });
+    // Notification push au membre (fire-and-forget).
+    if (existing.discordId) {
+      const approved = value === "APPROVED";
+      void sendPushToDiscordIds([existing.discordId], {
+        title: approved ? "✅ Absence approuvée" : "❌ Absence refusée",
+        body: approved
+          ? "Ta demande d'absence a été acceptée."
+          : `Ta demande d'absence a été refusée${rejectionReasonRaw ? " — " + rejectionReasonRaw : "."}`,
+        url: "/dashboard",
+        tag: "absence-" + updated.id,
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ ok: true, requestId, data: toResponseAbsence(updated) });
   } catch (error) {
     logError("absence_decide_error", { requestId, id }, error);

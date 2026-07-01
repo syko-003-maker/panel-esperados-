@@ -48,3 +48,29 @@ export async function sendPushToDiscordIds(
   );
   return { sent, pruned };
 }
+
+
+/**
+ * Envoie à tout le staff (membres actifs, en guilde, portant un rôle staff).
+ * Résolu depuis le mirror des rôles Discord — même source que les guards.
+ */
+export async function sendPushToStaff(payload: PushPayload): Promise<{ sent: number; pruned: number }> {
+  try {
+    const { getStaffRoleIds } = await import("@/lib/discord-rbac");
+    const staffRoleIds = getStaffRoleIds();
+    if (!staffRoleIds.length) return { sent: 0, pruned: 0 };
+    const members = await prisma.member.findMany({
+      where: {
+        isActive: true,
+        discordInGuild: true,
+        discordId: { not: null },
+        discordRoleIds: { hasSome: staffRoleIds },
+      },
+      select: { discordId: true },
+    });
+    const ids = members.map((m) => m.discordId).filter((x): x is string => !!x);
+    return sendPushToDiscordIds(ids, payload);
+  } catch {
+    return { sent: 0, pruned: 0 };
+  }
+}

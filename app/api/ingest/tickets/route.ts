@@ -6,6 +6,7 @@ import { requireTicketsEnabled } from "@/lib/feature-guard";
 import { normalizeSteamId64 } from "@/lib/validation/steamid";
 import { resolveRankFromDiscord } from "@/lib/discord-rank";
 import { buildRecruitmentNotes, extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { sendPushToStaff } from "@/lib/push";
 import type { RecruitmentLegacyStatus, ComplaintStatus, Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
@@ -333,6 +334,12 @@ const handlers: Record<string, EventHandler> = {
     }
 
     log("recruitment.create", ticketKey, { familyId: ctx.familyId, ok: true, rpName, authorId });
+    void sendPushToStaff({
+      title: "📥 Nouvelle candidature",
+      body: `${rpName || authorTag || "Un joueur"} a déposé une candidature.`,
+      url: "/staff/recruitments",
+      tag: "recruit-new-" + ticketKey,
+    }).catch(() => {});
     return { ok: true };
   },
 
@@ -467,6 +474,12 @@ const handlers: Record<string, EventHandler> = {
     }
 
     log("complaint.create", ticketKey, { familyId: ctx.familyId, ok: true });
+    void sendPushToStaff({
+      title: "📋 Nouvelle plainte",
+      body: `${authorDisplayName || "Un joueur"}${targetName ? " → " + targetName : ""} : ${reason}`.slice(0, 180),
+      url: "/staff/complaints",
+      tag: "complaint-new-" + ticketKey,
+    }).catch(() => {});
     return { ok: true };
   },
 

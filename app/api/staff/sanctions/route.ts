@@ -9,6 +9,7 @@ import { evaluateSanctionRules } from "@/lib/sanction-rules";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import type { SanctionType } from "@prisma/client";
 import { enqueueRemoveRole, enqueueSanctionApply } from "@/lib/discord/discord";
+import { sendPushToDiscordIds } from "@/lib/push";
 import {
   BLOCKING_SANCTION_TYPES,
   checkSanctionTargetEligibility,
@@ -590,6 +591,16 @@ export async function POST(req: Request) {
     type: sanction.type,
     actorId,
   });
+
+  // Notification push au membre sanctionné (fire-and-forget).
+  if (member.discordId) {
+    void sendPushToDiscordIds([member.discordId], {
+      title: "⚠️ Sanction reçue",
+      body: `${sanction.type}${sanction.reason ? " — " + sanction.reason : ""}`,
+      url: "/dashboard",
+      tag: "sanction-" + sanction.id,
+    }).catch(() => {});
+  }
 
   return NextResponse.json({
     ok: true,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { sendPushToDiscordIds } from "@/lib/push";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueAssignRole, enqueueRemoveRole, enqueueRecruitmentDecision } from "@/lib/discord/discord";
@@ -359,6 +360,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     rpName: updated.rpName ?? updated.discordId ?? "Unknown",
     actorId: userId,
   });
+
+  // Notification push au candidat accepté (fire-and-forget).
+  if (decisionRaw === "ACCEPT" && updated.discordId) {
+    void sendPushToDiscordIds([updated.discordId], {
+      title: "🎉 Candidature acceptée",
+      body: "Bienvenue dans la famille Los Esperados ! Ta candidature a été validée.",
+      url: "/dashboard",
+      tag: "recruit-" + updated.id,
+    }).catch(() => {});
+  }
 
   const statusLabel = decisionRaw === "ACCEPT" ? "CLOSED_ACCEPTED" : "CLOSED_REJECTED";
 
