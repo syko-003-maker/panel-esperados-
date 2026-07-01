@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { enqueueJustificationEvent } from "@/lib/discord/discord";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
+import { sendPushToStaff } from "@/lib/push";
 
 const FAMILY_ID = DEFAULT_FAMILY_ID;
 
@@ -72,6 +73,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return created;
   });
+
+  // Notifie le staff qu'une justification attend une décision (fire-and-forget).
+  void sendPushToStaff({
+    title: "📝 Justification d'absence",
+    body: `${scope.rpName || "Un membre"} a justifié son absence.`,
+    url: "/staff/absences",
+    tag: "justif-absence-" + justification.id,
+  }).catch(() => {});
 
   return NextResponse.json({ ok: true, justification });
 }

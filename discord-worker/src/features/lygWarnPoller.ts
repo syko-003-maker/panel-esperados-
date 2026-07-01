@@ -12,6 +12,7 @@ import { Client, EmbedBuilder, TextChannel } from "discord.js";
 import type { PrismaClient } from "@prisma/client";
 import { IDS } from "../ids.js";
 import { parseLygWarnDate } from "../utils/parseLygWarnDate.js";
+import { pushNotify } from "../lib/push-notify.js";
 
 const LYG_BASE_URL = process.env.LYG_BASE_URL ?? "https://api.lyg.fr/api";
 const LYG_TOKEN    = process.env.LYG_TOKEN ?? "";
@@ -207,6 +208,34 @@ async function pollLygWarnsInner(client: Client, prisma: PrismaClient): Promise<
             notified: !isAfterJoin, // warns pré-recrutement = notifié d'emblée (= jamais notifier)
           },
         });
+
+        // Push (via le panel) — indépendant de l'embed Discord : le membre
+        // n'est pas pingé par l'embed (mention dans description = pas de
+        // notif), le push est donc sa seule alerte directe.
+        if (isAfterJoin) {
+          const pushTag = `lygwarn-${member.steamId}-${warnDate.getTime()}`;
+          const shortReason = String(w.reason ?? "—").slice(0, 180);
+          if (member.discordId) {
+            void pushNotify(
+              { discordIds: [member.discordId] },
+              {
+                title: "⚠️ Sanction IG reçue",
+                body: `${String(w.type ?? "warn").toUpperCase()} — ${shortReason}`,
+                url: "/dashboard",
+                tag: pushTag,
+              }
+            );
+          }
+          void pushNotify(
+            { audience: "staff" },
+            {
+              title: "🔨 Warn IG",
+              body: `${member.rpName ?? "Membre"} — ${String(w.type ?? "warn")} : ${shortReason}`,
+              url: "/staff/warns",
+              tag: pushTag + "-staff",
+            }
+          );
+        }
 
         // Envoyer notification Discord uniquement pour les warns post-recrutement
         if (logsChannelId && isAfterJoin) {

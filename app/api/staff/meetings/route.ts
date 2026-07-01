@@ -13,6 +13,7 @@ import {
 } from "@/lib/meetings";
 import { isStaffMeetingScopeMember } from "@/lib/staff/member-scope";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
+import { sendPushToDiscordIds } from "@/lib/push";
 
 function buildMeetingListItem(meeting: {
   id: string;
@@ -228,6 +229,27 @@ export async function POST(req: Request) {
       },
     },
   });
+
+  // Notifie les membres concernés de la date de réunion (fire-and-forget).
+  {
+    const ids = activeMembers
+      .map((m) => m.discordId)
+      .filter((x): x is string => !!x);
+    const dateFr = meeting.meetingDate.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Paris",
+    });
+    void sendPushToDiscordIds(ids, {
+      title: "📅 Réunion planifiée",
+      body: `${meeting.title ?? `Réunion ${meeting.weekKey}`} — ${dateFr}.`,
+      url: "/dashboard",
+      tag: "meeting-" + meeting.id,
+    }).catch(() => {});
+  }
 
   return NextResponse.json({
     ok: true,
