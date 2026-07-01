@@ -68,10 +68,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 | | |
 |---|---|
 | **~109 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **220** routes API | **54** modèles de données (Prisma) |
+| **221** routes API | **54** modèles de données (Prisma) |
 | **75** pages | **14** migrations versionnées |
 | **20** commandes Discord (dont `/reglement` IA) | **7** boucles de fond (sync, pollers, keep-alive) |
-| **19** fichiers de tests (Vitest) | **180** commits — **1** développeur |
+| **19** fichiers de tests (Vitest) | **11** notifications push automatiques |
+| **184** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
 
 ---
 
@@ -98,6 +99,72 @@ flowchart LR
 
 ---
 
+## 🧩 Trois mécanismes clés, en images
+
+### 📬 Le pattern Outbox — une action Discord ne se perd jamais
+
+Le panel n'appelle **jamais** Discord directement : il écrit un job en base **dans la même transaction** que la donnée métier. Le worker le consomme avec retry — si Discord tombe, le job attend et sera rejoué.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as 👮 Staff
+    participant P as 🖥️ Panel
+    participant DB as 🗄️ PostgreSQL
+    participant W as 🤖 Worker
+    participant D as 💬 Discord
+
+    S->>P: Crée une sanction
+    P->>DB: Sanction + job Outbox (même transaction)
+    P-->>S: ✅ Confirmé immédiatement
+    loop toutes les 3 s
+        W->>DB: des jobs PENDING ?
+    end
+    W->>D: applique (message, rôle, DM…)
+    alt Discord répond
+        W->>DB: done + discordAppliedAt (idempotent)
+    else Discord en panne
+        W->>DB: retry programmé (backoff)
+        Note over W,DB: rien n'est perdu — le job sera rejoué
+    end
+```
+
+### 🔔 Notifications push — de l'événement jusqu'à la poche
+
+**11 événements métier** notifient automatiquement le bon destinataire, sans app store, iPhone compris. Le worker n'a pas les clés de chiffrement : il délègue au panel via une route interne.
+
+```mermaid
+flowchart LR
+    subgraph EVT ["⚡ Événements (11)"]
+        direction TB
+        E1["👤 membre : sanction panel & IG,<br/>absence décidée, réunion,<br/>recrutement accepté, plainte tranchée"]
+        E2["👮 staff : plainte, candidature,<br/>absence déposée, warn IG,<br/>justifications"]
+    end
+    WK["🤖 Worker<br/>(poller warns LYG)"] -->|"route interne<br/>x-ingest-secret"| LIB
+    EVT --> LIB["📦 lib push<br/>résout l'audience<br/>fire-and-forget"]
+    LIB -->|"Web Push chiffré<br/>aes128gcm + VAPID"| FCM["☁️ Google FCM"]
+    LIB -->|"même protocole"| APN["☁️ Apple APNs"]
+    FCM --> AND["🤖 Android & PC"]
+    APN --> IOS["🍎 iPhone<br/>(PWA écran d'accueil)"]
+    LIB -.->|"abonnement mort 404/410<br/>→ purge auto"| SUBS[("🗄️ abonnements")]
+```
+
+### 🤖 Assistant Règlement IA — un seul moteur, deux visages
+
+Le même moteur répond sur **Discord** (`/reglement`) et sur **le site** (mini-chat des dashboards), avec un corpus toujours frais et une IA qui ne coûte rien.
+
+```mermaid
+flowchart LR
+    Q1["💬 Discord<br/>/reglement"] --> ENG
+    Q2["🌐 Site<br/>mini-chat"] --> ENG
+    ENG["🧠 Moteur commun<br/>quotas partagés · mémoire<br/>de conversation par joueur"] --> RAG["📚 Corpus règlement<br/>3 pages + 1 Google Doc<br/>extraits & mis en cache"]
+    RAG --> LLM["✨ Gemini (offre gratuite)<br/>flash → flash-lite → pro"]
+    LLM -->|"quota épuisé / erreur<br/>→ modèle suivant"| LLM
+    LLM --> A["✅ Verdict + explication<br/>+ article exact cité"]
+```
+
+---
+
 ## ✨ Fonctionnalités clés
 
 <table>
@@ -107,7 +174,7 @@ flowchart LR
 - Membres (filtres, live in-game, fiches)
 - Sanctions (7 types, escalade, sync rôles)
 - Absences & réunions (workflows)
-- Plaintes : clôture **synchronisée Discord** (thread archivé + DM au plaignant)
+- Plaintes : clôture **synchronisée Discord** (thread archivé + DM et push au plaignant)
 - Recrutement + **classement quota recruteurs**
 - Whitelists & armes in-game **en live**
 - **Autorisations** : accès panel gérés en un clic
@@ -120,7 +187,7 @@ flowchart LR
 - **Hiérarchie famille** + **staff LYG en ligne** (live)
 - Justifier une absence / sanction
 - **Assistant Règlement IA** (mini-chat intégré)
-- **Appli installable (PWA)** + **notifications push** (sanction, absence, recrutement — et alertes staff : plaintes, candidatures)
+- **Appli installable (PWA)** + **notifications push** — 11 événements auto (sanctions panel & IG, absences, réunions, plaintes, recrutement, justifications)
 - Calculateur de rentabilité
 - Guides publics (build, conduite…)
 
@@ -151,7 +218,7 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
 - **🖼️ Avatars increvables** : un proxy unique (`/api/avatar/:id`) résout le hash Discord **en direct** (cache 1 h) et retombe sur l'avatar par défaut — l'image n'est jamais cassée, même quand un membre change sa photo. Une seule fonction route tous les écrans.
 - **🪶 Mode léger** : une bascule (mémorisée par navigateur) coupe flous et animations pour les PC/GPU faibles, sans toucher à la mise en page — fluidité sur le matériel modeste.
-- **📲 PWA + Web Push (VAPID) sans app store.** Le panel s'installe comme une appli (manifeste + service worker) et notifie en natif — y compris sur iPhone via l'écran d'accueil. **6 événements métier** déclenchent des push automatiques (sanction, absence décidée, recrutement accepté → membre ; plainte, candidature, absence déposée → staff), en *fire-and-forget* pour ne jamais bloquer un flux, avec **purge automatique des abonnements morts** (404/410) et audience staff résolue via le mirror des rôles Discord. Chaîne validée de bout en bout (chiffrement `aes128gcm` vérifié par déchiffrement).
+- **📲 PWA + Web Push (VAPID) sans app store.** Le panel s'installe comme une appli (manifeste + service worker) et notifie en natif — y compris sur iPhone via l'écran d'accueil. **11 événements métier** déclenchent des push automatiques (voir le schéma plus haut), en *fire-and-forget* pour ne jamais bloquer un flux, avec **purge automatique des abonnements morts** (404/410) et audience staff résolue via le mirror des rôles Discord. Le worker (qui ne porte pas les clés) délègue ses événements — warns IG — au panel via une **route interne à secret partagé**. Chaîne validée de bout en bout (chiffrement `aes128gcm` vérifié par déchiffrement).
 - **🤖 Assistant Règlement par IA (RAG maison, 0 €).** Le corpus complet du règlement (3 pages web + 1 Google Doc) est extrait, nettoyé et mis en cache, puis injecté à un LLM **Gemini en offre gratuite**. Réponses structurées (verdict + explication + article cité), **mémoire de conversation** par joueur (les questions de suivi gardent le contexte), **bascule automatique entre modèles** quand un quota journalier est épuisé, et **quotas partagés Discord ↔ site** (un seul moteur derrière la commande `/reglement` et le mini-chat du site).
 - **⏱️ Pollers conscients du quota.** ~57 requêtes / 15 min vers l'API tierce — **sous le budget de 100 req/15 min** — avec backoff automatique sur HTTP 429 et garde anti-chevauchement (`isRunning`).
 - **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (l'intégralité des endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
