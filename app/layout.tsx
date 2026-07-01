@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppBackground } from "@/components/app-background";
+import PWARegister from "@/components/pwa-register";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -26,8 +27,14 @@ export const metadata: Metadata = {
       { url: "/favicon.ico", sizes: "any" },
       { url: "/branding/los-esperados.png", type: "image/png", sizes: "256x256" },
     ],
-    apple: "/branding/los-esperados.png",
+    apple: "/icons/apple-touch-icon.png",
     shortcut: "/favicon.ico",
+  },
+  // PWA / iOS : permet l'installation en plein écran avec le bon titre.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Los Esperados",
   },
   // Open Graph — utilisé par Discord/Slack/Twitter pour le preview de lien.
   openGraph: {
@@ -79,6 +86,7 @@ export default function RootLayout({
           }}
         />
         <AppBackground />
+        <PWARegister />
         {children}
       </body>
     </html>
