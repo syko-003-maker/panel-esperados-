@@ -67,11 +67,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 
 | | |
 |---|---|
-| **~103 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **217** routes API | **53** modèles de données (Prisma) |
-| **75** pages | **13** migrations versionnées |
+| **~109 000** lignes de TypeScript | **2** services en production (web + worker) |
+| **220** routes API | **54** modèles de données (Prisma) |
+| **75** pages | **14** migrations versionnées |
 | **20** commandes Discord (dont `/reglement` IA) | **7** boucles de fond (sync, pollers, keep-alive) |
-| **17** fichiers de tests (Vitest) | **175** commits — **1** développeur |
+| **19** fichiers de tests (Vitest) | **180** commits — **1** développeur |
 
 ---
 
@@ -120,6 +120,7 @@ flowchart LR
 - **Hiérarchie famille** + **staff LYG en ligne** (live)
 - Justifier une absence / sanction
 - **Assistant Règlement IA** (mini-chat intégré)
+- **Appli installable (PWA)** + **notifications push** (sanction, absence, recrutement — et alertes staff : plaintes, candidatures)
 - Calculateur de rentabilité
 - Guides publics (build, conduite…)
 
@@ -150,9 +151,10 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
 - **🖼️ Avatars increvables** : un proxy unique (`/api/avatar/:id`) résout le hash Discord **en direct** (cache 1 h) et retombe sur l'avatar par défaut — l'image n'est jamais cassée, même quand un membre change sa photo. Une seule fonction route tous les écrans.
 - **🪶 Mode léger** : une bascule (mémorisée par navigateur) coupe flous et animations pour les PC/GPU faibles, sans toucher à la mise en page — fluidité sur le matériel modeste.
+- **📲 PWA + Web Push (VAPID) sans app store.** Le panel s'installe comme une appli (manifeste + service worker) et notifie en natif — y compris sur iPhone via l'écran d'accueil. **6 événements métier** déclenchent des push automatiques (sanction, absence décidée, recrutement accepté → membre ; plainte, candidature, absence déposée → staff), en *fire-and-forget* pour ne jamais bloquer un flux, avec **purge automatique des abonnements morts** (404/410) et audience staff résolue via le mirror des rôles Discord. Chaîne validée de bout en bout (chiffrement `aes128gcm` vérifié par déchiffrement).
 - **🤖 Assistant Règlement par IA (RAG maison, 0 €).** Le corpus complet du règlement (3 pages web + 1 Google Doc) est extrait, nettoyé et mis en cache, puis injecté à un LLM **Gemini en offre gratuite**. Réponses structurées (verdict + explication + article cité), **mémoire de conversation** par joueur (les questions de suivi gardent le contexte), **bascule automatique entre modèles** quand un quota journalier est épuisé, et **quotas partagés Discord ↔ site** (un seul moteur derrière la commande `/reglement` et le mini-chat du site).
 - **⏱️ Pollers conscients du quota.** ~57 requêtes / 15 min vers l'API tierce — **sous le budget de 100 req/15 min** — avec backoff automatique sur HTTP 429 et garde anti-chevauchement (`isRunning`).
-- **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (les 217 endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
+- **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (l'intégralité des endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
 
 ---
 
