@@ -508,6 +508,29 @@ export async function enqueueComplaintDecision(params: {
     summary: params.summary ?? null,
   };
 
+  // Push au plaignant (fire-and-forget) — en plus du DM Discord posté par le
+  // worker. Import dynamique pour ne pas alourdir ce module très importé.
+  if (params.authorDiscordId) {
+    const labelFr: Record<string, string> = {
+      APPROVED: "traitée",
+      REJECTED: "refusée",
+      DISMISSED: "classée non résolue",
+      CLOSED: "clôturée",
+    };
+    const label = labelFr[params.decision] ?? "clôturée";
+    const author = params.authorDiscordId;
+    void import("@/lib/push")
+      .then(({ sendPushToDiscordIds }) =>
+        sendPushToDiscordIds([author], {
+          title: `📋 Plainte ${label}`,
+          body: `Ta plainte « ${params.complaintTitle.slice(0, 80)} » a été ${label}${params.closedByName ? ` par ${params.closedByName}` : ""}.`,
+          url: "/dashboard",
+          tag: "complaint-decision-" + params.complaintId,
+        })
+      )
+      .catch(() => {});
+  }
+
   return createOutboxJob(client, {
     familyId: params.familyId,
     type: jobType,

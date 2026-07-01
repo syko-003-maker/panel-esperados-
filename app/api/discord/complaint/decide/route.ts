@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { makeRequestId, logInfo, logWarn, logError } from "@/lib/obs";
+import { sendPushToDiscordIds } from "@/lib/push";
 
 const FAMILY_ID = "esperados";
 const STAFF_LEVEL = 5; // GRADE_LEVELS.STAFF
@@ -156,6 +157,19 @@ export async function POST(req: Request) {
       staffDiscordId,
       staffRpName: staffMember.rpName,
     });
+
+    // Push au plaignant (fire-and-forget) — ce chemin (bouton Discord) ne
+    // passe pas par enqueueComplaintDecision, le worker gère le DM lui-même.
+    if (updated.authorDiscordId) {
+      const label =
+        decision === "TRAITE" ? "traitée" : decision === "REFUSE" ? "refusée" : "classée non résolue";
+      void sendPushToDiscordIds([updated.authorDiscordId], {
+        title: `📋 Plainte ${label}`,
+        body: `Ta plainte${updated.targetName ? ` contre ${updated.targetName}` : ""} a été ${label} par ${staffMember.rpName ?? "le staff"}.`,
+        url: "/dashboard",
+        tag: "complaint-decision-" + updated.id,
+      }).catch(() => {});
+    }
     
     return NextResponse.json({
       ok: true,
