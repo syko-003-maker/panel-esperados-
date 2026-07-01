@@ -1412,3 +1412,18 @@ model RecruitmentModel {
 
   @@index([familyId])
 }
+
+/// Abonnement Web Push (PWA) d'un membre. Un membre peut avoir plusieurs
+/// abonnements (plusieurs appareils/navigateurs). Clé = endpoint unique.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  discordId String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([discordId])
+}

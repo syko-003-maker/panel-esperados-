@@ -1,6 +1,7 @@
 "use client";
 
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
+import PushToggle from "@/components/push-toggle";
 import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
 import React from "react";
 import Link from "next/link";
@@ -396,6 +397,9 @@ export default function StaffDashboardClient() {
 
       {/* ── Mini-chat Assistant Règlement (même moteur que /reglement Discord) ── */}
       <ReglementQuickChat fullToolHref="/staff/reglement" />
+
+      {/* Activation des notifications push (PWA) */}
+      <PushToggle />
 
       {/* Staff LYG connectés en jeu (discret) */}
       <StaffOnlineStrip />

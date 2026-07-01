@@ -3,6 +3,7 @@
 import { useEffect, useState, Component, type ReactNode } from "react";
 import Link from "next/link";
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
+import PushToggle from "@/components/push-toggle";
 import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
 import {
   Crown,
@@ -328,6 +329,9 @@ export default function DashboardClient() {
 
       {/* Mini-chat Assistant Règlement (même IA que /reglement sur Discord) */}
       <ReglementQuickChat fullToolHref="/reglement" />
+
+      {/* Activation des notifications push (PWA) */}
+      <PushToggle />
 
       {/* Staff LYG connectés en jeu (discret) */}
       <StaffOnlineStrip />
