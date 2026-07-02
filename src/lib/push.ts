@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { prisma } from "@/lib/db";
+import { publishNotification } from "@/lib/notify-bus";
 
 /**
  * Envoi de notifications Web Push (PWA). Configuré via les clés VAPID.
@@ -25,6 +26,9 @@ export async function sendPushToDiscordIds(
   discordIds: string[],
   payload: PushPayload
 ): Promise<{ sent: number; pruned: number }> {
+  // Pont appli desktop : on publie dans le bus mémoire quoi qu'il arrive
+  // (indépendant du web push, qui ne marche pas dans Electron).
+  if (discordIds.length) publishNotification(discordIds, payload);
   if (!ensureConfigured() || discordIds.length === 0) return { sent: 0, pruned: 0 };
   const subs = await prisma.pushSubscription.findMany({ where: { discordId: { in: discordIds } } });
   let sent = 0, pruned = 0;

@@ -3,6 +3,7 @@ import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppBackground } from "@/components/app-background";
 import PWARegister from "@/components/pwa-register";
+import DesktopNotify from "@/components/desktop-notify";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -87,6 +88,7 @@ export default function RootLayout({
         />
         <AppBackground />
         <PWARegister />
+        <DesktopNotify />
         {children}
       </body>
     </html>
