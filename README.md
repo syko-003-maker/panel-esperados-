@@ -131,7 +131,7 @@ sequenceDiagram
 
 ### 🔔 Notifications push — de l'événement jusqu'à la poche
 
-**11 événements métier** notifient automatiquement le bon destinataire, sans app store, iPhone compris. Le worker n'a pas les clés de chiffrement : il délègue au panel via une route interne.
+**12 événements métier** notifient automatiquement le bon destinataire, sans app store, iPhone compris. Le worker n'a pas les clés de chiffrement : il délègue au panel via une route interne.
 
 ```mermaid
 flowchart LR
