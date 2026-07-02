@@ -40,9 +40,33 @@ export default function PushToggle() {
     setBusy(true);
     setMsg(null);
     try {
+      // iPhone : le push n'existe QUE dans l'appli installée (écran d'accueil),
+      // et seulement si elle a été ajoutée via Safari. Dans un onglet Safari
+      // normal, l'API n'est même pas dispo → message clair plutôt qu'échec obscur.
+      const ua = navigator.userAgent || "";
+      const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const isStandalone =
+        window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true;
+      if (isIOS && !isStandalone) {
+        setMsg("Sur iPhone : ouvre l'appli depuis son icône sur l'écran d'accueil (pas dans Safari), puis appuie sur Activer.");
+        return;
+      }
+      if (!("PushManager" in window) || !("serviceWorker" in navigator)) {
+        setMsg(isIOS ? "Ton iPhone doit être en iOS 16.4 ou plus récent pour les notifications." : "Ce navigateur ne supporte pas les notifications.");
+        return;
+      }
+      if (!VAPID_PUBLIC) {
+        setMsg("Configuration serveur manquante (VAPID) — préviens un Chef.");
+        return;
+      }
+
       const perm = await Notification.requestPermission();
       if (perm !== "granted") {
-        setMsg("Notifications refusées. Autorise-les dans les réglages du navigateur.");
+        setMsg(
+          perm === "denied"
+            ? "Notifications bloquées. Va dans Réglages iPhone → Notifications → Los Esperados pour les autoriser."
+            : "Autorisation non accordée — réessaie."
+        );
         return;
       }
       const reg = await navigator.serviceWorker.ready;
@@ -55,11 +79,14 @@ export default function PushToggle() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: sub }),
       });
-      if (!res.ok) throw new Error("save failed");
+      if (!res.ok) throw new Error("enregistrement serveur: HTTP " + res.status);
       setSubscribed(true);
       setMsg("✅ Notifications activées sur cet appareil.");
-    } catch {
-      setMsg("Impossible d'activer — réessaie (sur iPhone : installe d'abord l'appli sur l'écran d'accueil).");
+    } catch (e: unknown) {
+      // On expose la vraie erreur (nom + message) pour pouvoir diagnostiquer.
+      const err = e as { name?: string; message?: string };
+      const detail = err?.name ? `${err.name}${err.message ? " — " + err.message : ""}` : String(e);
+      setMsg("Échec de l'activation : " + detail);
     } finally {
       setBusy(false);
     }
