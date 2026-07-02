@@ -84,3 +84,9 @@ scripts/*.mjs
 # Backup files .env
 .env.prod.bak.*
 discord-worker/data/reglement-corpus.json
+
+# Binaires desktop (servis mais non versionnés)
+public/downloads/*.exe
+public/downloads/*.dmg
+public/downloads/*.AppImage
+public/downloads/*.blockmap
