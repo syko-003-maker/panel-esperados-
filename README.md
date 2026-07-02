@@ -135,7 +135,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    subgraph EVT ["⚡ Événements (11)"]
+    subgraph EVT ["⚡ Événements (12)"]
         direction TB
         E1["👤 membre : sanction panel & IG,<br/>absence décidée, réunion,<br/>recrutement accepté, plainte tranchée"]
         E2["👮 staff : plainte, candidature,<br/>absence déposée, warn IG,<br/>justifications"]
