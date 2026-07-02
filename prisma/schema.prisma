@@ -943,6 +943,7 @@ enum DiscordJobType {
   REMOVE_ROLES  // Added for batch role removal (duplicate with REMOVE_ROLE but different context)
   SYNC_MEMBER   // Added for member sync
   DELETE_MESSAGE // Supprime un message Discord existant
+  MEMBER_DM      // DM "doublure" à un membre (filet de sécurité des push)
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import type { PrismaClient } from "@prisma/client";
 import { IDS } from "../ids.js";
 import { parseLygWarnDate } from "../utils/parseLygWarnDate.js";
 import { pushNotify } from "../lib/push-notify.js";
+import { sendMemberDm } from "../lib/send-member-dm.js";
 
 const LYG_BASE_URL = process.env.LYG_BASE_URL ?? "https://api.lyg.fr/api";
 const LYG_TOKEN    = process.env.LYG_TOKEN ?? "";
@@ -216,15 +217,17 @@ async function pollLygWarnsInner(client: Client, prisma: PrismaClient): Promise<
           const pushTag = `lygwarn-${member.steamId}-${warnDate.getTime()}`;
           const shortReason = String(w.reason ?? "—").slice(0, 180);
           if (member.discordId) {
+            const dmBody = `${String(w.type ?? "warn").toUpperCase()} — ${shortReason}`;
             void pushNotify(
               { discordIds: [member.discordId] },
-              {
-                title: "⚠️ Sanction IG reçue",
-                body: `${String(w.type ?? "warn").toUpperCase()} — ${shortReason}`,
-                url: "/dashboard",
-                tag: pushTag,
-              }
+              { title: "⚠️ Sanction IG reçue", body: dmBody, url: "/dashboard", tag: pushTag }
             );
+            // DM doublure (le membre n'est pas pingé par l'embed du salon logs).
+            void sendMemberDm(client, member.discordId, {
+              title: "⚠️ Sanction IG reçue",
+              body: dmBody,
+              url: "/dashboard",
+            });
           }
           void pushNotify(
             { audience: "staff" },

@@ -542,6 +542,38 @@ export async function enqueueComplaintDecision(params: {
   });
 }
 
+/**
+ * DM Discord « doublure » à un membre — filet de sécurité des notifications
+ * push : si le push n'arrive pas (navigateur PC fermé), le membre reçoit quand
+ * même l'info via Discord, qu'il a toujours ouvert. Traité par le worker
+ * (type MEMBER_DM). Le `dedupeKey` évite les doublons si l'event est rejoué.
+ */
+export async function enqueueMemberDm(params: {
+  familyId: string;
+  discordId: string;
+  title: string;
+  body: string;
+  url?: string;
+  dedupeKey: string;
+  client?: PrismaClientLike;
+}) {
+  const client = params.client ?? prisma;
+  return createOutboxJob(client, {
+    familyId: params.familyId,
+    type: "MEMBER_DM",
+    status: "PENDING",
+    dedupeKey: params.dedupeKey,
+    entity: "member_dm",
+    entityId: params.discordId,
+    meta: {
+      discordId: params.discordId,
+      title: params.title,
+      body: params.body,
+      url: params.url ?? "/dashboard",
+    },
+  });
+}
+
 export async function enqueueSanctionApply(params: {
   familyId: string;
   sanctionId: string;

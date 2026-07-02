@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { sendPushToDiscordIds } from "@/lib/push";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
-import { enqueueAssignRole, enqueueRemoveRole, enqueueRecruitmentDecision } from "@/lib/discord/discord";
+import { enqueueAssignRole, enqueueRemoveRole, enqueueRecruitmentDecision, enqueueMemberDm } from "@/lib/discord/discord";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
 import { BLACKLIST_ROLE_ID, RESERVIST_ROLE_ID } from "@/lib/discord-grade";
 import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
@@ -368,6 +368,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       body: "Bienvenue dans la famille Los Esperados ! Ta candidature a été validée.",
       url: "/dashboard",
       tag: "recruit-" + updated.id,
+    }).catch(() => {});
+    void enqueueMemberDm({
+      familyId: FAMILY_ID,
+      discordId: updated.discordId,
+      title: "🎉 Candidature acceptée",
+      body: "Bienvenue dans la famille Los Esperados ! Ta candidature a été validée.",
+      url: "/dashboard",
+      dedupeKey: "member_dm:recruit:" + updated.id,
     }).catch(() => {});
   }
 

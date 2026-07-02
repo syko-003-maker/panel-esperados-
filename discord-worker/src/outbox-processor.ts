@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Client as DiscordClient, TextChannel } from "discord.js";
 import { ChannelType, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { safeFetchMember, validateDiscordId } from "./utils/validateDiscordId.js";
+import { sendMemberDm } from "./lib/send-member-dm.js";
 
 const SANCTION_NOTIFICATION_CHANNEL_ID = process.env.SANCTION_NOTIFICATION_CHANNEL_ID ?? "1409028569203740792";
 const OUTBOX_JOB_TIMEOUT_MS = 20_000;
@@ -642,6 +643,10 @@ async function processJob(
       await handleBankDebtPingBatch(job, prisma, discordClient);
       break;
 
+    case "MEMBER_DM":
+      await handleMemberDm(job, discordClient);
+      break;
+
     default:
       throw new Error(`Unsupported outbox type: ${job.type}`);
   }
@@ -652,6 +657,23 @@ async function processJob(
   });
 
   log("outbox_job_completed", { jobId: job.id, type: job.type });
+}
+
+/**
+ * MEMBER_DM — DM « doublure » à un membre (filet de sécurité des push).
+ * Un DM fermé n'est pas une erreur rejouable : on log et on laisse le job
+ * passer en SENT (le push reste le canal principal).
+ */
+async function handleMemberDm(job: OutboxJob, discordClient: DiscordClient): Promise<void> {
+  const discordId = typeof job.meta?.discordId === "string" ? job.meta.discordId : null;
+  const title = typeof job.meta?.title === "string" ? job.meta.title : null;
+  const body = typeof job.meta?.body === "string" ? job.meta.body : "";
+  const url = typeof job.meta?.url === "string" ? job.meta.url : undefined;
+  if (!discordId || !title) {
+    throw new Error("MEMBER_DM: discordId ou title manquant");
+  }
+  const ok = await sendMemberDm(discordClient, discordId, { title, body, url });
+  log(ok ? "member_dm_sent" : "member_dm_failed", { jobId: job.id, discordId });
 }
 
 function resolveSanctionId(job: OutboxJob): string | null {

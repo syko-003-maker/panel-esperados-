@@ -8,7 +8,7 @@ import { auditStaffAction } from "@/lib/audit";
 import { evaluateSanctionRules } from "@/lib/sanction-rules";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import type { SanctionType } from "@prisma/client";
-import { enqueueRemoveRole, enqueueSanctionApply } from "@/lib/discord/discord";
+import { enqueueRemoveRole, enqueueSanctionApply, enqueueMemberDm } from "@/lib/discord/discord";
 import { sendPushToDiscordIds } from "@/lib/push";
 import {
   BLOCKING_SANCTION_TYPES,
@@ -592,13 +592,22 @@ export async function POST(req: Request) {
     actorId,
   });
 
-  // Notification push au membre sanctionné (fire-and-forget).
+  // Notification push au membre sanctionné + DM Discord doublure (fire-and-forget).
   if (member.discordId) {
+    const dmBody = `${sanction.type}${sanction.reason ? " — " + sanction.reason : ""}`;
     void sendPushToDiscordIds([member.discordId], {
       title: "⚠️ Sanction reçue",
-      body: `${sanction.type}${sanction.reason ? " — " + sanction.reason : ""}`,
+      body: dmBody,
       url: "/dashboard",
       tag: "sanction-" + sanction.id,
+    }).catch(() => {});
+    void enqueueMemberDm({
+      familyId: sanction.familyId,
+      discordId: member.discordId,
+      title: "⚠️ Sanction reçue",
+      body: dmBody,
+      url: "/dashboard",
+      dedupeKey: "member_dm:sanction:" + sanction.id,
     }).catch(() => {});
   }
 

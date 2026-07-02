@@ -5,7 +5,7 @@ import { requirePrivileged, requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { AbsenceStatus } from "@prisma/client";
-import { enqueueDeleteMessage, enqueueEmbedMessage, getOrCreateDiscordConfig } from "@/lib/discord/discord";
+import { enqueueDeleteMessage, enqueueEmbedMessage, getOrCreateDiscordConfig, enqueueMemberDm } from "@/lib/discord/discord";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 const ABSENCE_TYPES = ["MEETING", "GENERAL"] as const;
@@ -378,13 +378,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Notification push au membre (fire-and-forget).
     if (existing.discordId) {
       const approved = value === "APPROVED";
+      const dmTitle = approved ? "✅ Absence approuvée" : "❌ Absence refusée";
+      const dmBody = approved
+        ? "Ta demande d'absence a été acceptée."
+        : `Ta demande d'absence a été refusée${rejectionReasonRaw ? " — " + rejectionReasonRaw : "."}`;
       void sendPushToDiscordIds([existing.discordId], {
-        title: approved ? "✅ Absence approuvée" : "❌ Absence refusée",
-        body: approved
-          ? "Ta demande d'absence a été acceptée."
-          : `Ta demande d'absence a été refusée${rejectionReasonRaw ? " — " + rejectionReasonRaw : "."}`,
+        title: dmTitle,
+        body: dmBody,
         url: "/dashboard",
         tag: "absence-" + updated.id,
+      }).catch(() => {});
+      void enqueueMemberDm({
+        familyId: existing.familyId,
+        discordId: existing.discordId,
+        title: dmTitle,
+        body: dmBody,
+        url: "/dashboard",
+        dedupeKey: "member_dm:absence:" + updated.id + ":" + value,
       }).catch(() => {});
     }
 
