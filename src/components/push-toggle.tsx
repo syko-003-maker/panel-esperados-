@@ -83,10 +83,15 @@ export default function PushToggle() {
       setSubscribed(true);
       setMsg("✅ Notifications activées sur cet appareil.");
     } catch (e: unknown) {
-      // On expose la vraie erreur (nom + message) pour pouvoir diagnostiquer.
       const err = e as { name?: string; message?: string };
-      const detail = err?.name ? `${err.name}${err.message ? " — " + err.message : ""}` : String(e);
-      setMsg("Échec de l'activation : " + detail);
+      const raw = `${err?.name ?? ""} ${err?.message ?? ""}`.toLowerCase();
+      if (raw.includes("push service not available")) {
+        // Erreur Apple : le démon push de l'iPhone n'a pas pu se connecter.
+        setMsg("Le service de notifications d'Apple est momentanément indisponible sur cet iPhone. Redémarre le téléphone (ça relance ce service) et désactive un éventuel VPN, puis réessaie. En attendant, tes alertes arrivent sur Discord.");
+      } else {
+        const detail = err?.name ? `${err.name}${err.message ? " — " + err.message : ""}` : String(e);
+        setMsg("Échec de l'activation : " + detail);
+      }
     } finally {
       setBusy(false);
     }
