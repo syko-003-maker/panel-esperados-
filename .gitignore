@@ -90,3 +90,8 @@ public/downloads/*.exe
 public/downloads/*.dmg
 public/downloads/*.AppImage
 public/downloads/*.blockmap
+public/downloads/windows-version.txt
+
+# Appli desktop Electron
+desktop/node_modules/
+desktop/dist/

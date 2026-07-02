@@ -1,0 +1,36 @@
+{
+  "name": "los-esperados-desktop",
+  "productName": "Los Esperados",
+  "version": "1.0.0",
+  "description": "Application de bureau Los Esperados — panel + notifications natives.",
+  "author": "Los Esperados",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "fr.losesperados.app",
+    "productName": "Los Esperados",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "build/icon.png"],
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.ico",
+      "artifactName": "los-esperados-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Los Esperados",
+      "runAfterFinish": true
+    }
+  }
+}
