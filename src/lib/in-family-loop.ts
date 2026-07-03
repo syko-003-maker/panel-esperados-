@@ -18,25 +18,26 @@ import { setLygPauseUntil } from "@/lib/lyg-stats";
  */
 
 const POLL_INTERVAL_MS = 30_000;   // 1 poll toutes les 30s (30 calls/15min)
-const WINDOW_MINUTES   = 4;        // fenêtre LYG : playtime des 4 dernières min
-// Maths du système :
+const WINDOW_MINUTES   = 3;        // fenêtre LYG : playtime des 3 dernières min
+// Maths du système (délai « fantôme » = fenêtre + garde de fraîcheur) :
 //   L'API LYG renvoie le CUMUL de playtime dans la fenêtre (arrondi à la min
-//   entière). Donc un joueur qui s'arrête met `WINDOW_MINUTES` min à sortir
-//   de la réponse (le cumul ne descend à 0 qu'une fois sa playtime sortie
-//   complètement de la fenêtre). Plus la fenêtre est courte, plus la
-//   disparition est rapide ; plus elle est large, plus on tolère les
-//   micro-pauses (switch citoyen 30s, etc.).
+//   entière). Un joueur qui s'arrête met `WINDOW_MINUTES` min à sortir de la
+//   réponse (le cumul ne tombe à 0 qu'une fois sa playtime sortie de la
+//   fenêtre), PUIS il reste affiché encore `STALE_AFTER_MS_NORMAL`.
+//   → délai réel avant de passer "hors ligne" = WINDOW + STALE.
 //
-//   Avec WINDOW=4, POLL=30s :
-//     - Joueur qui rejoint : visible dès qu'il a 1 min cumulée (~30-90s)
-//     - Joueur qui s'arrête : disparaît du cache LYG après ~4 min
-//     - + STALE_AFTER_MS_NORMAL (5 min) = total ~5 min max après arrêt
+//   La garde ne sert qu'à survivre à un poll manqué (poll=30s) — pas à
+//   tolérer les pauses (c'est le rôle de la fenêtre). On la garde donc courte
+//   pour que les joueurs partis disparaissent vite (le bug remonté : des
+//   joueurs affichés en ligne alors qu'ils étaient partis).
 //
-//   Trade-off : plus rapide à détecter online, légèrement plus tolérant aux
-//   pauses, coût LYG x2 (30/15min vs 15/15min, budget largement OK).
-const STALE_AFTER_MS_NORMAL = 5 * 60 * 1000;  // 5 min en fonctionnement normal
-const STALE_AFTER_MS_PAUSED = 20 * 60 * 1000; // 20 min pendant un 429 pour
-// ne pas vider l'UI pendant le backoff (le pause LYG peut durer jusqu'à 15 min).
+//   Avec WINDOW=3, STALE=90s, POLL=30s :
+//     - Joueur qui rejoint : visible dès ~1 min cumulée (~30-90s)
+//     - Joueur qui s'arrête : hors ligne après ~3 min + 90s ≈ 4,5 min
+//       (avant : 4 min + 5 min ≈ 9 min)
+const STALE_AFTER_MS_NORMAL = 90 * 1000;      // 90s (survit à ~2 polls manqués)
+const STALE_AFTER_MS_PAUSED = 10 * 60 * 1000; // 10 min pendant un 429 pour ne
+// pas vider l'UI pendant le backoff, sans laisser trop de fantômes.
 
 const DEFAULT_RATE_LIMIT_PAUSE_MS = 60_000;
 
