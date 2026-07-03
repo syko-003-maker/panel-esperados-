@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
+import { resolveModelForRecruitment } from "@/lib/recruitment/models";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,7 +47,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const notes = parseRecruitmentNotes(recruitment.notes ?? null);
   const evaluation = extractRecruitmentEvaluation(notes, recruitment.payload);
-  const totals = computeRecruitmentTotals(evaluation.scoresJson);
+  // Barème = le modèle sur lequel le candidat a été évalué (V1/V2/…), sinon
+  // le défaut. Sans ça, le poll retombait sur le questionBank codé en dur et
+  // renvoyait une note fausse (scores non mappés) dès qu'un autre modèle était utilisé.
+  const model = await resolveModelForRecruitment(notes.modelId ?? null);
+  const totals = computeRecruitmentTotals(evaluation.scoresJson, model.questions);
   const statusLabel =
     recruitment.status === "ACCEPTED"
       ? "CLOSED_ACCEPTED"
