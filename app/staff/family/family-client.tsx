@@ -29,6 +29,9 @@ type Row = {
   rpName: string | null;
   grade: string | null;
   rankLabel: string | null;
+  displayGrade: string | null;
+  isDemoted: boolean;
+  isBlacklisted: boolean;
   discordAvatarHash: string | null;
   wlClass: number | null;
   wlOwner: boolean;
@@ -426,7 +429,9 @@ export default function FamilyClient({
                         ) : null}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        {row.rankLabel ? row.rankLabel : "—"} · {row.steamId ?? "no steam"}
+                        <span className={row.isBlacklisted ? "text-red-400 font-semibold" : row.isDemoted ? "text-amber-400 font-semibold" : ""}>
+                          {row.displayGrade ?? "—"}
+                        </span> · {row.steamId ?? "no steam"}
                       </div>
                     </div>
                   </div>

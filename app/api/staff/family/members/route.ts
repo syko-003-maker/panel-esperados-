@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireFullWriter } from "@/lib/guards";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
+import { getDiscordGrade } from "@/lib/discord-grade";
 
 /**
  * GET /api/staff/family/members
@@ -36,6 +37,7 @@ export async function GET() {
       rpName: true,
       grade: true,
       rankLabel: true,
+      discordRoleIds: true,
       discordAvatarHash: true,
       wlClass: true,
       wlOwner: true,
@@ -55,6 +57,16 @@ export async function GET() {
   const rows = members.map((m) => {
     const classDiff = (m.wlClassIntent ?? null) !== (m.wlClass ?? null);
     const ownerDiff = m.wlOwnerIntent !== m.wlOwner;
+    // Libellé de grade "honnête" : priorité aux états spéciaux Discord
+    // (Blacklist/Demote), puis au grade du rôle Discord, puis au grade LYG.
+    // Corrige les "—" affichés pour des membres qui ont bien un grade LYG mais
+    // pas de rôle de grade Discord (ex. seulement Citoyen / aucun rôle).
+    const dg = getDiscordGrade(m.discordRoleIds ?? []);
+    const displayGrade = dg.isBlacklisted
+      ? "Blacklist"
+      : dg.isDemoted
+        ? "Demote"
+        : dg.grade || m.rankLabel || m.grade || null;
     return {
       id: m.id,
       steamId: m.steamId,
@@ -62,6 +74,9 @@ export async function GET() {
       rpName: m.rpName,
       grade: m.grade,
       rankLabel: m.rankLabel,
+      displayGrade,
+      isDemoted: dg.isDemoted,
+      isBlacklisted: dg.isBlacklisted,
       discordAvatarHash: m.discordAvatarHash,
       // état LYG live
       wlClass: m.wlClass,
