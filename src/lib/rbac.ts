@@ -814,6 +814,48 @@ export async function isCurrentSessionFullWriter(): Promise<boolean> {
 }
 
 /**
+ * true pour Chef / Sous-Chef / EM / Encadrant (basé sur isStaffFull).
+ * Sert à ouvrir les écritures BÉNIGNES à l'Encadrant côté UI (ex. formulaire
+ * de sanction), tandis que isCurrentSessionFullWriter reste le flag "grave"
+ * (démote/blacklist/retrait) qui EXCLUT l'Encadrant.
+ */
+export async function isCurrentSessionEncadrantOrAbove(): Promise<boolean> {
+  try {
+    const { getSession } = await import("@/auth");
+    const session = await getSession();
+    if (!session) return false;
+
+    const discordId = extractDiscordId(session);
+    if (!discordId) return false;
+
+    const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+    if (ownerDiscordId && discordId === ownerDiscordId) return true;
+    const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (adminIds.includes(discordId)) return true;
+
+    const { isStaffFull, getDiscordRolesForUser } = await import("@/lib/discord-roles");
+
+    const resolvedFamily = await resolveFamilyId(DEFAULT_FAMILY_ID);
+    const memberRecord = await prisma.member.findUnique({
+      where: { familyId_discordId: { familyId: resolvedFamily, discordId } },
+      select: { discordRoleIds: true, discordInGuild: true, discordLastError: true },
+    });
+    if (memberRecord && !memberRecord.discordLastError && memberRecord.discordInGuild) {
+      const roles = Array.isArray(memberRecord.discordRoleIds) ? (memberRecord.discordRoleIds as string[]) : [];
+      if (roles.length > 0) return isStaffFull(roles);
+    }
+
+    const roles = await getDiscordRolesForUser(discordId);
+    return isStaffFull(roles);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Variante stricte : true SEULEMENT pour Chef Famille + Sous-Chef Famille.
  * Refuse explicitement État-Major. Sert pour les actions très sensibles
  * réservées à la direction (ex: gérer les rangs WL).

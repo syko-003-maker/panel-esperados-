@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireFullWriter } from "@/lib/guards";
+import { requireEncadrantOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { createAuditLog } from "@/lib/audit";
@@ -17,7 +17,7 @@ async function getActor() {
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ modelId: string }> }) {
   const { modelId } = await params;
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const body = await req.json().catch(() => null);
@@ -101,7 +101,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ modelI
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ modelId: string }> }) {
   const { modelId } = await params;
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);

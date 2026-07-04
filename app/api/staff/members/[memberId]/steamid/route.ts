@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireEncadrantOrAbove } from "@/lib/guards";
 import { createAuditLog } from "@/lib/audit";
 import { debug, error as logError } from "@/lib/logger";
 import { findBlockingSteamLink } from "@/lib/link-conflicts";
@@ -33,7 +33,7 @@ async function handleUpdate(
 ) {
   try {
     // ✅ Check permissions (staff only)
-    const guard = await requireFullWriter();
+    const guard = await requireEncadrantOrAbove();
     if (guard instanceof Response) {
       return guard;
     }

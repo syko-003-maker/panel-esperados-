@@ -123,7 +123,7 @@ const DISCORD_BADGE_TONES: Record<Sanction["discordStatus"], "warning" | "succes
 import { formatAppDateOnly as fmtDate } from "@/lib/app-date-formatter";
 import { useConfirm } from "@/components/staff/ui/use-confirm";
 
-export default function SanctionsClient({ canWrite = true }: { canWrite?: boolean }) {
+export default function SanctionsClient({ canWrite = true, canGrave = true }: { canWrite?: boolean; canGrave?: boolean }) {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [items, setItems] = useState<Sanction[]>([]);
@@ -476,7 +476,9 @@ export default function SanctionsClient({ canWrite = true }: { canWrite?: boolea
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="border-white/8 bg-card text-foreground shadow-2xl">
-                    {SANCTION_TYPE_OPTIONS.map((option) => (
+                    {SANCTION_TYPE_OPTIONS
+                      .filter((option) => canGrave || (option.value !== "DEMOTE" && option.value !== "BLACKLIST"))
+                      .map((option) => (
                       <SelectItem
                         key={option.value}
                         value={option.value}

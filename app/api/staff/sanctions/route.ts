@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
+import { requireChefOrEtatMajor, requireFullWriter, requireEncadrantOrAbove, isSessionFullWriter } from "@/lib/guards";
 import { requireStaffAccess } from "@/lib/rbac";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
@@ -308,8 +308,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const requestId = makeRequestId();
 
-  // Action sensible : créer une sanction. Bloqué pour Encadrant (lecture seule).
-  const guard = await requireFullWriter();
+  // Créer une sanction : ouvert à l'Encadrant (avertissements, réserviste…).
+  // Le garde par TYPE ci-dessous réserve DÉMOTE + BLACKLIST à l'EM+.
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const actorId = (guard.session as any)?.user?.id ?? (guard.session as any)?.userId;
@@ -338,6 +339,16 @@ export async function POST(req: Request) {
 
   if (!typeRaw || !isValidSanctionType(typeRaw)) {
     return NextResponse.json({ ok: false, error: "INVALID_TYPE", requestId }, { status: 400 });
+  }
+
+  // Garde-fou "virer" : DÉMOTE et BLACKLIST restent réservés à l'EM+.
+  // L'Encadrant peut tout le reste (avertissements, réserviste), mais doit
+  // demander l'autorisation d'un État-Major pour démote/blacklist.
+  if ((typeRaw === "DEMOTE" || typeRaw === "BLACKLIST") && !(await isSessionFullWriter())) {
+    return NextResponse.json(
+      { ok: false, error: "FORBIDDEN_GRAVE_SANCTION", message: "Démote et blacklist sont réservés à l'État-Major — demande l'autorisation.", requestId },
+      { status: 403 }
+    );
   }
 
   const memberId = body.memberId ? String(body.memberId).trim() : null;

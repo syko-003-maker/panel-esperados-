@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireFullWriter } from "@/lib/guards";
+import { requireEncadrantOrAbove } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { triggerDiscordRenameAsync } from "@/lib/discord/rename";
@@ -8,18 +8,18 @@ import { triggerDiscordRenameAsync } from "@/lib/discord/rename";
  * PATCH /api/staff/members/[memberId]/update-rpname
  *
  * Met à jour le rpName d'un membre. Action d'écriture → réservée aux
- * Chef / Sous-Chef / État-Major (requireFullWriter).
+ * Chef / Sous-Chef / État-Major (requireEncadrantOrAbove).
  *
  * ⚠️ SÉCURITÉ : avant, le guard reposait sur le flag legacy `session.isStaff`,
  * incohérent avec le RBAC basé sur les rôles Discord. Remplacé par le guard
- * canonique requireFullWriter (comme les autres mutations sensibles).
+ * canonique requireEncadrantOrAbove (comme les autres mutations sensibles).
  */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ memberId: string }> }
 ) {
   try {
-    const guard = await requireFullWriter();
+    const guard = await requireEncadrantOrAbove();
     if (guard instanceof Response) return guard;
     const session: any = (guard as any).session ?? {};
 

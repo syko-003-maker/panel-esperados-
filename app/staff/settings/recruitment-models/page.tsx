@@ -1,4 +1,4 @@
-import { requireFullWriter } from "@/lib/guards";
+import { requireEncadrantOrAbove } from "@/lib/guards";
 import { redirect } from "next/navigation";
 import { PageShell } from "@/components/staff/ui";
 import { ClipboardList } from "lucide-react";
@@ -6,7 +6,7 @@ import RecruitmentModelsClient from "./models-client";
 
 export default async function RecruitmentModelsPage() {
   // Création/édition des questionnaires d'entretien : EM + Chefs.
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) {
     const location = guard.headers.get("Location") ?? "/staff/forbidden";
     redirect(location);

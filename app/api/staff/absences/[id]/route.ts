@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendPushToDiscordIds } from "@/lib/push";
-import { requirePrivileged, requireFullWriter } from "@/lib/guards";
+import { requirePrivileged, requireEncadrantOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { AbsenceStatus } from "@prisma/client";
@@ -137,7 +137,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const requestId = req.headers.get("x-request-id") || makeRequestId();
   const { id } = await params;
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();
@@ -197,7 +197,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const requestId = req.headers.get("x-request-id") || makeRequestId();
   const { id } = await params;
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

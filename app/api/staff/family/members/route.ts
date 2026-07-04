@@ -12,7 +12,7 @@ import { getDiscordGrade } from "@/lib/discord-grade";
  *   - Membres planifiés par le panel (wlClassIntent != null)
  *   - Diff : intent vs réel = quoi appliquer sur families.lyg.fr
  *
- * Réservé Chef famille + Sous-Chef famille + EM (= requireFullWriter).
+ * Réservé Chef famille + Sous-Chef famille + EM (= requireFullWriter). Encadrant exclu (zone sensible).
  * Encadrant et Recruteur sont exclus, la WL famille étant une donnée
  * sensible (présence sur le serveur de jeu, hiérarchie).
  */

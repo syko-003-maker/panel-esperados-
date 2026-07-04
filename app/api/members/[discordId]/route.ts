@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged, requireChef, requireFullWriter } from "@/lib/guards";
+import { requirePrivileged, requireChef, requireEncadrantOrAbove } from "@/lib/guards";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { getGradeLevel, getRoleIdForGrade } from "@/lib/grades";
 
@@ -102,7 +102,7 @@ export async function PATCH(
 ) {
   // Modification de données membre (grade inclus) = écriture sensible
   // → Chef/Sous-Chef/EM seulement (exclut Recruteur/Encadrant).
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const { discordId } = await params;

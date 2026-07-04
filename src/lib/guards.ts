@@ -798,6 +798,85 @@ export async function requireFullWriter(): Promise<GuardResult> {
 }
 
 /**
+ * Guard "Encadrant et au-dessus" : Chef / Sous-Chef / EM / Encadrant.
+ * Basé sur isStaffFull (inclut l'Encadrant, exclut Recruteur + démoté).
+ *
+ * À utiliser pour les écritures BÉNIGNES ouvertes à l'Encadrant. Les actions
+ * GRAVES (blacklist, démote, retrait famille, finalize réunion, admin RBAC…)
+ * restent sur requireFullWriter / requireChef, qui EXCLUENT l'Encadrant — ne
+ * jamais les remplacer par ce guard. Pour une route "mixte" (ex. sanctions),
+ * ouvrir la route avec ce guard PUIS refuser l'action grave via isSessionFullWriter().
+ */
+export async function requireEncadrantOrAbove(): Promise<GuardResult> {
+  logDiscordRoleConfig("requireEncadrantOrAbove");
+  const session = await getSession();
+  if (!session) return jsonError(401, "Unauthorized");
+
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) return jsonError(403, "Missing discordId");
+
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  if (ownerDiscordId && discordId === ownerDiscordId) {
+    return { session: { ...session, discordId, _auth: { isOwner: true } as any } };
+  }
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (adminIds.includes(discordId)) {
+    return { session: { ...session, discordId, _auth: { isAdmin: true } as any } };
+  }
+
+  const rolesResult = await getRolesForSession(session);
+  if (rolesResult.error === "UNAVAILABLE") {
+    return discordUnavailableResponse();
+  }
+
+  const ok = isStaffFull(rolesResult.roles ?? []);
+  if (!ok) {
+    const path = await getRequestPath();
+    const denyKey = `ENCADRANT_DENIED:${discordId}:${path}`;
+    if (shouldAudit(denyKey)) {
+      void createAuditLog({
+        actorType: "member",
+        actorId: discordId,
+        action: "ENCADRANT_DENIED",
+        entity: "Auth",
+        entityId: discordId,
+        entityName: "staff/write",
+        meta: { reason: "below_encadrant", path },
+      });
+    }
+    return jsonError(403, "FORBIDDEN_ACTION");
+  }
+
+  return { session: { ...session, discordId } };
+}
+
+/**
+ * Booléen : la session courante est-elle "full writer" (EM / Chef, SANS Encadrant) ?
+ * Sert au gating INTRA-ROUTE des actions graves quand la route est ouverte à
+ * l'Encadrant (ex. bloquer DEMOTE/BLACKLIST dans la route sanctions).
+ * Owner / admin (env) comptent comme full writer.
+ */
+export async function isSessionFullWriter(): Promise<boolean> {
+  const session = await getSession();
+  if (!session) return false;
+  const discordId = await getUserDiscordIdFromSession(session);
+  if (!discordId) return false;
+  const ownerDiscordId = process.env.OWNER_DISCORD_ID ?? "";
+  if (ownerDiscordId && discordId === ownerDiscordId) return true;
+  const adminIds = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (adminIds.includes(discordId)) return true;
+  const rolesResult = await getRolesForSession(session);
+  const { isFullWriter } = await import("@/lib/discord-roles");
+  return isFullWriter(rolesResult.roles ?? []);
+}
+
+/**
  * Guard ultra-restrictif : SEULEMENT Chef Famille + Sous-Chef Famille.
  *
  * Exclut explicitement État-Major (qui passe `requireFullWriter`), Encadrant

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireFullWriter, requireRecruiterOrAbove } from "@/lib/guards";
+import { requireEncadrantOrAbove, requireRecruiterOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { createAuditLog } from "@/lib/audit";
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

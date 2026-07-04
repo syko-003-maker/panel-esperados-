@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged, requireFullWriter } from "@/lib/guards";
+import { requirePrivileged, requireEncadrantOrAbove } from "@/lib/guards";
 import {
   enqueueEmbedMessage,
   type DiscordEmbedPayload,
@@ -258,7 +258,7 @@ function buildMeetingPublishEmbed(meeting: {
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireFullWriter();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const meeting = await prisma.meeting.findUnique({
