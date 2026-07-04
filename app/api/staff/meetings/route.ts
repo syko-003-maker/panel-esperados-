@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireEncadrantOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { resolveFamilyId } from "@/lib/family";
 import { getISOWeekKey } from "@/lib/meetings-legacy";
@@ -60,7 +60,7 @@ function buildMeetingListItem(meeting: {
 }
 
 export async function GET(req: Request) {
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
@@ -119,7 +119,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

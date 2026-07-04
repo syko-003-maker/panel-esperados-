@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChef } from "@/lib/guards";
+import { requireEncadrantOrAbove, isSessionFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { resolveFamilyId } from "@/lib/family";
@@ -59,10 +59,12 @@ export async function POST(
     return featureCheck.response;
   }
 
-  // Auth chef uniquement
-  const guard = await requireChef();
+  // Ouvert à l'Encadrant, SAUF si la réunion contient une décision grave
+  // (démote / blacklist / exclusion = virer) : dans ce cas seul l'EM+ peut
+  // finaliser (le contrôle par-décision est fait plus bas, après chargement).
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) {
-    console.log("[finalize] requireChef blocked:", guard.status);
+    console.log("[finalize] requireEncadrantOrAbove blocked:", guard.status);
     return guard;
   }
   console.log("[finalize] guard passed");
@@ -83,6 +85,24 @@ export async function POST(
 
   if (!meeting) {
     return NextResponse.json({ ok: false, error: "Meeting not found" }, { status: 404 });
+  }
+
+  // Garde-fou "virer/blacklist" : si une ligne porte une décision grave
+  // (démote / blacklist / exclusion), seul l'EM+ peut finaliser (car finalize
+  // applique réellement ces sanctions). L'Encadrant peut finaliser une réunion
+  // sans décision grave (warns, réserviste, promotions, présence).
+  {
+    const GRAVE = new Set(["DEMOTE", "BLACKLIST", "EXCLUDE", "EXCLUSION"]);
+    const hasGrave = meeting.rows.some((row) => {
+      const code = String(resolveMeetingDecisionCode(row) ?? "").toUpperCase();
+      return GRAVE.has(code);
+    });
+    if (hasGrave && !(await isSessionFullWriter())) {
+      return NextResponse.json(
+        { ok: false, error: "FORBIDDEN_GRAVE_FINALIZE", message: "Cette réunion contient une décision de démote/blacklist/exclusion : seul l'État-Major peut la finaliser." },
+        { status: 403 }
+      );
+    }
   }
 
   if (meeting.status === "FINAL") {

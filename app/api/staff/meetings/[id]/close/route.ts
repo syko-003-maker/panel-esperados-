@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireEncadrantOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { computeMeetingSummary } from "@/lib/meetings";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) return guard;
 
   const session = await getSession();

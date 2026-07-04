@@ -305,18 +305,28 @@ export function MeetingDecisionsClient({
   meetingStatus,
   onStatusChange,
   canWrite = true,
+  canGrave = true,
 }: {
   meetingId: string;
   meetingStatus: MeetingStatus;
   onStatusChange?: () => void;
   /**
-   * Si false (= Encadrant) : on masque les actions sensibles
-   * (Finaliser, Clore, Publier, Save décisions, promotions).
-   * Côté serveur ces actions sont déjà bloquées par requireFullWriter().
+   * canWrite (Encadrant+) : peut gérer la réunion — présence, notes, warns,
+   * réserviste, promotions, publier, finaliser (si pas de décision grave).
    */
   canWrite?: boolean;
+  /**
+   * canGrave (EM+ seulement) : peut choisir démote / blacklist / exclusion.
+   * false (= Encadrant) → ces options sont masquées du sélecteur. Le serveur
+   * bloque déjà (403 FORBIDDEN_GRAVE_DECISION).
+   */
+  canGrave?: boolean;
 }) {
   const router = useRouter();
+  // Sélecteur de sanction : l'Encadrant ne voit pas les décisions graves.
+  const sanctionOptions = canGrave
+    ? SANCTION_OPTIONS
+    : SANCTION_OPTIONS.filter((o) => !["DEMOTE", "BLACKLIST", "EXCLUDE"].includes(o.value));
 
   // Data state
   const [rows, setRows] = useState<MeetingRow[]>([]);
@@ -1111,7 +1121,7 @@ export function MeetingDecisionsClient({
                       ) : (
                         <StyledSelect value={sanctionValue} onChange={(e) => { if (!row.id) return; const val = e.target.value as MeetingDecisionType | "NONE"; if (val === "NONE") { handleDecisionChange(row.id, "decisionType", progressionValue); } else { handleDecisionChange(row.id, "decisionType", val); } }} className={`w-full rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(sanctionValue))}`}>
                           <option value="NONE" className="bg-slate-950 text-slate-100">Aucune sanction</option>
-                          {SANCTION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
+                          {sanctionOptions.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">{opt.label}</option>)}
                         </StyledSelect>
                       )}
                     </div>
@@ -1348,7 +1358,7 @@ export function MeetingDecisionsClient({
                           className={`w-[190px] rounded-xl border px-3 py-2 text-sm font-semibold focus:outline-none ${getSelectClass(getDecisionTone(sanctionValue))}`}
                         >
                           <option value="NONE" className="bg-slate-950 text-slate-100">Aucune sanction</option>
-                          {SANCTION_OPTIONS.map((opt) => (
+                          {sanctionOptions.map((opt) => (
                             <option key={opt.value} value={opt.value} className="bg-slate-950 text-slate-100">
                               {opt.label}
                             </option>

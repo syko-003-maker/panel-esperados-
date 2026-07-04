@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requirePrivileged, requireFullWriter } from "@/lib/guards";
+import { requirePrivileged, requireEncadrantOrAbove, isSessionFullWriter } from "@/lib/guards";
 import { resolveFamilyId } from "@/lib/family";
 import type { MeetingRowDecisionType } from "@prisma/client";
 import {
@@ -57,7 +57,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "sanctionReason" in body ||
     "targetGrade" in body;
   if (touchesDecision) {
-    const writerGuard = await requireFullWriter();
+    // Enregistrer une décision : ouvert à l'Encadrant, SAUF les décisions
+    // graves (démote / blacklist / exclusion = virer) qui restent EM+.
+    const writerGuard = await requireEncadrantOrAbove();
     if (writerGuard instanceof Response) return writerGuard;
   }
 
@@ -86,6 +88,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "decisionType" in body ? String((body as any).decisionType ?? "MAINTAIN").trim().toUpperCase() : null;
   const nextSanctionTypeRaw =
     "sanctionType" in body ? String((body as any).sanctionType ?? "").trim().toUpperCase() : null;
+
+  // Garde-fou "virer/blacklist" : une décision de démote / blacklist / exclusion
+  // reste réservée à l'EM+. L'Encadrant peut tout le reste (warns, réserviste,
+  // promotions, présence…). RESERVISTE est autorisé (décision produit).
+  const GRAVE_DECISIONS = new Set(["DEMOTE", "BLACKLIST", "EXCLUDE", "EXCLUSION"]);
+  const isGrave =
+    GRAVE_DECISIONS.has(nextDecisionTypeRaw ?? "") || GRAVE_DECISIONS.has(nextSanctionTypeRaw ?? "");
+  if (isGrave && !(await isSessionFullWriter())) {
+    return NextResponse.json(
+      { ok: false, error: "FORBIDDEN_GRAVE_DECISION", message: "Démote / blacklist / exclusion sont réservés à l'État-Major — demande l'autorisation." },
+      { status: 403 }
+    );
+  }
   const allowedSanctionTypes = [
     "AVERT_ORAL_PLAYTIME",
     "AVERT_ORAL_REUNION",

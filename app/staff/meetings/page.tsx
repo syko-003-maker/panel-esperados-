@@ -1,4 +1,4 @@
-import { requireChefOrEtatMajor } from "@/lib/guards";
+import { requireEncadrantOrAbove } from "@/lib/guards";
 import MeetingsClient from "./meetings-client";
 import { redirect } from "next/navigation";
 import { PageShell } from "@/components/staff/ui/PageShell";
@@ -6,7 +6,7 @@ import { Calendar } from "lucide-react";
 
 export default async function StaffMeetingsPage() {
   // ✅ PATCH: Unified staff protection (session + isStaff + member linked)
-  const guard = await requireChefOrEtatMajor();
+  const guard = await requireEncadrantOrAbove();
   if (guard instanceof Response) {
     const location = guard.headers.get("Location") ?? "/staff/forbidden";
     redirect(location);
