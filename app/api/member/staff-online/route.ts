@@ -41,7 +41,10 @@ export async function GET() {
       throw new Error("réponse LYG inattendue");
     }
     const data: StaffOnline[] = json.data
-      .filter((p: any) => Number(p?.connected) === 1)
+      // > 0 et non === 1 : le n° de serveur est porté par staff_server, pas par
+      // connected. Si LYG émet un jour connected=2 pour un staff bien en jeu,
+      // === 1 le masquerait silencieusement (faux négatif). > 0 exclut juste 0.
+      .filter((p: any) => Number(p?.connected) > 0)
       .map((p: any) => ({
         name: String(p.last_name ?? "?"),
         rankStaff: String(p.rank_staff ?? ""),

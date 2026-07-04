@@ -36,8 +36,8 @@ const WINDOW_MINUTES   = 3;        // fenêtre LYG : playtime des 3 dernières m
 //     - Joueur qui s'arrête : hors ligne après ~3 min + 90s ≈ 4,5 min
 //       (avant : 4 min + 5 min ≈ 9 min)
 const STALE_AFTER_MS_NORMAL = 90 * 1000;      // 90s (survit à ~2 polls manqués)
-const STALE_AFTER_MS_PAUSED = 10 * 60 * 1000; // 10 min pendant un 429 pour ne
-// pas vider l'UI pendant le backoff, sans laisser trop de fantômes.
+const STALE_AFTER_MS_PAUSED = 4 * 60 * 1000;  // 4 min pendant un 429 : couvre un
+// backoff court sans laisser un joueur parti affiché "en métier" trop longtemps.
 
 const DEFAULT_RATE_LIMIT_PAUSE_MS = 60_000;
 
@@ -52,10 +52,20 @@ const g = globalThis as unknown as {
   __inFamilyCache?: Map<string, InFamilyEntry>;
   __inFamilyLoopStarted?: boolean;
   __inFamilyPausedUntil?: number;
+  __inFamilyWarm?: boolean;
 };
 g.__inFamilyCache ??= new Map();
 
 export const inFamilyCache = g.__inFamilyCache!;
+
+/**
+ * true dès qu'un premier poll a réussi. Avant ça, le cache est vide (redémarrage
+ * panel) → on ne sait rien : l'API renvoie un état "inconnu" pour que l'UI
+ * affiche "…" plutôt qu'un faux "hors ligne" pour tout le monde au boot.
+ */
+export function isInFamilyWarm(): boolean {
+  return Boolean(g.__inFamilyWarm);
+}
 
 /**
  * Stale dynamique : si on est en pause 429 LYG, on garde le cache plus
@@ -117,6 +127,8 @@ async function pollOnce(): Promise<void> {
         activeCount++;
       }
     }
+    // Poll réussi → on a une vue à jour : le cache est "warm".
+    g.__inFamilyWarm = true;
     // Log compact : juste le compteur, suffisant pour confirmer que le
     // loop tourne et donner une idée du nombre d'actifs en métier famille.
     console.log(`[in-family] poll ok rows=${rows.length} active=${activeCount}`);

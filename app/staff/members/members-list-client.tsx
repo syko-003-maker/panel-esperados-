@@ -107,7 +107,7 @@ type ExtendedFilter = QuickFilter | "online";
 
 const QUICK_FILTER_OPTIONS: Array<{ value: ExtendedFilter; label: string; icon: string; color: "default" | "green" | "emerald" | "rose" | "amber" | "cyan" | "orange" }> = [
   { value: "all",      label: "Tous",            icon: "◈",  color: "default"  },
-  { value: "online",   label: "En jeu",          icon: "●",  color: "green"    },
+  { value: "online",   label: "En métier",       icon: "●",  color: "green"    },
   { value: "active",   label: "Actifs",          icon: "▲",  color: "emerald"  },
   { value: "inactive", label: "Inactifs",        icon: "▼",  color: "rose"     },
   { value: "low",      label: "Faible activité", icon: "◐",  color: "amber"    },
@@ -571,7 +571,9 @@ export default function MembersListClient() {
                 <div className="flex flex-col gap-0 flex-1 p-4">
                   {/* Online status badge */}
                   {member.steamId && (
-                    <div className={`mb-3 flex items-center gap-2 self-start rounded-full border px-3 py-1 text-[11px] font-bold ${
+                    <div
+                      title="Détecté en métier famille sur les ~3 dernières minutes. Un membre connecté mais en citoyen ou dans une autre famille apparaît « hors métier » — voir sa fiche pour le statut serveur."
+                      className={`mb-3 flex items-center gap-2 self-start rounded-full border px-3 py-1 text-[11px] font-bold ${
                       online === undefined
                         ? "border-white/10 bg-white/[0.04] text-muted-foreground"
                         : isConnected
@@ -583,7 +585,7 @@ export default function MembersListClient() {
                         : isConnected ? "bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.6)]"
                         : "bg-white/15"
                       }`} />
-                      {online === undefined ? "…" : isConnected ? "En jeu" : "Hors ligne"}
+                      {online === undefined ? "…" : isConnected ? "En métier" : "Hors métier"}
                     </div>
                   )}
 

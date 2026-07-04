@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
-import { ensureInFamilyLoopStarted, getInFamilyStatus } from "@/lib/in-family-loop";
+import { ensureInFamilyLoopStarted, getInFamilyStatus, isInFamilyWarm } from "@/lib/in-family-loop";
 
 /**
  * GET /api/staff/lyg/online-status?steamIds=...&...
@@ -21,6 +21,13 @@ export async function GET(req: Request) {
 
   // Démarrer le loop in-family s'il ne tourne pas (lazy boot panel)
   ensureInFamilyLoopStarted();
+
+  // Cold start : tant qu'aucun poll n'a réussi, le cache est vide et on ne sait
+  // rien. On renvoie une map vide (état "inconnu") pour que l'UI affiche "…"
+  // au lieu d'un faux "hors métier" pour tout le monde juste après un déploiement.
+  if (!isInFamilyWarm()) {
+    return NextResponse.json({ ok: true, data: {}, warming: true });
+  }
 
   const { searchParams } = new URL(req.url);
   const raw = searchParams.get("steamIds") ?? "";

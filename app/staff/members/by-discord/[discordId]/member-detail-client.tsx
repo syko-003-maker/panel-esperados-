@@ -276,7 +276,7 @@ export function MemberDetailClient({
 				<MotionSection delay={0.05}>
 					<div className="grid gap-3 md:grid-cols-3">
 						<DataTile
-							label="Statut en jeu"
+							label="Sur le serveur"
 							value={
 								playerInfo === null
 									? "Chargement..."
