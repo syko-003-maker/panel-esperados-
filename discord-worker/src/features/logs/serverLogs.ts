@@ -20,8 +20,18 @@ const LOGS_CHANNEL_ID    = "1312846003627622522";
 const WELCOME_CHANNEL_ID = "1336727638227685426"; // 🎉 Bienvenue publique
 const RULES_CHANNEL_ID   = "1312846003358924875"; // 📜 Règlement
 const CONTACT_CHANNEL_ID = "1312846003627622524"; // 📬 Contact / recrutement
-const CITOYEN_ROLE_ID    = "1337795596739940372";
-const BLACKLIST_ROLE_ID  = "1338901141873758288";
+const CITOYEN_ROLE_ID     = "1337795596739940372";
+const BLACKLIST_ROLE_ID   = "1338901141873758288";
+const DEMOTE_ROLE_ID      = "1340837563753304075";
+const RESERVISTE_ROLE_ID  = "1312845999366209682";
+
+// Sanctions bloquantes → rôle à réappliquer si le membre quitte puis revient
+// (sinon il perd le rôle en partant et réapparaît "normal" = contournement).
+const BLOCKING_SANCTION_ROLES: Array<{ type: string; roleId: string }> = [
+  { type: "BLACKLIST", roleId: BLACKLIST_ROLE_ID },
+  { type: "DEMOTE", roleId: DEMOTE_ROLE_ID },
+  { type: "RESERVISTE", roleId: RESERVISTE_ROLE_ID },
+];
 
 const prisma = new PrismaClient();
 
@@ -158,34 +168,41 @@ export async function onMemberJoin(member: GuildMember): Promise<void> {
   const createdTs  = Math.floor(member.user.createdTimestamp / 1000);
   const accountAge = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000);
 
-  // ── Vérification blacklist ────────────────────────────────────────────────
+  // ── Réapplication des sanctions bloquantes au rejoint ─────────────────────
+  // Contournement fermé : un membre blacklist/démote/réserviste qui quitte le
+  // Discord perd ses rôles ; s'il revient, on lui remet le rôle de sa sanction
+  // ENCORE ACTIVE, sinon il réapparaîtrait comme un membre normal.
   let isBlacklisted = false;
+  const reappliedTypes: string[] = [];
   try {
-    const blacklistSanction = await prisma.sanction.findFirst({
+    const activeSanctions = await prisma.sanction.findMany({
       where: {
         discordId: member.id,
-        type: "BLACKLIST",
+        type: { in: BLOCKING_SANCTION_ROLES.map((b) => b.type) as any },
         status: "ACTIVE",
         clearedAt: null,
       },
-      select: { id: true },
+      select: { id: true, type: true },
     });
 
-    if (blacklistSanction) {
-      isBlacklisted = true;
-      // Appliquer le rôle blacklist immédiatement
-      await member.roles.add(BLACKLIST_ROLE_ID, "Blacklist active — rôle réappliqué au rejoint");
-
-      // Mettre à jour le statut Discord de la sanction
-      await prisma.sanction.update({
-        where: { id: blacklistSanction.id },
-        data: { discordStatus: "APPLIED", discordAppliedAt: new Date(), discordError: null } as any,
-      });
-
-      console.log(`[Blacklist] Rôle blacklist réappliqué à ${member.user.tag} (${member.id}) au rejoint`);
+    for (const b of BLOCKING_SANCTION_ROLES) {
+      const s = activeSanctions.find((x) => x.type === b.type);
+      if (!s) continue;
+      try {
+        await member.roles.add(b.roleId, `${b.type} active — rôle réappliqué au rejoint`);
+        await prisma.sanction.update({
+          where: { id: s.id },
+          data: { discordStatus: "APPLIED", discordAppliedAt: new Date(), discordError: null } as any,
+        });
+        reappliedTypes.push(b.type);
+        if (b.type === "BLACKLIST") isBlacklisted = true;
+        console.log(`[Sanction rejoint] Rôle ${b.type} réappliqué à ${member.user.tag} (${member.id})`);
+      } catch (e) {
+        console.error(`[Sanction rejoint] Échec réapplication ${b.type} pour ${member.id}:`, e);
+      }
     }
   } catch (err) {
-    console.error("[Blacklist] Erreur vérification blacklist au rejoint:", err);
+    console.error("[Sanction rejoint] Erreur vérification au rejoint:", err);
   }
 
   const embed = new EmbedBuilder()
@@ -193,9 +210,15 @@ export async function onMemberJoin(member: GuildMember): Promise<void> {
       name:    `${member.user.tag} a rejoint le serveur`,
       iconURL: member.user.displayAvatarURL({ size: 64 }),
     })
-    .setColor(isBlacklisted ? 0xef4444 : 0x22c55e)
+    .setColor(isBlacklisted ? 0xef4444 : reappliedTypes.length > 0 ? 0xf59e0b : 0x22c55e)
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-    .setDescription(isBlacklisted ? `⛔ <@${member.id}> — **BLACKLISTÉ** — Rôle réappliqué automatiquement` : `<@${member.id}>`)
+    .setDescription(
+      isBlacklisted
+        ? `⛔ <@${member.id}> — **BLACKLISTÉ** — Rôle réappliqué automatiquement`
+        : reappliedTypes.length > 0
+          ? `⚠️ <@${member.id}> — **${reappliedTypes.join(" + ")}** — sanction active, rôle réappliqué automatiquement`
+          : `<@${member.id}>`
+    )
     .addFields(
       { name: "🆔 Discord ID",   value: `\`${member.id}\``,                                                                              inline: true },
       { name: "📅 Compte créé",  value: `<t:${createdTs}:D>\n<t:${createdTs}:R>`,                                                        inline: true },
