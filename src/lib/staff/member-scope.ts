@@ -140,6 +140,9 @@ export function isStaffMeetingScopeMember(member: MemberScopeInput): boolean {
   if (!isActiveMembersScopeMember(member)) return false;
   const flags = getMemberScopeFlags(member);
   if (flags.isExtraMember) return false;
+  // Démotés / blacklistés : hors périmètre réunion — ils ne sont plus dans la
+  // hiérarchie active (pas de playtime/promotion/décision hebdo à leur sujet).
+  if (flags.isBlacklisted || flags.isDemoted) return false;
   return true;
 }
 
