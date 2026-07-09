@@ -68,11 +68,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 | | |
 |---|---|
 | **~109 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **222** routes API | **54** modèles de données (Prisma) |
-| **75** pages | **15** migrations versionnées |
+| **223** routes API | **54** modèles de données (Prisma) |
+| **76** pages | **15** migrations versionnées |
 | **20** commandes Discord (dont `/reglement` IA) | **7** boucles de fond (sync, pollers, keep-alive) |
-| **19** fichiers de tests (Vitest) | **12** notifications push automatiques |
-| **189** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
+| **17** fichiers de tests (Vitest) | **12** notifications push automatiques |
+| **204** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
 
 ---
 
@@ -172,7 +172,7 @@ flowchart LR
 
 **🖥️ Panel staff**
 - Membres (filtres, live in-game, fiches)
-- Sanctions (7 types, escalade, sync rôles)
+- Sanctions (8 types, escalade, sync rôles)
 - Absences & réunions (workflows)
 - Plaintes : clôture **synchronisée Discord** (thread archivé + DM et push au plaignant)
 - Recrutement + **classement quota recruteurs**
@@ -215,7 +215,8 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🔒 Verrou mono-instance** sur le worker (heartbeat + TTL en base) : impossible de traiter deux fois le même job si deux instances démarrent par erreur.
 - **🔐 Proxy chiffré vers un site tiers.** Le panel pilote en temps réel les whitelists in-game sur un site PHP externe via un **cookie de session chiffré AES-256-GCM** — keep-alive automatique, validation du budget de points **côté serveur**, et **réconciliation automatique** : les changements planifiés hors-ligne sont appliqués tout seuls dès que la session redevient valide.
 - **🪞 Mirror Discord temps réel.** Les rôles et pseudos Discord sont répliqués en base **à l'événement** (gateway) + resync horaire de rattrapage : poser un rôle à la main sur Discord met à jour les accès du panel en ~1 s, et l'UI ne peut jamais diverger des guards serveur (même source de vérité).
-- **🛡️ RBAC multi-tiers** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur) avec **guards par route serveur**, **journalisation des accès refusés** (pas seulement des accès réussis) et une **page d'administration des accès** (rôles appliqués sur Discord en un clic, audités).
+- **🛡️ RBAC multi-tiers à levier central** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur). Toutes les écritures **graves** (blacklist, démote, retrait famille, finalisation de réunion) passent par **un seul guard** (`isFullWriter`) — le durcissement se pilote donc en un point unique et auditable. L'**Encadrant** est positionné **proche de l'EM** (crée des avertissements, gère absences, réunions et recrutement) mais les actions « virer / blacklist » lui sont refusées **par type et par action** (403), y compris *à l'intérieur* d'une route mixte (ex. une décision de réunion démote/exclusion, ou la création d'une sanction bloquante). Guards par route serveur, **journalisation des accès refusés** (pas seulement des accès réussis), et **page d'administration des accès** (rôles appliqués sur Discord en un clic, audités).
+- **🚫 Anti-contournement de sanction au rejoint.** Un membre blacklist / démote / réserviste qui quitte le Discord perd ses rôles ; à son **retour**, le bot re-pose **automatiquement** le rôle de sa sanction encore active (event `guildMemberAdd` → vérification de la sanction ACTIVE → réapplication + statut mis à jour + log). Impossible d'effacer une sanction en quittant puis revenant.
 - **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
 - **🖼️ Avatars increvables** : un proxy unique (`/api/avatar/:id`) résout le hash Discord **en direct** (cache 1 h) et retombe sur l'avatar par défaut — l'image n'est jamais cassée, même quand un membre change sa photo. Une seule fonction route tous les écrans.
 - **🪶 Mode léger** : une bascule (mémorisée par navigateur) coupe flous et animations pour les PC/GPU faibles, sans toucher à la mise en page — fluidité sur le matériel modeste.
