@@ -3,6 +3,7 @@
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import PushToggle from "@/components/push-toggle";
 import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
+import FamilyOnlineStrip from "@/components/lyg/family-online-strip";
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -403,6 +404,9 @@ export default function StaffDashboardClient() {
 
       {/* Staff LYG connectés en jeu (discret) */}
       <StaffOnlineStrip />
+
+      {/* Membres actuellement en métier Los */}
+      <FamilyOnlineStrip />
 
       {/* ── Content grid ── */}
       <motion.div

@@ -5,6 +5,7 @@ import Link from "next/link";
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import PushToggle from "@/components/push-toggle";
 import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
+import FamilyOnlineStrip from "@/components/lyg/family-online-strip";
 import {
   Crown,
   AlertCircle,
@@ -335,6 +336,9 @@ export default function DashboardClient() {
 
       {/* Staff LYG connectés en jeu (discret) */}
       <StaffOnlineStrip />
+
+      {/* Membres actuellement en métier Los — visible par tous les membres */}
+      <FamilyOnlineStrip />
 
       {/* Situation bancaire — toujours affichée si les données sont disponibles */}
       {debt !== undefined && (() => {
