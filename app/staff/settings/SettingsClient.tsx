@@ -44,7 +44,7 @@ export default function SettingsClient() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Recrutement" description="Questionnaires d'entretien utilisés par les recruteurs (accessible État-Major et Chefs)">
+        <SectionCard title="Recrutement" description="Questionnaires d'entretien utilisés par les recruteurs (accessible Encadrant, État-Major et Chefs)">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link href="/staff/settings/recruitment-models" className="block group">
               <div className="premium-card premium-card-bordeaux p-6 rounded-lg border border-white/10 bg-white/[0.03]">
