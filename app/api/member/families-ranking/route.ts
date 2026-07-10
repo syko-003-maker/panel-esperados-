@@ -8,9 +8,14 @@ import { fetchFamiliesRanking } from "@/lib/lyg/client";
  * tout membre. Classé par points décroissants. Cache 5 min (le classement
  * bouge lentement + on ménage le quota LYG).
  *
- * ⚠️ Le « SCORE » composite de liveyourgame.fr/stats (morts, or, réputation…)
- * n'est PAS exposé par l'API → on classe par `points`. Le top (Los Esperados
- * #2) correspond ; l'ordre peut diverger plus bas.
+ * ⚠️ Les autres colonnes de liveyourgame.fr/stats ne sont PAS récupérables :
+ *   - SCORE composite, Braquages, Morts, Or, Cocaïne, Guerres, Réputation →
+ *     calculés par le site, 404 sur l'API, page Cloudflare-only.
+ *   - Membres → l'API `/familles/{slug}/members` renvoie tout le roster
+ *     (ex. esperados 31) ≠ le compte « actif » du site (19) → non affiché
+ *     pour ne pas contredire le site.
+ * On classe par `points` : le top (Los Esperados #2) correspond, l'ordre peut
+ * diverger plus bas.
  */
 
 export const runtime = "nodejs";

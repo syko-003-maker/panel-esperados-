@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { Trophy, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
- * Carte "Classement des familles LYG" (dashboards membre + staff). Compacte par
- * défaut : le standing de Los Esperados (#rang / total · points · banque). Se
- * déplie sur le classement complet des familles. Données via
- * /api/member/families-ranking (API LYG officielle, cache serveur 5 min).
- * Classé par points ; le SCORE composite du site n'est pas exposé par l'API.
+ * Carte "Classement des familles LYG" (dashboards membre + staff). Affiche le
+ * Top 5 par défaut (#, Famille, Banque, Points), Los Esperados surligné,
+ * dépliable sur les 19 familles. Données via /api/member/families-ranking
+ * (API LYG officielle, cache serveur 5 min). Classé par points ; le SCORE
+ * composite du site et les autres colonnes (morts, or, membres actifs…) ne
+ * sont pas exposés par l'API.
  */
 
 type RankedFamily = {
@@ -25,6 +26,8 @@ type Payload = {
   ours: RankedFamily | null;
   ranking: RankedFamily[];
 };
+
+const TOP = 5;
 
 function formatMoney(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "0 €";
@@ -64,6 +67,19 @@ export default function FamiliesRankingCard() {
   if (!data || !data.ok || data.ranking.length === 0) return null;
 
   const ours = data.ours;
+  const visible = expanded ? data.ranking : data.ranking.slice(0, TOP);
+  const showOursApart = !expanded && ours != null && ours.rank > TOP;
+
+  const renderRow = (f: RankedFamily) => (
+    <tr key={f.id} className={f.isOurs ? "bg-amber-500/[0.10]" : ""}>
+      <td className="px-2 py-1.5 text-left tabular-nums text-slate-500">{f.rank}</td>
+      <td className="px-2 py-1.5 text-left">
+        <span className={f.isOurs ? "font-semibold text-amber-200" : "text-slate-200"}>{f.name}</span>
+      </td>
+      <td className="px-2 py-1.5 text-right tabular-nums text-slate-400">{formatMoney(f.money)}</td>
+      <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{formatPoints(f.points)}</td>
+    </tr>
+  );
 
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 backdrop-blur-sm">
@@ -79,13 +95,9 @@ export default function FamiliesRankingCard() {
               #{ours.rank}
             </span>
             <span className="font-semibold text-slate-50">Los Esperados</span>
-            <span className="text-[11px] text-slate-400">
-              / {data.totalFamilies} familles · {formatPoints(ours.points)} pts · {formatMoney(ours.money)}
-            </span>
+            <span className="text-[11px] text-slate-400">/ {data.totalFamilies}</span>
           </span>
-        ) : (
-          <span className="text-xs text-slate-500">{data.totalFamilies} familles</span>
-        )}
+        ) : null}
 
         <button
           type="button"
@@ -94,7 +106,7 @@ export default function FamiliesRankingCard() {
         >
           {expanded ? (
             <>
-              Réduire <ChevronUp className="h-3.5 w-3.5" />
+              Top 5 <ChevronUp className="h-3.5 w-3.5" />
             </>
           ) : (
             <>
@@ -104,43 +116,35 @@ export default function FamiliesRankingCard() {
         </button>
       </div>
 
-      {expanded ? (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[380px] border-collapse text-xs">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-wider text-slate-500">
-                <th className="px-2 py-1.5 text-left font-semibold">#</th>
-                <th className="px-2 py-1.5 text-left font-semibold">Famille</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Points</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Banque</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.ranking.map((f) => (
-                <tr
-                  key={f.id}
-                  className={
-                    f.isOurs
-                      ? "rounded bg-amber-500/[0.10] text-slate-50"
-                      : "text-slate-300"
-                  }
-                >
-                  <td className="px-2 py-1.5 text-left tabular-nums text-slate-500">{f.rank}</td>
-                  <td className="px-2 py-1.5 text-left">
-                    <span className={f.isOurs ? "font-semibold text-amber-200" : ""}>{f.name}</span>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[320px] border-collapse text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+              <th className="px-2 py-1.5 text-left font-semibold">#</th>
+              <th className="px-2 py-1.5 text-left font-semibold">Famille</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Banque</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(renderRow)}
+            {showOursApart ? (
+              <>
+                <tr>
+                  <td colSpan={4} className="px-2 py-0.5 text-center text-[10px] text-slate-600">
+                    ···
                   </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{formatPoints(f.points)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-slate-400">{formatMoney(f.money)}</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-2 px-2 text-[10px] leading-relaxed text-slate-600">
-            Classé par points LYG. Le score composite de liveyourgame.fr (morts, or, réputation…)
-            n'est pas exposé par l'API — l'ordre peut différer du site en dehors du haut de tableau.
-          </p>
-        </div>
-      ) : null}
+                {renderRow(ours)}
+              </>
+            ) : null}
+          </tbody>
+        </table>
+        <p className="mt-2 px-2 text-[10px] leading-relaxed text-slate-600">
+          Classé par points LYG. Le score composite du site (morts, or, cocaïne, réputation…)
+          et le nombre de membres « actifs » ne sont pas exposés par l'API.
+        </p>
+      </div>
     </div>
   );
 }
