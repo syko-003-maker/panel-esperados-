@@ -95,3 +95,4 @@ public/downloads/windows-version.txt
 # Appli desktop Electron
 desktop/node_modules/
 desktop/dist/
+.cache/

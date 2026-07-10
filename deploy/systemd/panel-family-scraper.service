@@ -1,0 +1,13 @@
+[Unit]
+Description=Scraper classement familles LYG (liveyourgame.fr/stats via Playwright)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/panel
+Environment=HOME=/home/ubuntu
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npx tsx scripts/scrape-family-ranking.ts
+TimeoutStartSec=180

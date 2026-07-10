@@ -5,38 +5,61 @@ import { Trophy, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
  * Carte "Classement des familles LYG" (dashboards membre + staff). Affiche le
- * Top 5 par défaut (#, Famille, Banque, Points), Los Esperados surligné,
- * dépliable sur les 19 familles. Données via /api/member/families-ranking
- * (API LYG officielle, cache serveur 5 min). Classé par points ; le SCORE
- * composite du site et les autres colonnes (morts, or, membres actifs…) ne
- * sont pas exposés par l'API.
+ * VRAI tableau du site liveyourgame.fr/stats (score composite + membres, banque,
+ * morts, or, cocaïne, guerres, réputation), Top 5 par défaut, dépliable sur les
+ * 19 familles, Los Esperados surligné. Données via /api/member/families-ranking
+ * (scraper Playwright, timer systemd ; fallback API points si scrape indispo).
  */
 
-type RankedFamily = {
+type RichFamily = {
   rank: number;
-  id: string;
   name: string;
-  points: number;
-  money: number;
+  slug: string;
   isOurs: boolean;
+  score: string;
+  membres: string;
+  banque: string;
+  braquages: string;
+  morts: string;
+  or: string;
+  cocaine: string;
+  guerres: string;
+  reputation: string;
 };
 type Payload = {
   ok: boolean;
+  source: "scrape" | "api-fallback";
+  scrapedAt: string | null;
+  stale: boolean;
   totalFamilies: number;
-  ours: RankedFamily | null;
-  ranking: RankedFamily[];
+  ours: RichFamily | null;
+  ranking: RichFamily[];
 };
 
 const TOP = 5;
 
-function formatMoney(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "0 €";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(".", ",")} M€`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(".", ",")} k€`;
-  return `${n} €`;
-}
-function formatPoints(n: number): string {
-  return n.toFixed(2).replace(".", ",");
+// Colonnes stat dans l'ordre du site.
+const COLS: { key: keyof RichFamily; label: string }[] = [
+  { key: "score", label: "Score" },
+  { key: "membres", label: "Membres" },
+  { key: "banque", label: "Banque" },
+  { key: "braquages", label: "Braquages" },
+  { key: "morts", label: "Morts" },
+  { key: "or", label: "Or" },
+  { key: "cocaine", label: "Cocaïne" },
+  { key: "guerres", label: "Guerres" },
+  { key: "reputation", label: "Réput." },
+];
+
+function agoLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const min = Math.round(ms / 60000);
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.round(min / 60);
+  return `il y a ${h} h`;
 }
 
 export default function FamiliesRankingCard() {
@@ -69,15 +92,26 @@ export default function FamiliesRankingCard() {
   const ours = data.ours;
   const visible = expanded ? data.ranking : data.ranking.slice(0, TOP);
   const showOursApart = !expanded && ours != null && ours.rank > TOP;
+  const ago = agoLabel(data.scrapedAt);
 
-  const renderRow = (f: RankedFamily) => (
-    <tr key={f.id} className={f.isOurs ? "bg-amber-500/[0.10]" : ""}>
-      <td className="px-2 py-1.5 text-left tabular-nums text-slate-500">{f.rank}</td>
-      <td className="px-2 py-1.5 text-left">
+  const cell = (v: string) => (v && v.trim() ? v : "—");
+
+  const renderRow = (f: RichFamily) => (
+    <tr key={f.slug || f.rank} className={f.isOurs ? "bg-amber-500/[0.10]" : ""}>
+      <td className="whitespace-nowrap px-2 py-1.5 text-left tabular-nums text-slate-500">{f.rank}</td>
+      <td className="whitespace-nowrap px-2 py-1.5 text-left">
         <span className={f.isOurs ? "font-semibold text-amber-200" : "text-slate-200"}>{f.name}</span>
       </td>
-      <td className="px-2 py-1.5 text-right tabular-nums text-slate-400">{formatMoney(f.money)}</td>
-      <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{formatPoints(f.points)}</td>
+      {COLS.map((c) => (
+        <td
+          key={c.key}
+          className={`whitespace-nowrap px-2 py-1.5 text-right tabular-nums ${
+            c.key === "score" ? "font-semibold text-slate-100" : "text-slate-400"
+          }`}
+        >
+          {cell(f[c.key] as string)}
+        </td>
+      ))}
     </tr>
   );
 
@@ -95,7 +129,10 @@ export default function FamiliesRankingCard() {
               #{ours.rank}
             </span>
             <span className="font-semibold text-slate-50">Los Esperados</span>
-            <span className="text-[11px] text-slate-400">/ {data.totalFamilies}</span>
+            <span className="text-[11px] text-slate-400">
+              / {data.totalFamilies}
+              {ours.score ? ` · ${ours.score} pts` : ""}
+            </span>
           </span>
         ) : null}
 
@@ -117,13 +154,16 @@ export default function FamiliesRankingCard() {
       </div>
 
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[320px] border-collapse text-xs">
+        <table className="w-full min-w-[640px] border-collapse text-xs">
           <thead>
             <tr className="text-[10px] uppercase tracking-wider text-slate-500">
               <th className="px-2 py-1.5 text-left font-semibold">#</th>
               <th className="px-2 py-1.5 text-left font-semibold">Famille</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Banque</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Points</th>
+              {COLS.map((c) => (
+                <th key={c.key} className="whitespace-nowrap px-2 py-1.5 text-right font-semibold">
+                  {c.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -131,7 +171,7 @@ export default function FamiliesRankingCard() {
             {showOursApart ? (
               <>
                 <tr>
-                  <td colSpan={4} className="px-2 py-0.5 text-center text-[10px] text-slate-600">
+                  <td colSpan={2 + COLS.length} className="px-2 py-0.5 text-center text-[10px] text-slate-600">
                     ···
                   </td>
                 </tr>
@@ -141,8 +181,9 @@ export default function FamiliesRankingCard() {
           </tbody>
         </table>
         <p className="mt-2 px-2 text-[10px] leading-relaxed text-slate-600">
-          Classé par points LYG. Le score composite du site (morts, or, cocaïne, réputation…)
-          et le nombre de membres « actifs » ne sont pas exposés par l'API.
+          {data.source === "api-fallback"
+            ? "Score du site momentanément indisponible — classement de secours (points API)."
+            : `Données liveyourgame.fr/stats${ago ? ` · maj ${ago}` : ""}${data.stale ? " (un peu anciennes)" : ""}.`}
         </p>
       </div>
     </div>
