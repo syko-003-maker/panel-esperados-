@@ -15,7 +15,11 @@
  * checks d'activité, sans toucher à GRADE_ROLE_IDS_ORDERED.
  */
 export const EXTRA_MEMBER_ROLE_IDS: readonly string[] = [
-  "1465415073425133598", // Nutella — accès membre basique
+  // Nutella — grade « amis » : il est AUSSI listé dans GRADE_ROLE_IDS_ORDERED /
+  // GRADE_LABEL_BY_ROLE_ID pour s'AFFICHER comme grade, mais il RESTE ici pour
+  // garder « aucune obligation famille » : exclu des workflows réunion /
+  // sanctions / warns / playtime (via flags.isExtraMember).
+  "1465415073425133598", // Nutella
 ];
 
 // Role IDs in priority order (highest to lowest)
@@ -36,6 +40,7 @@ export const GRADE_ROLE_IDS_ORDERED: readonly string[] = [
   "1312845999340781647", // Soldato
   "1408492476351778836", // Novato
   "1312845999366209682", // Réserviste
+  "1465415073425133598", // Nutella — grade « amis » (sans obligation famille), le plus bas
 ];
 
 // Grade label by role ID
@@ -56,6 +61,7 @@ export const GRADE_LABEL_BY_ROLE_ID: Record<string, string> = {
   "1312845999340781647": "Soldato",
   "1408492476351778836": "Novato",
   "1312845999366209682": "Réserviste",
+  "1465415073425133598": "Nutella",
 };
 
 // Badge styles by role ID (Tailwind classes for each grade)
@@ -107,6 +113,9 @@ export const GRADE_BADGE_STYLE_BY_ROLE_ID: Record<string, string> = {
 
   // Réserviste (muted red/rose)
   "1312845999366209682": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-rose-500/10 border-rose-400/20 text-rose-200",
+
+  // Nutella (orange — grade « amis », sans obligation famille)
+  "1465415073425133598": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-orange-500/15 border-orange-400/30 text-orange-200",
 };
 
 // Special status badges

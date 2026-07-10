@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
-import { GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
+import { GRADE_ROLE_IDS_ORDERED, EXTRA_MEMBER_ROLE_IDS } from "@/lib/grade-colors";
 
 export async function GET() {
   const guard = await requireChefOrEtatMajor();
@@ -13,15 +13,18 @@ export async function GET() {
 
   // Liste des grades "actifs" éligibles à warns : tous les grades Famille
   // sauf Réserviste (déjà exclu plus bas via NOT).
-  // Les rôles "membre basique" (Nutella, etc.) ne sont PAS inclus : ces
-  // membres ne sont pas soumis aux règles de warns/sanctions.
+  // Les rôles "membre basique" (Nutella, etc. = EXTRA_MEMBER_ROLE_IDS) ne sont
+  // PAS inclus : ces membres ne sont pas soumis aux règles de warns/sanctions.
+  // (Nutella est aussi listé dans GRADE_ROLE_IDS_ORDERED pour s'AFFICHER comme
+  // grade → on l'exclut explicitement ici, sinon un membre purement Nutella
+  // avec un warn réapparaîtrait dans le récap.)
   // On filtre sur discordRoleIds plutôt que sur Member.gradeLevel car ce
   // dernier est rarement re-syncé après un changement de rôle Discord
   // (ex : retrait du DEMOTE → gradeLevel reste à 0 même si le membre a
   // récupéré son rôle Novato). discordRoleIds est la source de vérité,
   // mise à jour par le worker Discord.
   const ACTIVE_GRADE_ROLE_IDS = GRADE_ROLE_IDS_ORDERED.filter(
-    (rid) => rid !== RESERVIST_ROLE_ID
+    (rid) => rid !== RESERVIST_ROLE_ID && !EXTRA_MEMBER_ROLE_IDS.includes(rid)
   );
 
   // Membres actifs avec warns, avec au moins un rôle de grade Famille,
