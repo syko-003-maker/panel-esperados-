@@ -242,6 +242,45 @@ export async function fetchMembersPage(): Promise<LygHttpResult<LygMember[]>> {
   };
 }
 
+export type LygFamily = {
+  id: string;
+  name: string;
+  points: number;
+  /** Argent en banque (l'API renvoie une string). */
+  money: number;
+  server: number | null;
+};
+
+/**
+ * Liste de TOUTES les familles LYG avec leurs points + banque, via
+ * `/api/darkrp/familles`. Sert au classement famille du panel. Le SCORE
+ * composite affiché sur liveyourgame.fr/stats (morts, or, réputation…) n'est
+ * PAS exposé par l'API — on ne dispose que de `points` et `money`.
+ */
+export async function fetchFamiliesRanking(): Promise<LygHttpResult<LygFamily[]>> {
+  const res = await request<any>("/api/darkrp/familles", 15_000);
+  if (!res.ok || !res.data) {
+    return { ...res, data: undefined };
+  }
+  const { array } = extractArrayFromLygResponse(res.data);
+  const families = (array || [])
+    .map((item): LygFamily | null => {
+      if (!item || typeof item !== "object") return null;
+      const r = item as Record<string, unknown>;
+      const id = String(r.id ?? "").trim();
+      if (!id) return null;
+      return {
+        id,
+        name: String(r.name ?? id).trim(),
+        points: Number(r.points) || 0,
+        money: Number(r.money) || 0,
+        server: r.server != null ? Number(r.server) : null,
+      };
+    })
+    .filter((f): f is LygFamily => Boolean(f));
+  return { ...res, data: families };
+}
+
 export async function fetchBanklogsPage(page: number, limit: number): Promise<LygHttpResult<any[]>> {
   const familyName = process.env.LYG_FAMILY_NAME || "Los Esperados";
   const path = `/api/darkrp/familles/${encodeURIComponent(familyName)}/banklogs?limit=${limit}&page=${page}`;

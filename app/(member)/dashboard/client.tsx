@@ -6,6 +6,8 @@ import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import PushToggle from "@/components/push-toggle";
 import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
 import FamilyOnlineStrip from "@/components/lyg/family-online-strip";
+import ServerOnlineStrip from "@/components/lyg/server-online-strip";
+import FamiliesRankingCard from "@/components/lyg/families-ranking-card";
 import {
   Crown,
   AlertCircle,
@@ -339,6 +341,12 @@ export default function DashboardClient() {
 
       {/* Membres actuellement en métier Los — visible par tous les membres */}
       <FamilyOnlineStrip />
+
+      {/* Joueurs en ligne sur le serveur GMod LYG (A2S) */}
+      <ServerOnlineStrip />
+
+      {/* Classement des familles LYG (API LYG) */}
+      <FamiliesRankingCard />
 
       {/* Situation bancaire — toujours affichée si les données sont disponibles */}
       {debt !== undefined && (() => {

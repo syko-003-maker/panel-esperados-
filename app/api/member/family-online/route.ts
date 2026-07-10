@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { ensureInFamilyLoopStarted, getInFamilyStatus, isInFamilyWarm } from "@/lib/in-family-loop";
 import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
-import { BLACKLIST_ROLE_ID } from "@/lib/discord-grade";
+import { BLACKLIST_ROLE_ID, getDiscordGrade } from "@/lib/discord-grade";
 
 /**
  * GET /api/member/family-online — membres actuellement EN MÉTIER LOS (in-game).
@@ -49,7 +49,13 @@ export async function GET() {
       if (roles.includes(DEMOTE_ROLE_ID) || roles.includes(BLACKLIST_ROLE_ID)) return false;
       return getInFamilyStatus(m.steamId).inFamily;
     })
-    .map((m) => ({ name: m.rpName ?? "?", grade: m.grade ?? null }))
+    .map((m) => {
+      // Grade résolu en direct depuis les rôles Discord (comme le reste du
+      // panel) : m.grade en base est souvent vide (ex. Novato, Réserviste)
+      // alors que le rôle existe. Fallback sur m.grade si aucun rôle de grade.
+      const roles = Array.isArray(m.discordRoleIds) ? m.discordRoleIds : [];
+      return { name: m.rpName ?? "?", grade: getDiscordGrade(roles).grade ?? m.grade ?? null };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 
   cache = { at: Date.now(), data };
