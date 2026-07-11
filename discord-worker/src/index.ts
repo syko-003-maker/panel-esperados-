@@ -125,6 +125,11 @@ import {
 import { runRoleSync } from "./syncRoles.js";
 import { registerCommands, handleCommand } from "./commands.js";
 import {
+  handleSuggestionModalSubmit,
+  handleSuggestionVoteButton,
+  startSuggestionsReconciler,
+} from "./features/suggestions/suggestions.js";
+import {
   handleLinkButtonInteraction,
   handleLinkModalSubmission,
   handleUnlinkButtonInteraction,
@@ -371,6 +376,13 @@ client.once("ready", async () => {
   console.log("[WORKER BOT]", client.user?.tag, client.user?.id);
 
   log("worker_ready", { bot: client.user?.tag });
+
+  // Reconciler suggestions : poste les suggestions créées sur le site + sync.
+  try {
+    startSuggestionsReconciler(client);
+  } catch (e) {
+    console.error("[suggestions] échec démarrage reconciler:", e);
+  }
 
   // ✅ CRITICAL: Verify guild access and log guild/bot IDs for "Hors serveur" debugging
   const guildId = process.env.GUILD_ID || IDS.GUILD_ID;
@@ -721,6 +733,11 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       // ─── Bouton règlement ─────────────────────────────────────────────────
       if (interaction.customId === REGLEMENT_ACCEPT_BUTTON) {
         return handleReglementAccept(interaction);
+      }
+
+      // ─── Bouton vote suggestion ──────────────────────────────────────────
+      if (interaction.customId.startsWith("sug:vote:")) {
+        return handleSuggestionVoteButton(interaction);
       }
 
       if (
@@ -1130,6 +1147,11 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       if (interaction.customId === CUSTOM_ID.MODAL_COMPLAINT) {
         log("interaction", { type: "modal", action: "complaint_submit", userId: interaction.user.id });
         return handleComplaintSubmit(interaction);
+      }
+
+      if (interaction.customId === "sug:create") {
+        log("interaction", { type: "modal", action: "suggestion_submit", userId: interaction.user.id });
+        return handleSuggestionModalSubmit(interaction, client);
       }
 
       // Link management modal

@@ -3,6 +3,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { getMemberScopeOrNull } from "@/server/member/scope";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
+import { BLACKLIST_ROLE_ID } from "@/lib/discord-grade";
 
 /**
  * Plaintes déposées depuis le SITE (espace membre) — un membre contre un autre
@@ -90,10 +92,13 @@ export async function POST(req: Request) {
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
   const target = await prisma.member.findFirst({
     where: { id: targetId, familyId: familyDbId, isActive: true },
-    select: { id: true, rpName: true, discordId: true },
+    select: { id: true, rpName: true, discordId: true, discordRoleIds: true },
   });
   if (!target)
     return NextResponse.json({ ok: false, error: "Membre introuvable dans la famille." }, { status: 404 });
+  const targetRoles = Array.isArray(target.discordRoleIds) ? (target.discordRoleIds as string[]) : [];
+  if (targetRoles.includes(DEMOTE_ROLE_ID) || targetRoles.includes(BLACKLIST_ROLE_ID))
+    return NextResponse.json({ ok: false, error: "Ce membre n'est plus dans la famille active." }, { status: 400 });
 
   // Anti-spam : 1 plainte / 5 min / membre.
   const recent = await prisma.complaint.findFirst({

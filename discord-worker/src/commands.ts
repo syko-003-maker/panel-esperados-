@@ -18,6 +18,7 @@ import { IDS } from "./ids.js";
 import { runManualSync } from "./syncRoles.js";
 import { postLinkPanel } from "./contactPanel.js";
 import { handleReglementPost } from "./features/reglement/reglementRole.js";
+import { handleSuggestionCommand } from "./features/suggestions/suggestions.js";
 import { askReglement } from "./features/reglement/reglementAI.js";
 import { logAdminCommand } from "./lib/admin-command-log.js";
 import {
@@ -183,6 +184,12 @@ const commands = [
     .setName("annonce-recrutement")
     .setDescription("Envoie l'annonce de recrutement dans le salon configuré")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false),
+
+  // /suggestion - Membres - Proposer une suggestion (modal) + vote par boutons
+  new SlashCommandBuilder()
+    .setName("suggestion")
+    .setDescription("Proposer une suggestion pour la famille")
     .setDMPermission(false),
 
   // Commandes de modération
@@ -428,6 +435,8 @@ export async function handleCommand(
   });
 
   switch (commandName) {
+    case "suggestion":
+      return handleSuggestionCommand(interaction);
     case "syncroles":
       return handleSyncRolesCommand(interaction, client);
     case "member":
