@@ -564,19 +564,25 @@ client.once("ready", async () => {
     }
   }, 1000);
 
-  // Poll des warns IG LYG toutes les 60 min (budget partagé 100 req/15 min ;
-  // ~60 membres = ~60 req/cycle). Requiert LYG_TOKEN dans l'env du worker —
-  // sans lui, pollLygWarnsInner sort immédiatement (warns non synchronisés).
+  // Poll des warns IG LYG. Coûteux : ~1 appel /api/warns/:steamId PAR membre
+  // (~25 req/cycle, pacés 10s) → part du budget 300 req/15 min. Configurable
+  // via LYG_WARNS_POLL_INTERVAL_MS (défaut 30 min, plancher 10 min pour ne pas
+  // exploser le quota). Requiert LYG_TOKEN dans l'env du worker — sans lui,
+  // pollLygWarnsInner sort immédiatement (warns non synchronisés).
+  const LYG_WARNS_POLL_INTERVAL_MS = Math.max(
+    Number(process.env.LYG_WARNS_POLL_INTERVAL_MS) || 30 * 60_000,
+    10 * 60_000
+  );
   let lastLygWarnPoll = 0;
   setInterval(() => {
     const now = Date.now();
-    if (now - lastLygWarnPoll >= 60 * 60_000) {
+    if (now - lastLygWarnPoll >= LYG_WARNS_POLL_INTERVAL_MS) {
       lastLygWarnPoll = now;
       pollLygWarns(client, prisma).catch((err) =>
         console.error("[lygWarnPoller] uncaught:", err)
       );
     }
-  }, 60_000); // vérifié toutes les minutes, déclenché toutes les 60 min (budget LYG)
+  }, 60_000); // vérifié toutes les minutes
 
   // Schedule outbox processing
   log("outbox_scheduled", { intervalMs: OUTBOX_POLL_INTERVAL_MS });
