@@ -22,6 +22,7 @@ model User {
   sessions                  Session[]
   recruitments              Recruitment[]       @relation("RecruitmentCreatedBy")
   complaints                Complaint[]         @relation("ComplaintCreatedBy")
+  suggestions               Suggestion[]        @relation("SuggestionCreatedBy")
   absences                  Absence[]           @relation("AbsenceCreatedBy")
   absencesDecided            Absence[]           @relation("AbsenceDecidedBy")
   sanctions                 Sanction[]          @relation("SanctionCreatedBy")
@@ -204,6 +205,8 @@ model Member {
   meetingRows   MeetingRow[]
   complaintsFiled Complaint[] @relation("ComplaintFiled")
   complaintsReceived Complaint[] @relation("ComplaintReceived")
+  suggestionsAuthored Suggestion[]     @relation("SuggestionAuthor")
+  suggestionVotes     SuggestionVote[] @relation("SuggestionVoter")
   lygWarns       LygWarn[]
 
   @@unique([familyId, steamId])
@@ -1427,4 +1430,48 @@ model PushSubscription {
   lastSeenAt DateTime @default(now())
 
   @@index([discordId])
+}
+
+// ─── Suggestions communautaires (site + Discord) ────────────────────────────
+enum SuggestionStatus {
+  OPEN // À l'étude
+  PLANNED // Prévu
+  DONE // Fait
+  REJECTED // Refusé
+}
+
+model Suggestion {
+  id          String           @id @default(cuid())
+  familyId    String
+  authorId    String?
+  author      Member?          @relation("SuggestionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  title       String
+  description String
+  status      SuggestionStatus @default(OPEN)
+  staffNote   String? // réponse staff (raison refus / prévu…)
+  createdById String
+  createdBy   User             @relation("SuggestionCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  // Miroir Discord (Phase 2) — l'embed avec boutons de vote.
+  discordMessageId String? @unique
+  discordChannelId String?
+
+  votes     SuggestionVote[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([familyId, status, createdAt])
+  @@index([authorId])
+}
+
+model SuggestionVote {
+  id           String     @id @default(cuid())
+  suggestionId String
+  suggestion   Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  memberId     String
+  member       Member     @relation("SuggestionVoter", fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([suggestionId, memberId]) // 1 vote / membre / suggestion (site OU Discord)
+  @@index([memberId])
 }

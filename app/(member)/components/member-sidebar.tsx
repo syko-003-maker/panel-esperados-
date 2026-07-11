@@ -17,6 +17,8 @@ import {
   GraduationCap,
   Calculator,
   BookOpen,
+  Lightbulb,
+  Flag,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: React.ElementType; external?: boolean };
@@ -40,6 +42,13 @@ function getSections(isLinked: boolean, isRecruiter: boolean): NavSection[] {
         { href: "/banque", label: "Banque", Icon: Banknote },
         { href: "/justificatifs/absence", label: "Justifier une absence", Icon: CalendarOff },
         { href: "/justificatifs/sanction", label: "Justifier une sanction", Icon: Scale },
+      ],
+    },
+    {
+      title: "Communauté",
+      items: [
+        { href: "/suggestions", label: "Suggestions", Icon: Lightbulb },
+        { href: "/plaintes", label: "Déposer une plainte", Icon: Flag },
       ],
     },
     {
