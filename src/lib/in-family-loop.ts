@@ -18,7 +18,7 @@ import { setLygPauseUntil } from "@/lib/lyg-stats";
  */
 
 const POLL_INTERVAL_MS = 5_000;    // 1 poll toutes les 5s (180 calls/15min ; quota LYG = 300/15min)
-const WINDOW_MINUTES   = 2;        // fenêtre LYG : playtime des 2 dernières min (réactif)
+const WINDOW_MINUTES   = 1;        // fenêtre LYG : playtime de la dernière min (max réactif)
 // Maths du système (délai « fantôme » = fenêtre + garde de fraîcheur) :
 //   L'API LYG renvoie le CUMUL de playtime dans la fenêtre (arrondi à la min
 //   entière). Un joueur qui s'arrête met `WINDOW_MINUTES` min à sortir de la
@@ -31,10 +31,11 @@ const WINDOW_MINUTES   = 2;        // fenêtre LYG : playtime des 2 dernières m
 //   joueurs partis disparaissent vite (bug remonté : joueurs affichés en
 //   ligne alors qu'ils étaient partis).
 //
-//   Avec WINDOW=2, STALE=45s, POLL=5s (réglage temps réel, quota 300/15min) :
-//     - Joueur qui rejoint : visible en ~30-60s (dès ~1 min cumulée)
-//     - Joueur qui s'arrête : hors ligne après ~2 min + 45s ≈ 2,75 min
-//     - STALE=45s tolère ~9 polls manqués (5s) → pas de clignotement
+//   Avec WINDOW=1, STALE=45s, POLL=5s (réglage "le plus rapide", quota 300/15min) :
+//     - Joueur qui rejoint : visible en ~30-60s
+//     - Joueur qui s'arrête : hors ligne après ~1 min + 45s ≈ 1,75 min
+//     - STALE=45s amortit un petit trou de playtime → limite le clignotement,
+//       mais fenêtre courte = risque accru (repasser à 2 si ça clignote)
 const STALE_AFTER_MS_NORMAL = 45 * 1000;      // 45s (survit à ~9 polls manqués à 5s)
 const STALE_AFTER_MS_PAUSED = 4 * 60 * 1000;  // 4 min pendant un 429 : couvre un
 // backoff court sans laisser un joueur parti affiché "en métier" trop longtemps.

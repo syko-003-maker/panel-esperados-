@@ -8,7 +8,7 @@ import { auth } from "@/auth";
  */
 
 const LYG_URL = "https://liveyourgame.link/api/staff/staffonline.php";
-const CACHE_MS = 15_000;
+const CACHE_MS = 10_000;
 
 type StaffOnline = {
   name: string;

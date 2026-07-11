@@ -45,7 +45,7 @@ export default function ServerOnlineStrip() {
       }
     }
     load();
-    const t = setInterval(load, 10_000);
+    const t = setInterval(load, 5_000);
     return () => {
       mounted = false;
       clearInterval(t);
