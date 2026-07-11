@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Scale, Loader2, Send, CheckCircle2 } from "lucide-react";
+import { motion } from "motion/react";
+import { Scale, Loader2, Send, CheckCircle2, ShieldAlert, Lock } from "lucide-react";
 
 type Target = { id: string; name: string };
 type MyComplaint = {
@@ -20,6 +21,8 @@ const STATUS_CLS: Record<string, string> = {
   REJECTED: "border-rose-500/30 bg-rose-500/10 text-rose-300",
   CLOSED: "border-slate-500/30 bg-slate-500/10 text-slate-300",
 };
+
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 export function PlaintesClient({ targets }: { targets: Target[] }) {
   const [targetId, setTargetId] = useState("");
@@ -58,9 +61,8 @@ export function PlaintesClient({ targets }: { targets: Target[] }) {
         body: JSON.stringify({ targetId, title, description, evidence }),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) {
-        setError(json?.error || "Erreur lors de l'envoi.");
-      } else {
+      if (!res.ok || !json?.ok) setError(json?.error || "Erreur lors de l'envoi.");
+      else {
         setDone(true);
         setTargetId("");
         setTitle("");
@@ -73,85 +75,109 @@ export function PlaintesClient({ targets }: { targets: Target[] }) {
     }
   }
 
+  const inputCls =
+    "w-full rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-rose-500/50 focus:bg-black/30";
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-50">
-          <Scale className="h-6 w-6 text-rose-400" />
-          Déposer une plainte
-        </h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Un souci avec un autre membre de la famille ? Signale-le au staff — c'est confidentiel, seul le staff le voit.
-        </p>
-      </div>
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: EASE }}
+        className="relative overflow-hidden rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/20 via-rose-500/[0.07] to-transparent p-5 shadow-[0_20px_50px_-24px_rgba(244,63,94,0.5)] backdrop-blur-sm"
+      >
+        <div className="pointer-events-none absolute -right-6 -top-10 h-32 w-32 rounded-full bg-rose-500/20 blur-3xl" />
+        <div className="relative flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-rose-500/50 bg-rose-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+            <Scale className="h-6 w-6 text-rose-200 drop-shadow-[0_0_8px_rgba(251,113,133,0.7)]" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-50">Déposer une plainte</h1>
+            <p className="text-sm text-rose-100/70">Un souci avec un autre membre ? Signale-le au staff.</p>
+          </div>
+        </div>
+      </motion.div>
 
-      <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 backdrop-blur-sm">
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Membre concerné</label>
-        <select
-          value={targetId}
-          onChange={(e) => setTargetId(e.target.value)}
-          className="mb-3 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-100 outline-none focus:border-rose-500/40"
-        >
-          <option value="" className="bg-slate-900">— Choisir un membre —</option>
-          {targets.map((t) => (
-            <option key={t.id} value={t.id} className="bg-slate-900">
-              {t.name}
-            </option>
-          ))}
-        </select>
+      {/* Bandeau confidentialité */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.04, ease: EASE }}
+        className="flex items-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.02] px-3.5 py-2.5 text-xs text-slate-400"
+      >
+        <Lock className="h-4 w-4 shrink-0 text-slate-500" />
+        Confidentiel — seul le staff voit ta plainte. Reste factuel, ajoute une preuve si possible.
+      </motion.div>
 
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={120}
-          placeholder="Objet (ex. « Insultes en vocal »)"
-          className="mb-3 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-rose-500/40"
-        />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          maxLength={2000}
-          rows={4}
-          placeholder="Explique ce qu'il s'est passé…"
-          className="mb-3 w-full resize-y rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-rose-500/40"
-        />
-        <input
-          value={evidence}
-          onChange={(e) => setEvidence(e.target.value)}
-          maxLength={500}
-          placeholder="Preuve (lien capture / clip) — optionnel"
-          className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-rose-500/40"
-        />
+      {/* Formulaire */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.08, ease: EASE }}
+        className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm"
+      >
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Membre concerné</label>
+          <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={inputCls}>
+            <option value="" className="bg-slate-900">— Choisir un membre —</option>
+            {targets.map((t) => (
+              <option key={t.id} value={t.id} className="bg-slate-900">{t.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Objet</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="ex. « Insultes en vocal »" className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Que s'est-il passé ?</label>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} rows={4} placeholder="Explique la situation, avec des faits…" className={`resize-y ${inputCls}`} />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Preuve <span className="text-slate-600">(optionnel)</span></label>
+          <input value={evidence} onChange={(e) => setEvidence(e.target.value)} maxLength={500} placeholder="Lien capture / clip" className={inputCls} />
+        </div>
 
-        {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+        {error ? (
+          <p className="flex items-center gap-1.5 text-xs text-rose-300"><ShieldAlert className="h-4 w-4" /> {error}</p>
+        ) : null}
         {done ? (
-          <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-300">
-            <CheckCircle2 className="h-4 w-4" /> Plainte envoyée au staff. Tu la retrouveras ci-dessous.
-          </p>
+          <motion.p
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center gap-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"
+          >
+            <CheckCircle2 className="h-4 w-4" /> Plainte envoyée au staff. Tu la retrouves ci-dessous.
+          </motion.p>
         ) : null}
 
-        <div className="mt-4 flex justify-end">
+        <div className="flex justify-end pt-1">
           <button
             type="button"
             onClick={submit}
             disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-700/80 to-rose-600/80 px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60"
+            className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(244,63,94,0.7)] transition-all hover:shadow-[0_10px_28px_-8px_rgba(244,63,94,0.9)] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />}
             Envoyer au staff
           </button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Mes plaintes */}
       {mine.length > 0 ? (
-        <div>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Mes plaintes</h2>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.12, ease: EASE }}
+        >
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Mes plaintes</h2>
           <div className="space-y-2">
             {mine.map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2 text-sm"
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.02] px-3.5 py-2.5 text-sm transition-colors hover:border-white/15"
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium text-slate-200">{c.title}</p>
@@ -163,7 +189,7 @@ export function PlaintesClient({ targets }: { targets: Target[] }) {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
       ) : null}
     </div>
   );
