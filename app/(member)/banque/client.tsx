@@ -60,8 +60,10 @@ export function BankPageClient() {
 
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
-      setLoading(true);
+    // silent = auto-refresh : pas de spinner, on saute si l'onglet est caché.
+    const load = async (silent = false) => {
+      if (silent && document.visibilityState === "hidden") return;
+      if (!silent) setLoading(true);
       try {
         const res = await fetch(
           `/api/me/banklogs?page=${page}&pageSize=${pageSize}`,
@@ -70,20 +72,28 @@ export function BankPageClient() {
         const json = (await res.json()) as BankLogsResponse;
         if (!mounted) return;
         if (!res.ok || !json.ok) {
-          setError((json as any).error || "Erreur inconnue");
-          setData(json);
+          if (!silent) {
+            setError((json as any).error || "Erreur inconnue");
+            setData(json);
+          }
           return;
         }
         setData(json);
+        setError(null);
       } catch (err) {
         if (!mounted) return;
-        setError(err instanceof Error ? err.message : "Erreur inconnue");
+        if (!silent) setError(err instanceof Error ? err.message : "Erreur inconnue");
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted && !silent) setLoading(false);
       }
     };
     load();
-    return () => { mounted = false; };
+    // Rafraîchissement auto toutes les 20 s (lit la DB, 0 appel LYG).
+    const t = setInterval(() => load(true), 20_000);
+    return () => {
+      mounted = false;
+      clearInterval(t);
+    };
   }, [page]);
 
   const logs = data && data.ok ? data.data : [];
