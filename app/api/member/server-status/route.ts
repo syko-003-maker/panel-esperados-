@@ -15,7 +15,7 @@ import { queryA2SInfo, getLygGameServers } from "@/lib/lyg/a2s";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const CACHE_MS = 30_000;
+const CACHE_MS = 10_000;
 
 type ServerEntry = {
   ok: boolean;

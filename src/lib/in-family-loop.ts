@@ -17,7 +17,7 @@ import { setLygPauseUntil } from "@/lib/lyg-stats";
  * remplace les ~22 calls/cycle de l'ancien per-player loop.
  */
 
-const POLL_INTERVAL_MS = 30_000;   // 1 poll toutes les 30s (30 calls/15min)
+const POLL_INTERVAL_MS = 10_000;   // 1 poll toutes les 10s (90 calls/15min ; quota LYG = 300/15min)
 const WINDOW_MINUTES   = 3;        // fenêtre LYG : playtime des 3 dernières min
 // Maths du système (délai « fantôme » = fenêtre + garde de fraîcheur) :
 //   L'API LYG renvoie le CUMUL de playtime dans la fenêtre (arrondi à la min

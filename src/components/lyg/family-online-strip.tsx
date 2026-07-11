@@ -34,7 +34,7 @@ export default function FamilyOnlineStrip() {
       }
     }
     load();
-    const t = setInterval(load, 60_000);
+    const t = setInterval(load, 20_000);
     return () => {
       mounted = false;
       clearInterval(t);
