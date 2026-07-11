@@ -17,8 +17,8 @@ import { setLygPauseUntil } from "@/lib/lyg-stats";
  * remplace les ~22 calls/cycle de l'ancien per-player loop.
  */
 
-const POLL_INTERVAL_MS = 10_000;   // 1 poll toutes les 10s (90 calls/15min ; quota LYG = 300/15min)
-const WINDOW_MINUTES   = 3;        // fenêtre LYG : playtime des 3 dernières min
+const POLL_INTERVAL_MS = 5_000;    // 1 poll toutes les 5s (180 calls/15min ; quota LYG = 300/15min)
+const WINDOW_MINUTES   = 2;        // fenêtre LYG : playtime des 2 dernières min (réactif)
 // Maths du système (délai « fantôme » = fenêtre + garde de fraîcheur) :
 //   L'API LYG renvoie le CUMUL de playtime dans la fenêtre (arrondi à la min
 //   entière). Un joueur qui s'arrête met `WINDOW_MINUTES` min à sortir de la
@@ -26,16 +26,16 @@ const WINDOW_MINUTES   = 3;        // fenêtre LYG : playtime des 3 dernières m
 //   fenêtre), PUIS il reste affiché encore `STALE_AFTER_MS_NORMAL`.
 //   → délai réel avant de passer "hors ligne" = WINDOW + STALE.
 //
-//   La garde ne sert qu'à survivre à un poll manqué (poll=30s) — pas à
-//   tolérer les pauses (c'est le rôle de la fenêtre). On la garde donc courte
-//   pour que les joueurs partis disparaissent vite (le bug remonté : des
-//   joueurs affichés en ligne alors qu'ils étaient partis).
+//   La garde ne sert qu'à survivre à des polls manqués (poll=5s) — pas à
+//   tolérer les pauses (c'est le rôle de la fenêtre). Courte pour que les
+//   joueurs partis disparaissent vite (bug remonté : joueurs affichés en
+//   ligne alors qu'ils étaient partis).
 //
-//   Avec WINDOW=3, STALE=90s, POLL=30s :
-//     - Joueur qui rejoint : visible dès ~1 min cumulée (~30-90s)
-//     - Joueur qui s'arrête : hors ligne après ~3 min + 90s ≈ 4,5 min
-//       (avant : 4 min + 5 min ≈ 9 min)
-const STALE_AFTER_MS_NORMAL = 90 * 1000;      // 90s (survit à ~2 polls manqués)
+//   Avec WINDOW=2, STALE=45s, POLL=5s (réglage temps réel, quota 300/15min) :
+//     - Joueur qui rejoint : visible en ~30-60s (dès ~1 min cumulée)
+//     - Joueur qui s'arrête : hors ligne après ~2 min + 45s ≈ 2,75 min
+//     - STALE=45s tolère ~9 polls manqués (5s) → pas de clignotement
+const STALE_AFTER_MS_NORMAL = 45 * 1000;      // 45s (survit à ~9 polls manqués à 5s)
 const STALE_AFTER_MS_PAUSED = 4 * 60 * 1000;  // 4 min pendant un 429 : couvre un
 // backoff court sans laisser un joueur parti affiché "en métier" trop longtemps.
 

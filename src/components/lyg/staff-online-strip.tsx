@@ -57,7 +57,7 @@ export default function StaffOnlineStrip() {
       }
     }
     load();
-    const t = setInterval(load, 30_000);
+    const t = setInterval(load, 15_000);
     return () => {
       mounted = false;
       clearInterval(t);

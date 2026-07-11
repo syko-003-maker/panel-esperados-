@@ -16,7 +16,7 @@ import { BLACKLIST_ROLE_ID, getDiscordGrade } from "@/lib/discord-grade";
 
 export const dynamic = "force-dynamic";
 
-const CACHE_MS = 10_000;
+const CACHE_MS = 5_000;
 let cache: { at: number; data: Array<{ name: string; grade: string | null }> } | null = null;
 
 export async function GET() {

@@ -3,7 +3,7 @@ Description=Declenche le scraper classement familles LYG toutes les 15 min
 
 [Timer]
 OnBootSec=3min
-OnUnitActiveSec=15min
+OnUnitActiveSec=10min
 RandomizedDelaySec=180
 Persistent=true
 

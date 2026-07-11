@@ -80,7 +80,7 @@ export default function FamiliesRankingCard() {
       }
     }
     load();
-    const t = setInterval(load, 5 * 60_000);
+    const t = setInterval(load, 2 * 60_000);
     return () => {
       mounted = false;
       clearInterval(t);
