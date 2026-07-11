@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Scale, Loader2, Send, CheckCircle2, ShieldAlert, Lock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Target = { id: string; name: string };
 type MyComplaint = {
@@ -119,12 +120,22 @@ export function PlaintesClient({ targets }: { targets: Target[] }) {
       >
         <div>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Membre concerné</label>
-          <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={inputCls}>
-            <option value="" className="bg-slate-900">— Choisir un membre —</option>
-            {targets.map((t) => (
-              <option key={t.id} value={t.id} className="bg-slate-900">{t.name}</option>
-            ))}
-          </select>
+          <Select value={targetId} onValueChange={setTargetId}>
+            <SelectTrigger className="h-auto w-full rounded-xl border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-slate-100 transition-colors hover:border-white/20 focus:border-rose-500/50 focus:ring-0 data-[placeholder]:text-slate-500">
+              <SelectValue placeholder="— Choisir un membre —" />
+            </SelectTrigger>
+            <SelectContent className="max-h-72 rounded-xl border-white/10 bg-[#12060a]/95 text-slate-100 shadow-2xl backdrop-blur-md">
+              {targets.map((t) => (
+                <SelectItem
+                  key={t.id}
+                  value={t.id}
+                  className="cursor-pointer rounded-lg text-sm text-slate-200 focus:bg-rose-500/15 focus:text-rose-100 data-[state=checked]:text-rose-200"
+                >
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Objet</label>
