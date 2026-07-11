@@ -137,8 +137,11 @@ async function scrapeOnce(): Promise<ScrapedFamily[]> {
 
     const families: ScrapedFamily[] = raw.rows.map((r) => {
       const parts = (r.famRaw || "").split("\n").map((s) => s.trim()).filter(Boolean);
-      const name = parts[0] || r.famRaw;
-      const slug = (parts[1] || name).toLowerCase().replace(/\s+/g, "");
+      // La cellule famille = [avatar-lettre si pas de logo] + Nom + slug.
+      // Le slug est TOUJOURS le dernier bloc, le nom l'avant-dernier → on ignore
+      // l'avatar-lettre des familles sans logo (sinon le nom = "B", "R", …).
+      const name = parts.length >= 2 ? parts[parts.length - 2] : parts[0] || r.famRaw;
+      const slug = (parts.length >= 2 ? parts[parts.length - 1] : name).toLowerCase().replace(/\s+/g, "");
       return {
         rank: parseInt((r.rank || "").replace(/[^\d]/g, ""), 10) || 0,
         name,
