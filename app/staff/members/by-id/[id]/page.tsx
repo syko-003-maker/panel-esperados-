@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { MemberEditClient } from "./member-edit-client";
 
 export default async function MemberEditPage({
@@ -34,10 +34,15 @@ export default async function MemberEditPage({
       isActive: true,
       joinedAt: true,
       updatedAt: true,
+      playtimeRequiredMinutes: true,
     },
   });
 
-  if (!member || member.familyId !== DEFAULT_FAMILY_ID) {
+  // member.familyId est l'ID DB (cuid), pas le slug — il faut résoudre le slug.
+  // (Bug : comparer directement à DEFAULT_FAMILY_ID "esperados" redirigeait
+  // toujours vers /staff/members → fiche non éditable.)
+  const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
+  if (!member || member.familyId !== familyDbId) {
     redirect("/staff/members");
   }
 

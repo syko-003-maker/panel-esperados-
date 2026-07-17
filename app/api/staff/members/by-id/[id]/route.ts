@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor, requireEncadrantOrAbove } from "@/lib/guards";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 
 export async function PATCH(
   req: NextRequest,
@@ -11,18 +11,19 @@ export async function PATCH(
   if (guard instanceof Response) return guard;
 
   const { id } = await params;
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  // familyId côté Member = ID DB (cuid) → résoudre le slug avant comparaison.
+  const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
 
   try {
     const body = await req.json();
-    const { discordId, steamId } = body;
+    const { discordId, steamId, playtimeRequiredMinutes } = body;
 
     // Verify member exists and belongs to family
     const current = await prisma.member.findUnique({
       where: { id },
     });
 
-    if (!current || current.familyId !== familyId) {
+    if (!current || current.familyId !== familyDbId) {
       return NextResponse.json(
         { ok: false, error: "Member not found" },
         { status: 404 }
@@ -52,6 +53,24 @@ export async function PATCH(
     if (steamId !== undefined) {
       const trimmed = String(steamId ?? "").trim();
       updateData.steamId = trimmed === "" ? null : trimmed;
+    }
+
+    // Exception de playtime requis (réunion) : vide/null → retire l'exception
+    // (seuil par défaut 300), sinon un entier de minutes > 0.
+    if (playtimeRequiredMinutes !== undefined) {
+      const raw = String(playtimeRequiredMinutes ?? "").trim();
+      if (raw === "") {
+        updateData.playtimeRequiredMinutes = null;
+      } else {
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n <= 0 || n > 100000) {
+          return NextResponse.json(
+            { ok: false, error: "Playtime requis invalide (entier de minutes > 0)" },
+            { status: 400 }
+          );
+        }
+        updateData.playtimeRequiredMinutes = n;
+      }
     }
 
     // Update member

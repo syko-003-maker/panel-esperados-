@@ -33,8 +33,8 @@ export function Tabs({
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
+    <div className="space-y-5">
+      <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           return (
@@ -44,8 +44,8 @@ export function Tabs({
               onClick={() => setActiveId(tab.id)}
               className={
                 isActive
-                  ? "px-3 py-2 text-sm font-semibold rounded bg-blue-600 text-white"
-                  : "px-3 py-2 text-sm font-semibold rounded bg-muted/20 hover:bg-muted/40 text-foreground"
+                  ? "rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-100 shadow-[0_10px_24px_-16px_rgba(245,158,11,0.6)] transition-colors"
+                  : "rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-slate-100"
               }
             >
               {tab.label}

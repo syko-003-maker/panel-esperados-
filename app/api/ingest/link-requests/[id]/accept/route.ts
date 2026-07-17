@@ -175,6 +175,11 @@ export async function POST(
         data: {
           familyId: familyIdToUse,
           discordId: linkRequest.requesterDiscordId,
+          // Provenance = demande de liaison. SANS ça, source prend le défaut LYG,
+          // et un membre LYG sans steamId viole la contrainte
+          // Member_lyg_requires_steamid_chk (cas "SteamID64 non fourni"). Le sync
+          // LYG repassera source=LYG de lui-même s'il est au roster.
+          source: "LINK",
           steamId: finalSteamId,
           // Priority: recruitment rpName > LinkRequest requesterName > null
           rpName: recruitment?.rpName || linkRequest.requesterName || null,

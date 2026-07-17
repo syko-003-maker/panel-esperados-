@@ -19,6 +19,7 @@ import {
 	ArrowLeft,
 	CalendarDays,
 	History,
+	Pencil,
 
 	Shield,
 	UserRound,
@@ -246,6 +247,15 @@ export function MemberDetailClient({
 						>
 							<ArrowLeft className="h-4 w-4" />
 							Retour à la liste
+						</Link>
+					</MotionButtonFrame>
+					<MotionButtonFrame>
+						<Link
+							href={`/staff/members/by-id/${member.id}`}
+							className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.08]"
+						>
+							<Pencil className="h-4 w-4" />
+							Éditer la fiche
 						</Link>
 					</MotionButtonFrame>
 					{rankBadge ? <StatusBadge tone={rankTone}>{rankBadge.label}</StatusBadge> : null}
