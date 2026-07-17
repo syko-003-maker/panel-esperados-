@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 type LogLine = { timestamp: string | null; level: "error" | "warn" | "info"; message: string };
 
-const ALLOWED_SOURCES = ["panel", "worker", "kitty"] as const;
+const ALLOWED_SOURCES = ["panel", "worker"] as const;
 type Source = (typeof ALLOWED_SOURCES)[number];
 
 function detectLevel(line: string): LogLine["level"] {
@@ -28,14 +28,6 @@ function parseJournalLine(line: string): LogLine | null {
   return { timestamp: null, level: detectLevel(line), message: line };
 }
 
-function parsePm2Line(line: string): LogLine | null {
-  // Format pm2: "1|kitty-ga | message"
-  const m = line.match(/^\d+\|\S+\s+\|\s*(.*)$/);
-  if (m) {
-    return { timestamp: null, level: detectLevel(m[1]), message: m[1] };
-  }
-  return { timestamp: null, level: detectLevel(line), message: line };
-}
 
 async function fetchLogs(source: Source, limit: number): Promise<LogLine[]> {
   try {
@@ -52,17 +44,6 @@ async function fetchLogs(source: Source, limit: number): Promise<LogLine[]> {
         { timeout: 5000, maxBuffer: 2 * 1024 * 1024 }
       );
       return stdout.split("\n").filter(Boolean).map(parseJournalLine).filter((x): x is LogLine => x !== null);
-    }
-    if (source === "kitty") {
-      const { stdout } = await execAsync(
-        `pm2 logs kitty-gang --lines ${limit} --nostream 2>&1`,
-        { timeout: 5000, maxBuffer: 2 * 1024 * 1024 }
-      );
-      // pm2 ajoute des en-têtes de fichiers — on les filtre
-      const lines = stdout
-        .split("\n")
-        .filter((l) => l && !l.startsWith("[TAILING]") && !l.includes("/.pm2/logs/") && !l.startsWith("/home/"));
-      return lines.map(parsePm2Line).filter((x): x is LogLine => x !== null);
     }
     return [];
   } catch (err: any) {

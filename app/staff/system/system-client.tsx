@@ -23,7 +23,7 @@ type LygStats = {
   errors: number;
   rateLimited: number;
   byEndpoint: Record<string, number>;
-  services: { panel: ServiceStats; worker: ServiceStats; kitty: ServiceStats };
+  services: { panel: ServiceStats; worker: ServiceStats };
   lastRateLimit: { ts: number; pauseUntil: number; endpoint: string; service?: string } | null;
   pausedNow: boolean;
   pauseRemainingSec: number;
@@ -111,19 +111,20 @@ export default function SystemClient() {
   }
 
   const { system, lyg } = data;
-  const lygPercent = Math.min(100, (lyg.total / 100) * 100);
-  const lygColor = lyg.rateLimited > 0 ? "rose" : lyg.total >= 90 ? "rose" : lyg.total >= 70 ? "amber" : "emerald";
+  const LYG_QUOTA = 300; // quota LYG partagé (panel + worker) sur 15 min
+  const lygPercent = Math.min(100, (lyg.total / LYG_QUOTA) * 100);
+  const lygColor = lyg.rateLimited > 0 ? "rose" : lyg.total >= LYG_QUOTA * 0.9 ? "rose" : lyg.total >= LYG_QUOTA * 0.7 ? "amber" : "emerald";
 
   return (
     <div className="space-y-5">
       {/* LYG API — La box prioritaire */}
       <SectionCard
         title="API LYG — Quota 15 min"
-        description="100 requêtes max / 15 min, partagé entre panel, worker et Kitty Gang."
+        description={`${LYG_QUOTA} requêtes max / 15 min, partagé entre le panel et le worker.`}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Appels (15 min)" value={String(lyg.total)} suffix="/100" color={lygColor} />
+            <Stat label="Appels (15 min)" value={String(lyg.total)} suffix={`/${LYG_QUOTA}`} color={lygColor} />
             <Stat label="Réussis" value={String(lyg.ok)} color="emerald" />
             <Stat label="Erreurs" value={String(lyg.errors)} color={lyg.errors > 0 ? "amber" : "default"} />
             <Stat label="Rate limit (429)" value={String(lyg.rateLimited)} color={lyg.rateLimited > 0 ? "rose" : "default"} />
@@ -131,7 +132,7 @@ export default function SystemClient() {
           <div>
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
               <span>Consommation panel + worker</span>
-              <span>{lyg.total}/100</span>
+              <span>{lyg.total}/{LYG_QUOTA}</span>
             </div>
             <Bar percent={lygPercent} color={lygColor} />
           </div>
@@ -143,10 +144,9 @@ export default function SystemClient() {
           {/* Breakdown par service */}
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Par service</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <ServiceCard label="Panel" stats={lyg.services.panel} />
               <ServiceCard label="Discord Worker" stats={lyg.services.worker} />
-              <ServiceCard label="Kitty Gang" stats={lyg.services.kitty} />
             </div>
           </div>
 
@@ -229,7 +229,7 @@ export default function SystemClient() {
 }
 
 type LogLine = { timestamp: string | null; level: "error" | "warn" | "info"; message: string };
-type LogSource = "panel" | "worker" | "kitty";
+type LogSource = "panel" | "worker";
 type LogFilter = "all" | "errors" | "warns" | "lyg";
 
 function LogsViewer() {
@@ -314,7 +314,6 @@ function LogsViewer() {
           {([
             { id: "panel", label: "Panel" },
             { id: "worker", label: "Discord Worker" },
-            { id: "kitty", label: "Kitty Gang" },
           ] as const).map((s) => (
             <button key={s.id} onClick={() => setSource(s.id)}
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${

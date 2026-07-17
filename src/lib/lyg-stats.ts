@@ -12,12 +12,12 @@
  * Cleanup périodique (5 min) supprime les rows >1h pour garder la table
  * légère (~1500 rows max attendus).
  *
- * Reçoit aussi les calls du worker et de Kitty Gang via /api/internal/lyg-track.
+ * Reçoit aussi les calls du worker via /api/internal/lyg-track.
  */
 
 import { prisma } from "@/lib/db";
 
-export type Service = "panel" | "worker" | "kitty";
+export type Service = "panel" | "worker";
 
 /**
  * Normalise un path LYG en endpoint regroupable :
@@ -170,13 +170,14 @@ export async function getLygStats() {
   const services: Record<Service, { total: number; ok: number; errors: number; rateLimited: number }> = {
     panel: { total: 0, ok: 0, errors: 0, rateLimited: 0 },
     worker: { total: 0, ok: 0, errors: 0, rateLimited: 0 },
-    kitty: { total: 0, ok: 0, errors: 0, rateLimited: 0 },
   };
   for (const c of calls) {
-    services[c.service].total++;
-    if (c.ok) services[c.service].ok++;
-    else services[c.service].errors++;
-    if (c.status === 429) services[c.service].rateLimited++;
+    const bucket = services[c.service];
+    if (!bucket) continue; // ignore d'anciens services retirés (ex. kitty) encore en DB <1h
+    bucket.total++;
+    if (c.ok) bucket.ok++;
+    else bucket.errors++;
+    if (c.status === 429) bucket.rateLimited++;
   }
 
   return {

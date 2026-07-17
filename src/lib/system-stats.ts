@@ -98,12 +98,12 @@ async function getServiceStatus(name: string, type: "systemd" | "pm2"): Promise<
 }
 
 export async function collectSystemStats(): Promise<SystemStats> {
-  const [cpuUsage, disk, panelStatus, workerStatus, kittyStatus] = await Promise.all([
+  const [cpuUsage, disk, panelStatus, workerStatus, gmodStatus] = await Promise.all([
     getCpuUsage(),
     getDiskUsage(),
     getServiceStatus("panel-esperados.service", "systemd"),
     getServiceStatus("discord-worker.service", "systemd"),
-    getServiceStatus("kitty-gang", "pm2"),
+    getServiceStatus("gmod.service", "systemd"),
   ]);
 
   const totalMem = os.totalmem();
@@ -131,7 +131,7 @@ export async function collectSystemStats(): Promise<SystemStats> {
     services: [
       { name: "panel-esperados", status: panelStatus, type: "systemd" },
       { name: "discord-worker", status: workerStatus, type: "systemd" },
-      { name: "kitty-gang", status: kittyStatus, type: "pm2" },
+      { name: "gmod (serveur de jeu)", status: gmodStatus, type: "systemd" },
     ],
     node: {
       version: process.version,

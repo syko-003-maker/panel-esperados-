@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { recordLygCall, setLygPauseUntil, type Service } from "@/lib/lyg-stats";
 
 /**
- * Endpoint interne — reçoit les events d'appels LYG depuis discord-worker et kitty-gang.
+ * Endpoint interne — reçoit les events d'appels LYG depuis discord-worker.
  * Sécurisé via header x-ingest-secret.
  */
 export async function POST(req: Request) {
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (!body) return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 });
 
   const service = (body.service as Service | undefined) ?? "panel";
-  if (!["panel", "worker", "kitty"].includes(service)) {
+  if (!["panel", "worker"].includes(service)) {
     return NextResponse.json({ ok: false, error: "Invalid service" }, { status: 400 });
   }
 
