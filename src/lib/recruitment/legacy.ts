@@ -118,24 +118,29 @@ function resolveSection(rawKey: string) {
   return null;
 }
 
-function normalizeAnswerMap(value: unknown, lookup: Map<string, string>) {
+// `notes.answersJson` / `notes.scoresJson` sont DÉJÀ indexés sur les IDs de
+// questions du modèle du ticket (V1…V4, modèles custom). On garde donc les
+// clés telles quelles, on ne coerce que la valeur. On NE filtre PAS via le
+// questionBank historique : ça supprimait toutes les notes des modèles dont les
+// IDs ne figurent pas dans le bank codé en dur (V3/V4 → fiche à 0 point).
+function normalizeAnswerMap(value: unknown) {
   if (!isPlainObject(value)) return {};
 
   const next: Record<string, string> = {};
   for (const [key, raw] of Object.entries(value)) {
-    const questionId = resolveQuestionId(key, lookup);
+    const questionId = String(key ?? "").trim();
     const answer = coerceAnswer(raw);
     if (questionId && answer !== null) next[questionId] = answer;
   }
   return next;
 }
 
-function normalizeScoreMap(value: unknown, lookup: Map<string, string>) {
+function normalizeScoreMap(value: unknown) {
   if (!isPlainObject(value)) return {};
 
   const next: Record<string, number> = {};
   for (const [key, raw] of Object.entries(value)) {
-    const questionId = resolveQuestionId(key, lookup);
+    const questionId = String(key ?? "").trim();
     const score = coerceScore(raw);
     if (questionId && score !== null) next[questionId] = score;
   }
@@ -301,9 +306,13 @@ export function extractRecruitmentEvaluation(
   payload: unknown
 ): RecruitmentEvaluationData {
   const { lookup, sections } = buildQuestionLookup();
-  const answers = { ...normalizeAnswerMap(notes.answersJson, lookup) };
-  const scores = { ...normalizeScoreMap(notes.scoresJson, lookup) };
+  // Notes structurées (stockage moderne) : clés = IDs du modèle du ticket,
+  // prises telles quelles. Voir normalizeScoreMap/normalizeAnswerMap.
+  const answers = { ...normalizeAnswerMap(notes.answersJson) };
+  const scores = { ...normalizeScoreMap(notes.scoresJson) };
 
+  // Fallback legacy : anciens tickets sans notes structurées → extraction
+  // depuis le payload Discord brut, résolue via le questionBank historique.
   extractFromNode(payload, lookup, sections, answers, scores);
 
   return { answersJson: answers, scoresJson: scores };

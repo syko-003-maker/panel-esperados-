@@ -268,12 +268,12 @@ export default function RecruitmentModelsClient() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <input
-                    type="text"
+                  <textarea
                     value={q.label}
                     onChange={(e) => updateQuestion(i, { label: e.target.value })}
                     placeholder="Intitulé de la question…"
-                    className="mt-3 w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                    rows={2}
+                    className="mt-3 w-full resize-y whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm leading-6 text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
                   />
                   <textarea
                     value={q.expectedAnswer ?? ""}

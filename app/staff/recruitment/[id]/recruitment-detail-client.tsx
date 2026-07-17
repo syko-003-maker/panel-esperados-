@@ -279,9 +279,10 @@ export default function RecruitmentDetailClient({
   }, [scores, staffNotes, dirty, canEdit, ticket]);
 
   useEffect(() => {
-    // 30s : 3x moins de requêtes Prisma vers /api/staff/recruitment/[id] sans
-    // perte UX réelle sur une fiche détail rarement modifiée en simultané.
-    const id = setInterval(() => { poll().catch(() => null); }, 30_000);
+    // 8s : rafraîchit la notation quasi en direct quand deux staff sont sur la
+    // même fiche (le recruteur note, un autre observe). Reste léger car le
+    // /poll est un endpoint conditionnel (ne renvoie rien si `after` inchangé).
+    const id = setInterval(() => { poll().catch(() => null); }, 8_000);
     return () => clearInterval(id);
   }, []);
 
