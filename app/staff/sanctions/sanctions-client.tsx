@@ -35,6 +35,17 @@ import {
 } from "@/lib/sanctions";
 import { getEffectiveSanctionStatus, getSanctionStatusLabel } from "@/lib/sanction-status-labels";
 import { getErrorMessage } from "@/lib/errors";
+import { GRADE_LABEL_BY_ROLE_ID, GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
+
+// Rétrogradation intégrée au module de sanction (une retro = une sanction côté
+// métier). Type "spécial" du menu déroulant → ne crée PAS un Sanction mais
+// appelle /api/staff/members/derank (changement de grade + swap de rôle Discord).
+const DERANK_TYPE = "__DERANK__";
+const CHEF_FAMILLE_ROLE_ID = "1429607761720770623";
+// Vrais grades hiérarchiques (haut → bas), hors statuts spéciaux (Réserviste/Nutella).
+const DERANK_LADDER: string[] = GRADE_ROLE_IDS_ORDERED.filter(
+  (id) => id !== "1312845999366209682" && id !== "1465415073425133598",
+);
 
 type Sanction = {
   id: string;
@@ -68,6 +79,9 @@ type MemberOption = {
   // apparaître ici — les démotés/blacklist sont exclus du picker en amont.
   // Présence du badge = escalade possible (DEMOTE/BLACKLIST plus grave).
   activeSanctionType?: "RESERVISTE" | null;
+  // Grade actuel (pour la rétrogradation) — fourni par /api/staff/sanctions/members.
+  currentGrade?: string | null;
+  currentRoleId?: string | null;
 };
 
 type Justification = {
@@ -142,9 +156,11 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
   const [memberSearch, setMemberSearch] = useState("");
   const [createForm, setCreateForm] = useState({
     memberId: "",
-    type: "AVERT_ORAL_PLAYTIME" as Sanction["type"],
+    type: "AVERT_ORAL_PLAYTIME" as Sanction["type"] | typeof DERANK_TYPE,
     reason: "",
   });
+  // Grade cible quand type = rétrogradation (roleId Discord du nouveau grade).
+  const [derankTarget, setDerankTarget] = useState("");
   const deferredMemberSearch = useDeferredValue(memberSearch);
 
   async function loadMembers() {
@@ -192,6 +208,27 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
     () => members.find((member) => member.id === createForm.memberId) ?? null,
     [members, createForm.memberId]
   );
+
+  // ── Rétrogradation (type spécial du menu) ────────────────────────────────
+  const isDerank = createForm.type === DERANK_TYPE;
+  const derankCurrentIndex = selectedMember?.currentRoleId
+    ? DERANK_LADDER.indexOf(selectedMember.currentRoleId)
+    : -1;
+  const derankLowerOptions = useMemo(
+    () =>
+      derankCurrentIndex >= 0
+        ? DERANK_LADDER.slice(derankCurrentIndex + 1).map((id) => ({ roleId: id, label: GRADE_LABEL_BY_ROLE_ID[id] }))
+        : [],
+    [derankCurrentIndex]
+  );
+  const derankIsChef = selectedMember?.currentRoleId === CHEF_FAMILLE_ROLE_ID;
+  const derankNotRankable = Boolean(selectedMember) && !derankIsChef && derankCurrentIndex === -1;
+  const derankAlreadyLowest = Boolean(selectedMember) && derankCurrentIndex >= 0 && derankLowerOptions.length === 0;
+
+  // Cible par défaut = un cran en dessous, à chaque changement de membre/type.
+  useEffect(() => {
+    setDerankTarget(derankLowerOptions.length > 0 ? derankLowerOptions[0].roleId : "");
+  }, [createForm.memberId, createForm.type, derankLowerOptions]);
   const filteredMembers = useMemo(() => {
     const query = deferredMemberSearch.trim().toLowerCase();
     if (!query) return members;
@@ -210,10 +247,57 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
     setMemberSearch("");
   }
 
+  async function onDerank() {
+    if (!selectedMember || !derankTarget) return;
+    const targetLabel = GRADE_LABEL_BY_ROLE_ID[derankTarget];
+    const ok = await confirm({
+      title: "Rétrograder ce membre ?",
+      description: (
+        <p>
+          <strong className="text-foreground">{selectedMember.rpName}</strong> passera de{" "}
+          <strong className="text-foreground">{selectedMember.currentGrade ?? "?"}</strong> à{" "}
+          <strong className="text-amber-300">{targetLabel}</strong>. Le rôle Discord sera mis à jour automatiquement.
+        </p>
+      ),
+      confirmLabel: "Rétrograder",
+      tone: "warning",
+    });
+    if (!ok) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/staff/members/derank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId: selectedMember.id,
+          memberDiscordId: selectedMember.discordId,
+          targetGrade: targetLabel,
+          reason: createForm.reason.trim() || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.message || json?.error || "Rétrogradation échouée");
+      setCreateForm({ memberId: "", type: "AVERT_ORAL_PLAYTIME", reason: "" });
+      setMemberSearch("");
+      setDerankTarget("");
+      await loadMembers(); // rafraîchit les grades courants dans le picker
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (missingDiscordId) {
       setError("Ce membre n'a pas de Discord ID");
+      return;
+    }
+    // Rétrogradation : flux dédié (ce n'est pas un enregistrement Sanction).
+    if (isDerank) {
+      await onDerank();
       return;
     }
     setSaving(true);
@@ -466,7 +550,7 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
                 <Select
                   value={createForm.type}
                   onValueChange={(value) =>
-                    setCreateForm((prev) => ({ ...prev, type: value as Sanction["type"] }))
+                    setCreateForm((prev) => ({ ...prev, type: value as Sanction["type"] | typeof DERANK_TYPE }))
                   }
                 >
                   <SelectTrigger
@@ -487,10 +571,57 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
                         {option.label}
                       </SelectItem>
                     ))}
+                    {canGrave ? (
+                      <SelectItem
+                        value={DERANK_TYPE}
+                        className="rounded-md py-2.5 text-sm text-amber-200 focus:bg-white/8 focus:text-amber-100"
+                      >
+                        Rétrograder d&apos;un grade
+                      </SelectItem>
+                    ) : null}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">L&apos;interface n&apos;affiche que des libellés métier propres.</p>
+                <p className="text-xs text-muted-foreground">
+                  {isDerank
+                    ? "Rétrogradation = baisse d'un grade hiérarchique (met à jour le rôle Discord). Ce n'est pas un « Démote » disciplinaire."
+                    : "L'interface n'affiche que des libellés métier propres."}
+                </p>
               </div>
+
+              {isDerank ? (
+                <div className="space-y-2.5">
+                  <label className="text-sm font-semibold text-foreground">Nouveau grade</label>
+                  {!selectedMember ? (
+                    <p className="text-xs text-muted-foreground">Sélectionne d&apos;abord un membre.</p>
+                  ) : derankIsChef ? (
+                    <p className="text-xs text-amber-300/80">Le Chef famille ne peut pas être rétrogradé.</p>
+                  ) : derankNotRankable ? (
+                    <p className="text-xs text-amber-300/80">
+                      Ce membre n&apos;a pas de grade hiérarchique rétrogradable (réserviste / statut spécial).
+                    </p>
+                  ) : derankAlreadyLowest ? (
+                    <p className="text-xs text-amber-300/80">Ce membre est déjà au grade le plus bas.</p>
+                  ) : (
+                    <>
+                      <StyledSelect
+                        value={derankTarget}
+                        onChange={(e) => setDerankTarget(e.target.value)}
+                        className="h-12 w-full"
+                      >
+                        {derankLowerOptions.map((opt, i) => (
+                          <option key={opt.roleId} value={opt.roleId}>
+                            {i === 0 ? `${opt.label} (un cran en dessous)` : opt.label}
+                          </option>
+                        ))}
+                      </StyledSelect>
+                      <p className="text-xs text-muted-foreground">
+                        Grade actuel :{" "}
+                        <span className="font-medium text-foreground">{selectedMember.currentGrade ?? "Sans grade"}</span>
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : null}
 
               <div className="space-y-2.5">
                 <label className="text-sm font-semibold text-foreground">Raison (optionnelle)</label>
@@ -509,10 +640,21 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
           <div className="flex flex-col gap-3">
             <Button
               type="submit"
-              disabled={saving || missingDiscordId || !createForm.memberId}
+              disabled={
+                saving ||
+                missingDiscordId ||
+                !createForm.memberId ||
+                (isDerank && (!derankTarget || derankIsChef || derankNotRankable || derankAlreadyLowest))
+              }
               className="h-12 w-full rounded-xl bg-gradient-to-r from-[#7a1f2b] via-[#9a2535] to-amber-700 text-sm font-semibold text-white shadow-[0_14px_30px_-14px_rgba(122,31,43,0.8)] transition-transform hover:translate-y-[-1px] hover:from-[#8a2535] hover:via-[#aa2d40] hover:to-amber-600"
             >
-              {saving ? "Création..." : "Créer la sanction"}
+              {saving
+                ? isDerank
+                  ? "Rétrogradation..."
+                  : "Création..."
+                : isDerank
+                  ? "Rétrograder"
+                  : "Créer la sanction"}
             </Button>
           </div>
 
