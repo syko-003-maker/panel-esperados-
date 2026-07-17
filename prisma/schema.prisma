@@ -177,6 +177,11 @@ model Member {
   playtime7d              Int        @default(0)
   playtime7dUpdatedAt     DateTime?
 
+  // Exception de playtime requis (réunion) : minutes requises pour être
+  // considéré "valide/présent" à la réunion. null = seuil par défaut (300).
+  // Accordé au cas par cas par le staff (membre qui a fait la demande).
+  playtimeRequiredMinutes Int?
+
   // ─── Famille WL (miroir LYG + intent panel) ─────────────────────────────
   // LYG expose member.class (rang WL 1=Chef … 5=plus bas) et member.owner
   // (Chef famille game-side). On stocke les deux versions :
@@ -965,6 +970,27 @@ model AppConfig {
   @@index([familyId])
 }
 
+/// État "intelligent" des rappels de dettes, par membre. Permet de se souvenir
+/// de qui a été rappelé, combien de fois, et si sa dette baisse ou stagne entre
+/// deux rappels (→ escalade + alerte État-Major). Reset quand la dette repasse
+/// sous le seuil (le membre a payé).
+model BankDebtReminderState {
+  id              String    @id @default(cuid())
+  familyId        String // Member.familyId (cuid)
+  memberId        String    @unique
+  discordId       String?
+  reminderCount   Int       @default(0) // streak de rappels sans remboursement
+  firstRemindedAt DateTime?
+  lastRemindedAt  DateTime?
+  lastDebtAmount  Int       @default(0) // dette au dernier rappel (détecte baisse/stagnation)
+  peakDebtAmount  Int       @default(0)
+  staffAlertedAt  DateTime? // dernière alerte EM (évite le spam)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([familyId])
+}
+
 model DiscordConfig {
   id                          String   @id @default(cuid())
   familyId                    String   @unique
@@ -978,7 +1004,12 @@ model DiscordConfig {
   bankAlertsChannelId         String?
   bankDebtPingThreshold       Int?
   bankDebtPingEnabled         Boolean  @default(false)
-  bankDebtPingCooldownMinutes Int      @default(60)
+  bankDebtPingCooldownMinutes Int      @default(60) // legacy, remplacé par CooldownDays
+  // Rappels de dettes "intelligents" :
+  bankDebtPingCooldownDays    Int      @default(7)     // délai (jours) entre 2 rappels au même membre
+  bankDebtAutoEnabled         Boolean  @default(false) // relance automatique (cron) sans clic
+  bankDebtEscalateAfter       Int      @default(3)     // nb de rappels sans réduction avant alerte État-Major
+  bankDebtStaffChannelId      String?                  // salon où alerter l'EM (fallback: bankAlertsChannelId)
   staffRoleId                 String?
   // Log channels for specific entity types
   ticketsLogChannelId         String?
@@ -1457,11 +1488,28 @@ model Suggestion {
   discordChannelId String?
 
   votes     SuggestionVote[]
+  comments  SuggestionComment[]
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
   @@index([familyId, status, createdAt])
   @@index([authorId])
+}
+
+/// Fil de commentaires staff sur une suggestion (remplace la note unique
+/// staffNote). Chaque réponse est un commentaire horodaté avec son auteur → on
+/// voit l'historique au lieu d'écraser.
+model SuggestionComment {
+  id           String     @id @default(cuid())
+  familyId     String
+  suggestionId String
+  suggestion   Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  authorId     String? // User.id du staff (nullable pour robustesse)
+  authorName   String // nom affiché (RP staff / "Staff")
+  message      String
+  createdAt    DateTime   @default(now())
+
+  @@index([suggestionId, createdAt])
 }
 
 model SuggestionVote {
