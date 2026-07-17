@@ -39,6 +39,10 @@ type DiscordConfig = {
   bankDebtPingThreshold: number | null;
   bankDebtPingEnabled: boolean;
   bankDebtPingCooldownMinutes: number;
+  bankDebtPingCooldownDays: number;
+  bankDebtAutoEnabled: boolean;
+  bankDebtEscalateAfter: number;
+  bankDebtStaffChannelId: string | null;
   staffRoleId: string | null;
 };
 
@@ -54,6 +58,10 @@ type FormState = {
   bankDebtPingThreshold: string;
   bankDebtPingEnabled: boolean;
   bankDebtPingCooldownMinutes: string;
+  bankDebtPingCooldownDays: string;
+  bankDebtAutoEnabled: boolean;
+  bankDebtEscalateAfter: string;
+  bankDebtStaffChannelId: string;
   staffRoleId: string;
 };
 
@@ -72,6 +80,10 @@ function toForm(cfg: DiscordConfig): FormState {
     bankDebtPingThreshold: cfg.bankDebtPingThreshold ? String(cfg.bankDebtPingThreshold) : "",
     bankDebtPingEnabled: Boolean(cfg.bankDebtPingEnabled),
     bankDebtPingCooldownMinutes: String(cfg.bankDebtPingCooldownMinutes ?? 60),
+    bankDebtPingCooldownDays: String(cfg.bankDebtPingCooldownDays ?? 7),
+    bankDebtAutoEnabled: Boolean(cfg.bankDebtAutoEnabled),
+    bankDebtEscalateAfter: String(cfg.bankDebtEscalateAfter ?? 3),
+    bankDebtStaffChannelId: cfg.bankDebtStaffChannelId ?? "",
     staffRoleId: cfg.staffRoleId ?? "",
   };
 }
@@ -415,12 +427,12 @@ export default function DiscordConfigClient() {
           </SectionCard>
         </div>
 
-        <SectionCard title="Banque & rappels de dettes" description="Alertes automatiques pour les membres en déficit" icon={Banknote}>
+        <SectionCard title="Banque & rappels de dettes" description="Rappels intelligents des débiteurs — le système se souvient de qui paie ou non et escalade tout seul." icon={Banknote}>
           <div className="grid gap-4 lg:grid-cols-3">
-            <Field label="Salon alertes banque">
+            <Field label="Salon des rappels (membres)" hint="Où le bot ping les membres en déficit.">
               <PickerSelect value={form.bankAlertsChannelId} onChange={(v) => set({ bankAlertsChannelId: v })} options={channels} placeholder="Choisir un salon…" />
             </Field>
-            <Field label="Seuil de rappel (€)" hint="Déficit minimum pour déclencher un rappel.">
+            <Field label="Seuil de rappel ($)" hint="Déficit minimum pour être rappelé.">
               <input
                 type="number"
                 value={form.bankDebtPingThreshold}
@@ -429,27 +441,67 @@ export default function DiscordConfigClient() {
                 className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
               />
             </Field>
-            <Field label="Cooldown (minutes)" hint="Délai minimum entre deux rappels au même membre.">
+            <Field label="Cooldown (jours)" hint="Délai minimum entre deux rappels au même membre.">
               <input
                 type="number"
-                value={form.bankDebtPingCooldownMinutes}
-                onChange={(e) => set({ bankDebtPingCooldownMinutes: e.target.value })}
-                placeholder="60"
+                min={1}
+                value={form.bankDebtPingCooldownDays}
+                onChange={(e) => set({ bankDebtPingCooldownDays: e.target.value })}
+                placeholder="7"
                 className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
               />
             </Field>
           </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <Field label="Salon alerte État-Major" hint="Où prévenir l'EM d'un débiteur récurrent (défaut : salon logs).">
+              <PickerSelect value={form.bankDebtStaffChannelId} onChange={(v) => set({ bankDebtStaffChannelId: v })} options={channels} placeholder="Salon staff…" />
+            </Field>
+            <Field label="Rappels avant alerte EM" hint="Nb de rappels sans remboursement avant de prévenir l'État-Major.">
+              <input
+                type="number"
+                min={1}
+                value={form.bankDebtEscalateAfter}
+                onChange={(e) => set({ bankDebtEscalateAfter: e.target.value })}
+                placeholder="3"
+                className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 text-xs leading-5 text-slate-400">
+            <span className="font-semibold text-slate-300">Comment ça marche :</span> chaque rappel est de plus en plus ferme.
+            Le système compare la dette au rappel précédent — si elle <span className="text-emerald-300/90">baisse</span>, le ton reste doux ;
+            si elle <span className="text-amber-300/90">stagne ou augmente</span>, il escalade. Au{" "}
+            <span className="text-slate-200">{form.bankDebtEscalateAfter || "3"}ᵉ</span> rappel sans remboursement, l'État-Major est prévenu.
+            Dès qu'un membre repasse sous le seuil (il a payé), son compteur repart à zéro.
+          </div>
+
           <div className="mt-4 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
             <div className="flex items-center gap-3">
               <Bell className="h-4 w-4 text-amber-300" />
               <div>
-                <div className="text-sm font-medium text-slate-100">Rappels automatiques activés</div>
-                <p className="mt-0.5 text-xs text-slate-500">Ping Discord automatique des membres endettés au-delà du seuil.</p>
+                <div className="text-sm font-medium text-slate-100">Rappels de dettes activés</div>
+                <p className="mt-0.5 text-xs text-slate-500">Interrupteur principal. Sans ça, aucun rappel ne part.</p>
               </div>
             </div>
             <Switch
               checked={form.bankDebtPingEnabled}
               onCheckedChange={(checked) => set({ bankDebtPingEnabled: checked })}
+            />
+          </div>
+
+          <div className="mt-3 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Bell className="h-4 w-4 text-cyan-300" />
+              <div>
+                <div className="text-sm font-medium text-slate-100">Relance automatique</div>
+                <p className="mt-0.5 text-xs text-slate-500">Le système rappelle seul (toutes les quelques heures, en respectant le cooldown). Sinon, relance manuelle depuis Stats → Dettes.</p>
+              </div>
+            </div>
+            <Switch
+              checked={form.bankDebtAutoEnabled}
+              onCheckedChange={(checked) => set({ bankDebtAutoEnabled: checked })}
             />
           </div>
         </SectionCard>

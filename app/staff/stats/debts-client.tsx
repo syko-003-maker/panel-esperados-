@@ -160,8 +160,19 @@ export default function DebtsClient() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Échec du ping groupé");
-      setMessage(json.alreadyQueued ? "Batch déjà en file d'attente" : "Batch envoyé avec succès");
-      setTimeout(() => setMessage(null), 3000);
+      const sent = Number(json.sent ?? 0);
+      const esc = Number(json.escalatedToStaff ?? 0);
+      const cd = Number(json.skippedCooldown ?? 0);
+      setMessage(
+        sent > 0
+          ? `${sent} rappel${sent > 1 ? "s" : ""} envoyé${sent > 1 ? "s" : ""}` +
+            (esc > 0 ? ` · ${esc} alerte${esc > 1 ? "s" : ""} État-Major` : "") +
+            (cd > 0 ? ` · ${cd} en cooldown` : "")
+          : json.debtorCount === 0
+            ? "Aucun débiteur au-dessus du seuil"
+            : "Aucun rappel à envoyer (cooldown en cours)"
+      );
+      setTimeout(() => setMessage(null), 4000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);

@@ -12,6 +12,7 @@ const STRING_FIELDS = [
   "sanctionsChannelId",
   "logsChannelId",
   "bankAlertsChannelId",
+  "bankDebtStaffChannelId",
   "staffRoleId",
   // New log channels
   "ticketsLogChannelId",
@@ -20,9 +21,15 @@ const STRING_FIELDS = [
   "activityLogChannelId",
 ] as const;
 
-const INT_FIELDS = ["bankDebtPingThreshold", "bankDebtPingCooldownMinutes"] as const;
+const INT_FIELDS = [
+  "bankDebtPingThreshold",
+  "bankDebtPingCooldownMinutes",
+  "bankDebtPingCooldownDays",
+  "bankDebtEscalateAfter",
+] as const;
 const BOOL_FIELDS = [
   "bankDebtPingEnabled",
+  "bankDebtAutoEnabled",
   "dmNotificationsEnabled",
   "dmSanctionsEnabled",
   "dmGradeChangesEnabled",
@@ -42,6 +49,8 @@ function pickUpdates(body: any) {
       if (raw === null || raw === undefined || String(raw).trim() === "") {
         if (key === "bankDebtPingThreshold") data[key] = null;
         if (key === "bankDebtPingCooldownMinutes") data[key] = 60;
+        if (key === "bankDebtPingCooldownDays") data[key] = 7;
+        if (key === "bankDebtEscalateAfter") data[key] = 3;
         continue;
       }
       const parsed = Number(raw);
