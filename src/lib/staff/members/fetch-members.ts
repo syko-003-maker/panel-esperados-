@@ -37,6 +37,7 @@ const SELECT_WITH_PLAYTIME = {
   ...BASE_SELECT,
   playtime7d: true,
   playtime7dUpdatedAt: true,
+  playtimeRequiredMinutes: true,
 } as const;
 
 export async function fetchMembersForFamily(params: {

@@ -5,6 +5,23 @@ export const DEFAULT_MEETING_FAMILY_ID = "esperados";
 // marqué absent. Source : convention Los Esperados.
 export const MEETING_PLAYTIME_THRESHOLD_MINUTES = 300;
 
+/**
+ * Minutes de playtime réellement requises pour un membre donné.
+ *
+ * Exception par membre : `Member.playtimeRequiredMinutes` (accordée au cas par
+ * cas par le staff). Si null / ≤ 0 → seuil par défaut (300). Sinon, le seuil
+ * personnalisé remplace le seuil global pour la validation de présence.
+ */
+export function resolveRequiredPlaytimeMinutes(
+  playtimeRequiredMinutes: number | null | undefined,
+): number {
+  return typeof playtimeRequiredMinutes === "number" &&
+    Number.isFinite(playtimeRequiredMinutes) &&
+    playtimeRequiredMinutes > 0
+    ? Math.floor(playtimeRequiredMinutes)
+    : MEETING_PLAYTIME_THRESHOLD_MINUTES;
+}
+
 import { GRADE_LABEL_BY_ROLE_ID, GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 
 type Nullable<T> = T | null | undefined;

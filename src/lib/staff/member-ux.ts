@@ -74,6 +74,25 @@ export function normalizePlaytimeMinutes(playtime7d: number | null | undefined):
   return typeof playtime7d === "number" && Number.isFinite(playtime7d) ? Math.max(0, Math.floor(playtime7d)) : 0;
 }
 
+// Seuil de playtime requis par défaut (réunion). Une exception par membre
+// (`playtimeRequiredMinutes`) remplace ce seuil : toute la logique d'activité
+// (bandes, score, "à surveiller") se calcule alors RELATIVEMENT à ce seuil, pas
+// à 300 fixe. Sinon un membre à 150 requis (accordé) serait compté comme les
+// autres (à 300) et flaggé à tort.
+export const DEFAULT_PLAYTIME_REQUIRED_MINUTES = 300;
+
+export function getMemberRequiredMinutes(member: { playtimeRequiredMinutes?: number | null }): number {
+  const v = member?.playtimeRequiredMinutes;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : DEFAULT_PLAYTIME_REQUIRED_MINUTES;
+}
+
+export function hasCustomPlaytimeRequirement(member: { playtimeRequiredMinutes?: number | null }): boolean {
+  const v = member?.playtimeRequiredMinutes;
+  return (
+    typeof v === "number" && Number.isFinite(v) && v > 0 && Math.floor(v) !== DEFAULT_PLAYTIME_REQUIRED_MINUTES
+  );
+}
+
 export function getMemberStatus(member: MemberItem): MemberStatus {
   const flags = getMemberScopeFlags(member);
 
@@ -114,19 +133,38 @@ export function isActivityExempt(member: MemberItem): boolean {
   );
 }
 
-export function getActivityBand(playtime7d: number | null | undefined) {
+// Bandes calculées RELATIVEMENT au seuil requis : inactif=0, faible <1/3,
+// actif entre 1/3 et le seuil, "très actif" une fois le seuil atteint. Pour 300
+// requis ça donne exactement les paliers historiques (100 / 300).
+export function getActivityBand(
+  playtime7d: number | null | undefined,
+  required: number = DEFAULT_PLAYTIME_REQUIRED_MINUTES,
+) {
   const minutes = normalizePlaytimeMinutes(playtime7d);
-  return ACTIVITY_VISUAL_THRESHOLDS.find((level) => minutes >= level.minMinutes && minutes <= level.maxMinutes)
-    ?? ACTIVITY_VISUAL_THRESHOLDS[ACTIVITY_VISUAL_THRESHOLDS.length - 1];
+  const req = required > 0 ? required : DEFAULT_PLAYTIME_REQUIRED_MINUTES;
+  const byKey = (k: string) =>
+    ACTIVITY_VISUAL_THRESHOLDS.find((t) => t.key === k) ??
+    ACTIVITY_VISUAL_THRESHOLDS[ACTIVITY_VISUAL_THRESHOLDS.length - 1];
+  if (minutes <= 0) return byKey("inactive");
+  if (minutes >= req) return byKey("high");
+  if (minutes >= req / 3) return byKey("active");
+  return byKey("low");
 }
 
-export function getActivityScore(playtime7d: number | null | undefined): number {
+export function getActivityScore(
+  playtime7d: number | null | undefined,
+  required: number = DEFAULT_PLAYTIME_REQUIRED_MINUTES,
+): number {
   const minutes = normalizePlaytimeMinutes(playtime7d);
-  return Math.max(0, Math.min(100, Math.round((minutes / 300) * 100)));
+  const req = required > 0 ? required : DEFAULT_PLAYTIME_REQUIRED_MINUTES;
+  return Math.max(0, Math.min(100, Math.round((minutes / req) * 100)));
 }
 
-export function getActivityProgress(playtime7d: number | null | undefined): number {
-  return Math.max(4, getActivityScore(playtime7d));
+export function getActivityProgress(
+  playtime7d: number | null | undefined,
+  required: number = DEFAULT_PLAYTIME_REQUIRED_MINUTES,
+): number {
+  return Math.max(4, getActivityScore(playtime7d, required));
 }
 
 export function formatPlaytimeDelta(delta: number | null | undefined): string {
@@ -156,16 +194,30 @@ export function isWatchMember(member: MemberItem, analyticsAvailable: boolean): 
   if (status === "demoted" && minutes === 0) return true;
   if (status === "reservist" && minutes === 0) return false;
   if (analyticsAvailable && typeof delta === "number" && delta <= -120) return true;
-  return status === "active" && minutes <= 99;
+  // "À surveiller" = actif mais sous le tiers de SON seuil requis (perso ou 300).
+  const req = getMemberRequiredMinutes(member);
+  return status === "active" && minutes < Math.max(1, req / 3);
 }
 
 export function getMemberFlags(member: MemberItem, analyticsAvailable: boolean): MemberFlag[] {
   const flags: MemberFlag[] = [];
   const status = getMemberStatus(member);
-  const activity = getActivityBand(member.playtime7d);
+  const req = getMemberRequiredMinutes(member);
+  const activity = getActivityBand(member.playtime7d, req);
   const minutes = normalizePlaytimeMinutes(member.playtime7d);
   const delta = member.playtimeDelta7d ?? null;
   const exempt = isActivityExempt(member);
+
+  // Exception de playtime requis (accordée à ce membre) : badge visible pour
+  // que le staff sache qu'il n'est PAS jugé sur les 300 min habituelles.
+  if (hasCustomPlaytimeRequirement(member)) {
+    flags.push({
+      key: "custom-playtime",
+      label: `Seuil ${req} min`,
+      tone: "cyan",
+      description: `Playtime requis personnalisé : ${req} min en réunion (au lieu de 300).`,
+    });
+  }
 
   if (status === "blacklisted") {
     flags.push({
@@ -210,12 +262,12 @@ export function getMemberFlags(member: MemberItem, analyticsAvailable: boolean):
     });
   }
 
-  if (!exempt && status === "active" && minutes <= 99) {
+  if (!exempt && status === "active" && minutes < Math.max(1, req / 3)) {
     flags.push({
       key: "watch",
       label: "À surveiller",
       tone: "amber",
-      description: "Activité faible ou nulle sur la semaine.",
+      description: `Activité faible sur la semaine (sous ${Math.round(req / 3)} min).`,
     });
   }
 
@@ -259,7 +311,7 @@ export function getMemberFlags(member: MemberItem, analyticsAvailable: boolean):
 }
 
 export function matchesQuickFilter(member: MemberItem, quickFilter: QuickFilter, analyticsAvailable: boolean): boolean {
-  const activity = getActivityBand(member.playtime7d);
+  const activity = getActivityBand(member.playtime7d, getMemberRequiredMinutes(member));
   const exempt = isActivityExempt(member);
 
   switch (quickFilter) {
@@ -306,5 +358,5 @@ export function getMemberRowClassName(member: MemberItem, analyticsAvailable: bo
     return "bg-rose-950/10 hover:bg-rose-950/18";
   }
 
-  return getActivityBand(member.playtime7d).rowClassName;
+  return getActivityBand(member.playtime7d, getMemberRequiredMinutes(member)).rowClassName;
 }

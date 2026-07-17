@@ -36,8 +36,10 @@ import { StatusBadge as UiStatusBadge } from "@/components/staff/ui/StatusBadge"
 import {
   formatPlaytimeDelta,
   getActivityBand,
+  getMemberRequiredMinutes,
   getMemberRowClassName,
   getMemberStatus,
+  hasCustomPlaytimeRequirement,
   isActivityExempt,
   isWatchMember,
   matchesQuickFilter,
@@ -414,13 +416,13 @@ export default function MembersListClient() {
             : option.value === "online"
             ? scopeMembers.filter((m) => m.steamId && Boolean(onlineMap[m.steamId]?.connected)).length
             : option.value === "active"
-            ? scopeMembers.filter((m) => !isActivityExempt(m) && (getActivityBand(m.playtime7d).key === "active" || getActivityBand(m.playtime7d).key === "high")).length
+            ? scopeMembers.filter((m) => !isActivityExempt(m) && (getActivityBand(m.playtime7d, getMemberRequiredMinutes(m)).key === "active" || getActivityBand(m.playtime7d, getMemberRequiredMinutes(m)).key === "high")).length
             : option.value === "inactive"
-            ? scopeMembers.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "inactive").length
+            ? scopeMembers.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d, getMemberRequiredMinutes(m)).key === "inactive").length
             : option.value === "low"
-            ? scopeMembers.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d).key === "low").length
+            ? scopeMembers.filter((m) => !isActivityExempt(m) && getActivityBand(m.playtime7d, getMemberRequiredMinutes(m)).key === "low").length
             : option.value === "top"
-            ? scopeMembers.filter((m) => getActivityBand(m.playtime7d).key === "high").length
+            ? scopeMembers.filter((m) => getActivityBand(m.playtime7d, getMemberRequiredMinutes(m)).key === "high").length
             : option.value === "watch"
             ? scopeMembers.filter((m) => isWatchMember(m, analyticsAvailable)).length
             : 0;
@@ -508,7 +510,9 @@ export default function MembersListClient() {
           animate="visible"
         >
           {displayedMembers.map((member) => {
-            const activity = getActivityBand(member.playtime7d);
+            const requiredMin = getMemberRequiredMinutes(member);
+            const hasCustomReq = hasCustomPlaytimeRequirement(member);
+            const activity = getActivityBand(member.playtime7d, requiredMin);
             const exemptActivity = isActivityExempt(member);
             const isZeroPlaytime = (member.playtime7d ?? 0) === 0;
             const hasPrevious = analyticsAvailable && typeof member.previousPlaytime7d === "number";
@@ -653,6 +657,14 @@ export default function MembersListClient() {
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Playtime 7j</span>
+                      {hasCustomReq && (
+                        <span
+                          className="rounded border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-200"
+                          title={`Seuil de playtime personnalisé : ${requiredMin} min requis en réunion (au lieu de 300).`}
+                        >
+                          seuil {requiredMin}m
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5">
                       {hasPrevious && !exemptActivity && (

@@ -43,6 +43,10 @@ export function buildStaffMemberRow(
     discordInGuild: member.discordInGuild ?? null,
     playtime7d: playtime,
     playtime7dUpdatedAt: member.playtime7dUpdatedAt?.toISOString() ?? null,
+    playtimeRequiredMinutes: (() => {
+      const v = (member as { playtimeRequiredMinutes?: number | null }).playtimeRequiredMinutes;
+      return typeof v === "number" ? v : null;
+    })(),
     updatedAt: new Date().toISOString(),
     previousPlaytime7d: previousPlaytime,
     playtimeDelta7d: delta,

@@ -26,6 +26,8 @@ export type StaffMemberDto = {
   discordLastError: string | null;
   playtime7d: number;
   playtime7dUpdatedAt: string | null;
+  /** Exception de playtime requis (réunion). null = seuil par défaut (300). */
+  playtimeRequiredMinutes: number | null;
   updatedAt: string;
   previousPlaytime7d: number | null;
   playtimeDelta7d: number | null;

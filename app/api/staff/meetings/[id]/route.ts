@@ -12,6 +12,7 @@ import {
   isMeetingLocked,
   mapStoredMeetingDecisionToBusinessDecision,
   MEETING_PLAYTIME_THRESHOLD_MINUTES,
+  resolveRequiredPlaytimeMinutes,
 } from "@/lib/meetings";
 import { isStaffMeetingScopeMember, getMemberScopeFlags } from "@/lib/staff/member-scope";
 import { ensureFreshFamilyPlaytime } from "@/lib/staff/ensure-fresh-playtime";
@@ -347,6 +348,7 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
       rankLabel: true,
       steamId: true,
       playtime7d: true,
+      playtimeRequiredMinutes: true,
       discordInGuild: true,
       missingFromLygSince: true,
     },
@@ -497,12 +499,18 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
     // les met en JUSTIFIED, sinon ils restent en NOT_CONCERNED.
     const chefMemberIds = new Set<string>();
     const chefDiscordIds = new Set<string>();
+    // Exception de playtime requis par membre (null → seuil par défaut 300).
+    const requiredByMemberId = new Map<string, number>();
+    const requiredByDiscordId = new Map<string, number>();
     for (const m of members) {
       const flags = getMemberScopeFlags(m);
       if (flags.isChefExempt) {
         if (m.id) chefMemberIds.add(m.id);
         if (m.discordId) chefDiscordIds.add(m.discordId);
       }
+      const req = resolveRequiredPlaytimeMinutes(m.playtimeRequiredMinutes);
+      if (m.id) requiredByMemberId.set(m.id, req);
+      if (m.discordId) requiredByDiscordId.set(m.discordId, req);
     }
 
     for (const row of rowsForAttendance) {
@@ -520,17 +528,24 @@ async function ensureMeetingRows(id: string): Promise<ActiveMemberSets> {
         (row.memberId && chefMemberIds.has(row.memberId)) ||
         (row.discordIdSnapshot && chefDiscordIds.has(row.discordIdSnapshot));
 
+      // Seuil de playtime requis pour CE membre : exception personnalisée si
+      // elle existe (accordée par le staff), sinon le seuil par défaut (300).
+      const requiredMinutes =
+        (row.memberId ? requiredByMemberId.get(row.memberId) : undefined) ??
+        (row.discordIdSnapshot ? requiredByDiscordId.get(row.discordIdSnapshot) : undefined) ??
+        MEETING_PLAYTIME_THRESHOLD_MINUTES;
+
       // Calcul du statut auto :
       //   1. Absence approuvée   → JUSTIFIED (toujours, même pour les chefs)
       //   2. Chef/Sous-Chef      → PRESENT (exclus du playtime, considérés présents par défaut)
-      //   3. Playtime ≥ seuil    → PRESENT
+      //   3. Playtime ≥ seuil requis (perso ou 300) → PRESENT
       //   4. Sinon               → ABSENT
       let nextStatus: "PRESENT" | "ABSENT" | "JUSTIFIED";
       if (isJustified) {
         nextStatus = "JUSTIFIED";
       } else if (isChefExempt) {
         nextStatus = "PRESENT";
-      } else if (row.playtimeMinutes >= MEETING_PLAYTIME_THRESHOLD_MINUTES) {
+      } else if (row.playtimeMinutes >= requiredMinutes) {
         nextStatus = "PRESENT";
       } else {
         nextStatus = "ABSENT";
@@ -670,6 +685,35 @@ async function buildMeetingDetail(id: string) {
     })),
   });
 
+  // Seuil de playtime PERSONNALISÉ par membre (exception ≠ 300), pour l'afficher
+  // au gérant de réunion → il sait qui n'est pas jugé sur les 300 min habituelles.
+  const rowMemberIds = visibleRows.map((r) => r.memberId).filter((v): v is string => Boolean(v));
+  const rowDiscordIds = visibleRows
+    .map((r) => r.discordIdSnapshot)
+    .filter((v): v is string => Boolean(v));
+  const reqMembers =
+    rowMemberIds.length || rowDiscordIds.length
+      ? await prisma.member.findMany({
+          where: {
+            familyId: meeting.familyId,
+            OR: [
+              rowMemberIds.length ? { id: { in: rowMemberIds } } : undefined,
+              rowDiscordIds.length ? { discordId: { in: rowDiscordIds } } : undefined,
+            ].filter(Boolean) as any,
+          },
+          select: { id: true, discordId: true, playtimeRequiredMinutes: true },
+        })
+      : [];
+  const customReqByMemberId = new Map<string, number>();
+  const customReqByDiscordId = new Map<string, number>();
+  for (const m of reqMembers) {
+    const v = m.playtimeRequiredMinutes;
+    if (typeof v === "number" && v > 0 && v !== 300) {
+      if (m.id) customReqByMemberId.set(m.id, Math.floor(v));
+      if (m.discordId) customReqByDiscordId.set(m.discordId, Math.floor(v));
+    }
+  }
+
   return {
     id: meeting.id,
     scheduledAt: meeting.meetingDate.toISOString(),
@@ -701,6 +745,11 @@ async function buildMeetingDetail(id: string) {
           targetGrade: row.discordIdSnapshot ? promotionTargetByDiscordId.get(row.discordIdSnapshot) ?? null : null,
         }),
         continuity,
+        // null = seuil normal (300) ; sinon exception accordée à ce membre.
+        playtimeRequiredMinutes:
+          (row.memberId ? customReqByMemberId.get(row.memberId) : undefined) ??
+          (row.discordIdSnapshot ? customReqByDiscordId.get(row.discordIdSnapshot) : undefined) ??
+          null,
       };
     }),
   };

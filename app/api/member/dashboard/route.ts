@@ -5,6 +5,7 @@ import { getMemberScopeOrNull } from "@/server/member/scope";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { getMemberDebt } from "@/lib/bank-debts";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
+import { isMemberPlaytimeHidden } from "@/lib/member-playtime-visibility";
 
 /**
  * GET /api/member/dashboard
@@ -42,16 +43,22 @@ export async function GET(req: NextRequest) {
     // Load member for steamId and familyId
     let steamId: string | null = null;
     let FAMILY_ID: string | null = null;
+    let playtime7d = 0;
+    let playtimeRequiredMinutes: number | null = null;
     try {
       const member = await prisma.member.findUnique({
         where: { id: memberId },
         select: {
           steamId: true,
           familyId: true,
+          playtime7d: true,
+          playtimeRequiredMinutes: true,
         },
       });
       steamId = member?.steamId ?? null;
       FAMILY_ID = member?.familyId ?? null;
+      playtime7d = typeof member?.playtime7d === "number" ? member.playtime7d : 0;
+      playtimeRequiredMinutes = member?.playtimeRequiredMinutes ?? null;
     } catch (e) {
       steamId = null;
     }
@@ -255,6 +262,17 @@ export async function GET(req: NextRequest) {
       // Non bloquant : le dashboard reste utilisable sans la hiérarchie.
     }
 
+    // Playtime membre : visible lundi→vendredi, masqué samedi & dimanche.
+    // (Calculé côté serveur → la valeur n'est même pas envoyée le week-end.)
+    const playtimeHidden = isMemberPlaytimeHidden();
+    const requiredMinutes =
+      typeof playtimeRequiredMinutes === "number" && playtimeRequiredMinutes > 0
+        ? playtimeRequiredMinutes
+        : 300;
+    const playtime = playtimeHidden
+      ? { visible: false, minutes: null as number | null, requiredMinutes }
+      : { visible: true, minutes: playtime7d, requiredMinutes };
+
     return NextResponse.json({
       ok: true,
       member: {
@@ -267,6 +285,7 @@ export async function GET(req: NextRequest) {
       absences,
       debt,
       leadership,
+      playtime,
     });
   } catch (error) {
     console.error("[api/member/dashboard] error:", error);

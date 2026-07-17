@@ -43,6 +43,8 @@ type MeetingEntry = {
   status: AttendanceStatus;
   note: string;
   playtimeMinutes: number;
+  /** Seuil de playtime perso (exception ≠ 300) accordé à ce membre, sinon null. */
+  playtimeRequiredMinutes?: number | null;
   sanctionType?: string | null;
   sanctionReason?: string;
   decisionType: string;
@@ -678,6 +680,16 @@ export default function MeetingSheetClient({ meetingId }: { meetingId: string })
                           disabled={Boolean(meeting?.locked)}
                           className="w-28 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         />
+                        {row.playtimeRequiredMinutes ? (
+                          <div
+                            className="mt-1.5 inline-flex items-center gap-1 rounded border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200"
+                            title={`Exception : ${row.playtimeRequiredMinutes} min requis pour ce membre (au lieu de 300).`}
+                          >
+                            seuil perso {row.playtimeRequiredMinutes}m
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 text-[10px] text-slate-500">seuil 300m</div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {meeting?.locked ? (

@@ -65,6 +65,11 @@ type DashboardResponse =
         net: number;
         deficitAmount: number;
       };
+      playtime?: {
+        visible: boolean;
+        minutes: number | null;
+        requiredMinutes: number;
+      };
     }
   | { ok: false; error?: string; code?: string };
 
@@ -230,7 +235,7 @@ export default function DashboardClient() {
     );
   }
 
-  const { member, bank, sanctions, absences, debt } = data;
+  const { member, bank, sanctions, absences, debt, playtime } = data;
   const transactions = Array.isArray(bank?.lastTransactions) ? bank.lastTransactions : [];
   const leadership: Array<{ tier: string; members: Array<{ rpName: string | null; avatarUrl: string | null }> }> =
     Array.isArray((data as any)?.leadership) ? (data as any).leadership : [];
@@ -347,6 +352,63 @@ export default function DashboardClient() {
 
       {/* Classement des familles LYG (API LYG) */}
       <FamiliesRankingCard />
+
+      {/* Ton playtime de la semaine — visible lun→ven, masqué le week-end */}
+      {playtime && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+            Ton playtime cette semaine
+          </span>
+          {playtime.visible ? (
+            (() => {
+              const min = playtime.minutes ?? 0;
+              const req = playtime.requiredMinutes;
+              const pct = Math.max(0, Math.min(100, Math.round((min / req) * 100)));
+              const reached = min >= req;
+              const fmt = (v: number) => {
+                const h = Math.floor(v / 60);
+                const m = v % 60;
+                return h > 0 ? `${h}h${m > 0 ? String(m).padStart(2, "0") : ""}` : `${m} min`;
+              };
+              return (
+                <div className="mt-3">
+                  <div className="flex items-end justify-between gap-2">
+                    <span
+                      className={`text-3xl font-bold tabular-nums ${reached ? "text-emerald-300" : "text-slate-100"}`}
+                    >
+                      {fmt(min)}
+                    </span>
+                    <span className="text-xs text-slate-500">objectif : {fmt(req)}</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                    <div
+                      className={`h-full rounded-full ${reached ? "bg-emerald-400/80" : "bg-amber-400/80"}`}
+                      style={{ width: `${Math.max(4, pct)}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">
+                    {reached
+                      ? "✅ Objectif atteint pour la réunion, continue comme ça !"
+                      : `Il te manque ${fmt(req - min)} pour l'objectif.`}
+                  </p>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="mt-3 flex items-start gap-3 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3">
+              <span className="text-2xl">🔒</span>
+              <div className="text-sm text-slate-300">
+                <div className="font-semibold text-slate-100">Masqué le week-end</div>
+                <p className="mt-0.5 text-xs leading-5 text-slate-400">
+                  Ton playtime est visible du <strong className="text-slate-200">lundi au vendredi</strong>. Il
+                  devient secret le samedi et le dimanche (juste avant la réunion) — comme ça, pas de rush de
+                  dernière minute. Ceux qui jouent toute la semaine ont déjà pu suivre leur progression.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Situation bancaire — toujours affichée si les données sont disponibles */}
       {debt !== undefined && (() => {
