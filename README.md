@@ -68,11 +68,11 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 | | |
 |---|---|
 | **~109 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **223** routes API | **54** modèles de données (Prisma) |
-| **76** pages | **15** migrations versionnées |
-| **20** commandes Discord (dont `/reglement` IA) | **7** boucles de fond (sync, pollers, keep-alive) |
+| **237** routes API | **58** modèles de données (Prisma) |
+| **79** pages | **19** migrations versionnées |
+| **20** commandes Discord (dont `/reglement` IA) | **9** boucles de fond (sync, pollers, keep-alive) |
 | **17** fichiers de tests (Vitest) | **12** notifications push automatiques |
-| **204** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
+| **232** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
 
 ---
 
@@ -171,11 +171,12 @@ flowchart LR
 <tr><td valign="top" width="33%">
 
 **🖥️ Panel staff**
-- Membres (filtres, live in-game, fiches)
-- Sanctions (8 types, escalade, sync rôles)
+- Membres (filtres, live in-game, fiches, **seuil de playtime par membre**)
+- Sanctions (8 types, escalade, **rétrogradation**, sync rôles)
 - Absences & réunions (workflows)
-- Plaintes : clôture **synchronisée Discord** (thread archivé + DM et push au plaignant)
+- Plaintes & **suggestions** : clôture **synchronisée Discord** (votes, fil de commentaires, thread archivé + DM/push)
 - Recrutement + **classement quota recruteurs**
+- **Rappels de dettes intelligents** (escalade + alerte État-Major, auto)
 - Whitelists & armes in-game **en live**
 - **Autorisations** : accès panel gérés en un clic
 - Audit complet de chaque action
@@ -189,6 +190,7 @@ flowchart LR
 - **Assistant Règlement IA** (mini-chat intégré)
 - **App installable partout** : PWA (iPhone/Android) **+ appli Windows** (ferme en barre des tâches, notifs natives), diffusée via une page `/install` unique
 - **12 notifications push** automatiques (sanctions panel & IG, absences, réunions, plaintes, recrutement, justifications) + doublure DM Discord
+- **Playtime de la semaine** (objectif perso, masqué le week-end)
 - Calculateur de rentabilité
 - Guides publics (build, conduite…)
 
@@ -224,6 +226,7 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🖥️ Appli de bureau Windows (Electron), cross-buildée depuis Linux.** Wrapper qui **ferme dans la barre des tâches** (croix = masquer), se lance au démarrage et garde une instance unique. Comme le web push ne marche pas dans Electron (pas de clés FCM), un **pont maison** relaie les notifications : le panel les publie dans un bus mémoire, l'appli (repérée par son User-Agent) le sonde et affiche des toasts natifs. Installeur NSIS produit sous `wine`, distribué en un lien via `/install`.
 - **🤖 Assistant Règlement par IA (RAG maison, 0 €).** Le corpus complet du règlement (3 pages web + 1 Google Doc) est extrait, nettoyé et mis en cache, puis injecté à un LLM **Gemini en offre gratuite**. Réponses structurées (verdict + explication + article cité), **mémoire de conversation** par joueur (les questions de suivi gardent le contexte), **bascule automatique entre modèles** quand un quota journalier est épuisé, et **quotas partagés Discord ↔ site** (un seul moteur derrière la commande `/reglement` et le mini-chat du site).
 - **⏱️ Pollers conscients du quota.** ~57 requêtes / 15 min vers l'API tierce — **sous le budget de 100 req/15 min** — avec backoff automatique sur HTTP 429 et garde anti-chevauchement (`isRunning`).
+- **♻️ Réconciliateurs de fond auto-correcteurs.** **Détection automatique des départs** (balayage toutes les 10 min : un membre absent du roster depuis > 30 min est désactivé — sans jamais rien casser, car la sync le réactive tout seul s'il revient). Et des **rappels de dettes intelligents** : cooldown **en jours ancré sur l'heure d'envoi**, mémoire de qui rembourse, messages qui **escaladent** et **alerte de l'État-Major** au 3ᵉ rappel — déclenchables en auto (cron) comme à la main.
 - **🧱 Pensé sécurité de bout en bout** : OAuth obligatoire, secrets *fail-closed*, PII (Discord↔Steam↔RP) réservée au staff, services internes bindés en `127.0.0.1`, secrets git-ignorés, surface de debug fermée en production. **Audité route par route** (l'intégralité des endpoints), avec vérification de la signature des interactions Discord et durcissement des tiers d'écriture.
 
 ---
