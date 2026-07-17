@@ -11,6 +11,7 @@ import {
   ButtonInteraction,
   ModalSubmitInteraction,
   TextChannel,
+  ChannelType,
 } from "discord.js";
 
 /**
@@ -44,6 +45,9 @@ type Sug = {
   status: string;
   votes: number;
   authorName: string;
+  staffNote?: string | null;
+  comments?: { authorName: string; message: string }[];
+  commentCount?: number;
   discordMessageId: string | null;
   discordChannelId: string | null;
 };
@@ -57,7 +61,7 @@ const STATUS_META: Record<string, { label: string; color: number }> = {
 
 function buildEmbed(s: Sug): EmbedBuilder {
   const meta = STATUS_META[s.status] ?? STATUS_META.OPEN;
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`💡 ${s.title}`.slice(0, 256))
     .setDescription(s.description.slice(0, 4000))
     .addFields(
@@ -66,6 +70,22 @@ function buildEmbed(s: Sug): EmbedBuilder {
     )
     .setColor(meta.color)
     .setFooter({ text: "Vote avec le bouton — 1 vote par membre (site ou Discord)" });
+  const comments = Array.isArray(s.comments) ? s.comments : [];
+  if (comments.length) {
+    const shown = comments.slice(-4); // les 4 derniers commentaires
+    const text = shown.map((c) => `**${c.authorName}** : ${c.message}`).join("\n\n").slice(0, 1024);
+    embed.addFields({ name: `💬 Réponses du staff (${comments.length})`, value: text || "—" });
+  } else if (s.staffNote && s.staffNote.trim()) {
+    embed.addFields({ name: "💬 Réponse du staff", value: s.staffNote.slice(0, 1024) });
+  }
+  return embed;
+}
+
+// Nom du post forum PRÉFIXÉ par le statut → reconnaissable dans la liste du
+// salon sans ouvrir le post (🔎 À l'étude / 📌 Prévu / ✅ Fait / ❌ Refusé).
+function threadName(s: Sug): string {
+  const meta = STATUS_META[s.status] ?? STATUS_META.OPEN;
+  return `${meta.label} · ${s.title || `Suggestion ${s.id}`}`.slice(0, 100);
 }
 
 function buildRow(id: string, votes: number): ActionRowBuilder<ButtonBuilder> {
@@ -75,7 +95,31 @@ function buildRow(id: string, votes: number): ActionRowBuilder<ButtonBuilder> {
 }
 
 // État rendu en mémoire (partagé reconciler + bouton) → évite les éditions inutiles.
-const rendered = new Map<string, { votes: number; status: string; messageId: string }>();
+const rendered = new Map<string, { votes: number; status: string; commentCount: number; messageId: string }>();
+
+/**
+ * Poste une suggestion dans le salon — gère les salons TEXTE (send) ET FORUM
+ * (création d'un post/thread). Sur un forum, l'ID du thread == l'ID du message
+ * de départ, donc messageId === channelId (le thread).
+ */
+async function postSuggestion(
+  channel: unknown,
+  sug: Sug
+): Promise<{ messageId: string; channelId: string } | null> {
+  const ch = channel as any;
+  if (ch?.type === ChannelType.GuildForum) {
+    const thread = await ch.threads.create({
+      name: threadName(sug),
+      message: { embeds: [buildEmbed(sug)], components: [buildRow(sug.id, sug.votes)] },
+    });
+    return { messageId: thread.id, channelId: thread.id };
+  }
+  if (typeof ch?.isTextBased === "function" && ch.isTextBased()) {
+    const msg = await ch.send({ embeds: [buildEmbed(sug)], components: [buildRow(sug.id, sug.votes)] });
+    return { messageId: msg.id, channelId: ch.id };
+  }
+  return null;
+}
 
 /** /suggestion → ouvre le modal (titre + description). */
 export async function handleSuggestionCommand(interaction: ChatInputCommandInteraction) {
@@ -122,23 +166,24 @@ export async function handleSuggestionModalSubmit(interaction: ModalSubmitIntera
       return;
     }
     const channel = await client.channels.fetch(SUGGESTIONS_CHANNEL_ID).catch(() => null);
-    if (channel?.isTextBased()) {
-      const sug: Sug = {
-        id: res.id,
-        title,
-        description,
-        status: "OPEN",
-        votes: res.votes ?? 1,
-        authorName: res.authorName ?? interaction.user.username,
-        discordMessageId: null,
-        discordChannelId: null,
-      };
-      const msg = await (channel as TextChannel).send({ embeds: [buildEmbed(sug)], components: [buildRow(res.id, sug.votes)] });
+    const sug: Sug = {
+      id: res.id,
+      title,
+      description,
+      status: "OPEN",
+      votes: res.votes ?? 1,
+      authorName: res.authorName ?? interaction.user.username,
+      staffNote: null,
+      discordMessageId: null,
+      discordChannelId: null,
+    };
+    const posted = channel ? await postSuggestion(channel, sug).catch(() => null) : null;
+    if (posted) {
       await panelFetch(`/api/discord/suggestions/${res.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ discordMessageId: msg.id, discordChannelId: channel.id }),
+        body: JSON.stringify({ discordMessageId: posted.messageId, discordChannelId: posted.channelId }),
       }).catch(() => {});
-      rendered.set(res.id, { votes: sug.votes, status: "OPEN", messageId: msg.id });
+      rendered.set(res.id, { votes: sug.votes, status: "OPEN", commentCount: 0, messageId: posted.messageId });
     }
     await interaction.editReply("✅ Ta suggestion est postée ! Les membres peuvent voter.");
   } catch (e) {
@@ -184,27 +229,35 @@ export function startSuggestionsReconciler(client: Client) {
       const res = await panelFetch("/api/discord/suggestions", { method: "GET" });
       if (!res?.ok || !Array.isArray(res.data)) return;
       for (const s of res.data as Sug[]) {
+        const commentCount = s.commentCount ?? (Array.isArray(s.comments) ? s.comments.length : 0);
         if (!s.discordMessageId) {
           const channel = await client.channels.fetch(SUGGESTIONS_CHANNEL_ID).catch(() => null);
-          if (!channel?.isTextBased()) continue;
-          const msg = await (channel as TextChannel).send({ embeds: [buildEmbed(s)], components: [buildRow(s.id, s.votes)] });
+          if (!channel) continue;
+          const posted = await postSuggestion(channel, s).catch(() => null);
+          if (!posted) continue;
           await panelFetch(`/api/discord/suggestions/${s.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ discordMessageId: msg.id, discordChannelId: channel.id }),
+            body: JSON.stringify({ discordMessageId: posted.messageId, discordChannelId: posted.channelId }),
           }).catch(() => {});
-          rendered.set(s.id, { votes: s.votes, status: s.status, messageId: msg.id });
+          rendered.set(s.id, { votes: s.votes, status: s.status, commentCount, messageId: posted.messageId });
         } else {
           const prev = rendered.get(s.id);
-          if (prev && prev.votes === s.votes && prev.status === s.status) continue;
+          if (prev && prev.votes === s.votes && prev.status === s.status && prev.commentCount === commentCount) continue;
+          const statusChanged = !prev || prev.status !== s.status;
           const channel = await client.channels.fetch(s.discordChannelId || SUGGESTIONS_CHANNEL_ID).catch(() => null);
           if (!channel?.isTextBased()) continue;
-          const msg = await (channel as TextChannel).messages.fetch(s.discordMessageId).catch(() => null);
+          const msg = await (channel as any).messages.fetch(s.discordMessageId).catch(() => null);
           if (!msg) {
             rendered.delete(s.id);
             continue;
           }
           await msg.edit({ embeds: [buildEmbed(s)], components: [buildRow(s.id, s.votes)] }).catch(() => {});
-          rendered.set(s.id, { votes: s.votes, status: s.status, messageId: s.discordMessageId });
+          // Statut changé → renomme le post forum pour que ce soit reconnaissable
+          // dans la liste du salon (🔎 À l'étude / 📌 Prévu / ✅ Fait / ❌ Refusé).
+          if (statusChanged && (channel as any).isThread?.() && typeof (channel as any).setName === "function") {
+            await (channel as any).setName(threadName(s)).catch(() => {});
+          }
+          rendered.set(s.id, { votes: s.votes, status: s.status, commentCount, messageId: s.discordMessageId });
         }
       }
     } catch (e) {

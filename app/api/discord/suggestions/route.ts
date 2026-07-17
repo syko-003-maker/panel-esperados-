@@ -25,10 +25,15 @@ export async function GET(req: Request) {
       title: true,
       description: true,
       status: true,
+      staffNote: true,
       discordMessageId: true,
       discordChannelId: true,
       author: { select: { rpName: true } },
       _count: { select: { votes: true } },
+      comments: {
+        select: { id: true, authorName: true, message: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
@@ -39,10 +44,13 @@ export async function GET(req: Request) {
     title: s.title,
     description: s.description,
     status: s.status,
+    staffNote: s.staffNote,
     votes: s._count.votes,
     authorName: s.author?.rpName ?? "?",
     discordMessageId: s.discordMessageId,
     discordChannelId: s.discordChannelId,
+    comments: s.comments.map((c) => ({ authorName: c.authorName, message: c.message })),
+    commentCount: s.comments.length,
   }));
   return NextResponse.json({ ok: true, data });
 }

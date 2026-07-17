@@ -25,6 +25,7 @@ import {
   Crown,
   Calculator,
   BookOpen,
+  Lightbulb,
 } from "lucide-react";
 
 const SIDEBAR_ITEMS = [
@@ -41,6 +42,7 @@ const SIDEBAR_ITEMS = [
     items: [
       { icon: Briefcase, label: "Recrutements", href: "/staff/recruitments" },
       { icon: FileText, label: "Plaintes", href: "/staff/complaints" },
+      { icon: Lightbulb, label: "Suggestions", href: "/staff/suggestions" },
       { icon: AlertCircle, label: "Sanctions", href: "/staff/sanctions" },
       { icon: TriangleAlert, label: "Warns in-game", href: "/staff/warns" },
       { icon: Clock, label: "Absences", href: "/staff/absences" },

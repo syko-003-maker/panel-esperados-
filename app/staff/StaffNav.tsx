@@ -113,6 +113,10 @@ export default function StaffNav({
           Plaintes
         </Link>
 
+        <Link href="/staff/suggestions" style={linkStyle("/staff/suggestions")}>
+          Suggestions
+        </Link>
+
         <Link href="/staff/meetings" style={linkStyle("/staff/meetings")}>
           Réunions
         </Link>
