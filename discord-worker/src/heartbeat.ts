@@ -126,6 +126,39 @@ export async function acquireSingleInstanceLock(): Promise<boolean> {
   }
 }
 
+/**
+ * Libère le verrou mono-instance à l'arrêt (SIGTERM/SIGINT) : supprime la ligne
+ * WorkerHeartbeat SI on en est encore le propriétaire (instanceId == le nôtre).
+ *
+ * Sans ça, après un arrêt la ligne reste « fraîche » jusqu'à LOCK_TTL_MS (150s)
+ * et la nouvelle instance se refuse le démarrage → crash-loop de ~150s à CHAQUE
+ * redémarrage / déploiement du worker. On ne supprime pas si une AUTRE instance
+ * a déjà repris le lock. Best-effort, non bloquant.
+ */
+export async function releaseSingleInstanceLock(): Promise<void> {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+  try {
+    const client = getPrisma();
+    await client.$transaction(async (tx) => {
+      const existing = await tx.workerHeartbeat.findUnique({ where: { familyId: FAMILY_ID } });
+      const owner = (existing?.meta as { instanceId?: string } | null)?.instanceId;
+      if (existing && owner === INSTANCE_ID) {
+        await tx.workerHeartbeat.delete({ where: { familyId: FAMILY_ID } });
+      }
+    });
+  } catch (err) {
+    console.error(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: "error",
+      event: "single_instance_lock_release_error",
+      error: err instanceof Error ? err.message : String(err),
+    }));
+  }
+}
+
 export function startHeartbeat(): void {
   if (intervalId) return;
   bootAt = Date.now();

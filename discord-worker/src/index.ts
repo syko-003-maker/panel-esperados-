@@ -151,6 +151,8 @@ import {
   getBanklogsSyncIntervalMs,
   getLastBanklogsAutoSyncAt,
 } from "./banklogs-auto-sync.js";
+import { runDebtRemindersJob, getDebtRemindersIntervalMs } from "./debt-reminders-auto.js";
+import { runDepartedSweepJob, getDepartedSweepIntervalMs } from "./departed-sweep-auto.js";
 import {
   runInfosAutoSyncJob,
   getInfosSyncIntervalMs,
@@ -174,7 +176,7 @@ import {
 import { syncHierarchyMessage } from "./features/hierarchy/hierarchyMessage.js";
 import { PrismaClient } from "@prisma/client";
 import { initSentry, captureException } from "./sentry.js";
-import { startHeartbeat, acquireSingleInstanceLock } from "./heartbeat.js";
+import { startHeartbeat, acquireSingleInstanceLock, releaseSingleInstanceLock } from "./heartbeat.js";
 import { sendDiscordAlert } from "./alerts.js";
 
 // Init Sentry au plus tôt (no-op si SENTRY_DSN absent — n'affecte pas le boot)
@@ -620,6 +622,18 @@ client.once("ready", async () => {
 
     // Schedule periodic sync
     setInterval(() => runBanklogsAutoSyncJob(), banklogsIntervalMs);
+
+    // Rappels de dettes automatiques (no-op côté panel si bankDebtAutoEnabled off).
+    const debtRemindersIntervalMs = getDebtRemindersIntervalMs();
+    setTimeout(() => runDebtRemindersJob(), 45_000);
+    setInterval(() => runDebtRemindersJob(), debtRemindersIntervalMs);
+    console.log("[DEBT_REMINDERS] scheduled", { intervalMs: debtRemindersIntervalMs });
+
+    // Désactivation auto des membres partis (plus vus au roster LYG).
+    const departedSweepIntervalMs = getDepartedSweepIntervalMs();
+    setTimeout(() => runDepartedSweepJob(), 60_000);
+    setInterval(() => runDepartedSweepJob(), departedSweepIntervalMs);
+    console.log("[DEPARTED_SWEEP] scheduled", { intervalMs: departedSweepIntervalMs });
 
     // Health check: warn if auto-sync appears stalled.
     // Seuil adaptatif (avant : 120_000 ms hardcodés → bruit énorme car le sync
@@ -1201,3 +1215,26 @@ void (async () => {
   }
   await client.login(must("DISCORD_TOKEN"));
 })();
+
+// Arrêt gracieux : à un SIGTERM/SIGINT (systemctl restart, déploiement), on
+// libère le verrou mono-instance AVANT de quitter pour que la nouvelle instance
+// reprenne la main immédiatement — sinon crash-loop de ~150s le temps que le
+// lock périme (voir releaseSingleInstanceLock).
+let shuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: "info",
+    event: "graceful_shutdown",
+    signal,
+  }));
+  const force = setTimeout(() => process.exit(0), 4000);
+  force.unref();
+  try { await releaseSingleInstanceLock(); } catch { /* best-effort */ }
+  try { client.destroy(); } catch { /* best-effort */ }
+  process.exit(0);
+}
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
