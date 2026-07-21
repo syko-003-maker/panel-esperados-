@@ -659,10 +659,10 @@ export default function MembersListClient() {
                       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Playtime 7j</span>
                       {hasCustomReq && (
                         <span
-                          className="rounded border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-200"
-                          title={`Seuil de playtime personnalisé : ${requiredMin} min requis en réunion (au lieu de 300).`}
+                          className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${requiredMin === 0 ? "border-emerald-500/35 bg-emerald-500/12 text-emerald-200" : "border-cyan-500/35 bg-cyan-500/12 text-cyan-200"}`}
+                          title={requiredMin === 0 ? "Exempté de playtime : aucun minimum requis en réunion." : `Seuil de playtime personnalisé : ${requiredMin} min requis en réunion (au lieu de 300).`}
                         >
-                          seuil {requiredMin}m
+                          {requiredMin === 0 ? "exempté" : `seuil ${requiredMin}m`}
                         </span>
                       )}
                     </div>

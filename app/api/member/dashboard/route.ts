@@ -266,7 +266,7 @@ export async function GET(req: NextRequest) {
     // (Calculé côté serveur → la valeur n'est même pas envoyée le week-end.)
     const playtimeHidden = isMemberPlaytimeHidden();
     const requiredMinutes =
-      typeof playtimeRequiredMinutes === "number" && playtimeRequiredMinutes > 0
+      typeof playtimeRequiredMinutes === "number" && playtimeRequiredMinutes >= 0
         ? playtimeRequiredMinutes
         : 300;
     const playtime = playtimeHidden

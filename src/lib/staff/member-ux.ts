@@ -83,13 +83,14 @@ export const DEFAULT_PLAYTIME_REQUIRED_MINUTES = 300;
 
 export function getMemberRequiredMinutes(member: { playtimeRequiredMinutes?: number | null }): number {
   const v = member?.playtimeRequiredMinutes;
-  return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : DEFAULT_PLAYTIME_REQUIRED_MINUTES;
+  // >= 0 : 0 = exempté (aucun minimum). null → défaut 300.
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : DEFAULT_PLAYTIME_REQUIRED_MINUTES;
 }
 
 export function hasCustomPlaytimeRequirement(member: { playtimeRequiredMinutes?: number | null }): boolean {
   const v = member?.playtimeRequiredMinutes;
   return (
-    typeof v === "number" && Number.isFinite(v) && v > 0 && Math.floor(v) !== DEFAULT_PLAYTIME_REQUIRED_MINUTES
+    typeof v === "number" && Number.isFinite(v) && v >= 0 && Math.floor(v) !== DEFAULT_PLAYTIME_REQUIRED_MINUTES
   );
 }
 
@@ -145,6 +146,7 @@ export function getActivityBand(
   const byKey = (k: string) =>
     ACTIVITY_VISUAL_THRESHOLDS.find((t) => t.key === k) ??
     ACTIVITY_VISUAL_THRESHOLDS[ACTIVITY_VISUAL_THRESHOLDS.length - 1];
+  if (required === 0) return byKey("high"); // exempté de playtime → toujours "ok"
   if (minutes <= 0) return byKey("inactive");
   if (minutes >= req) return byKey("high");
   if (minutes >= req / 3) return byKey("active");
@@ -155,6 +157,7 @@ export function getActivityScore(
   playtime7d: number | null | undefined,
   required: number = DEFAULT_PLAYTIME_REQUIRED_MINUTES,
 ): number {
+  if (required === 0) return 100; // exempté de playtime → barre pleine
   const minutes = normalizePlaytimeMinutes(playtime7d);
   const req = required > 0 ? required : DEFAULT_PLAYTIME_REQUIRED_MINUTES;
   return Math.max(0, Math.min(100, Math.round((minutes / req) * 100)));
@@ -185,6 +188,7 @@ export function formatPlaytimeDelta(delta: number | null | undefined): string {
 
 export function isWatchMember(member: MemberItem, analyticsAvailable: boolean): boolean {
   if (isActivityExempt(member)) return false;
+  if (getMemberRequiredMinutes(member) === 0) return false; // exempté de playtime
 
   const status = getMemberStatus(member);
   const minutes = normalizePlaytimeMinutes(member.playtime7d);
@@ -211,11 +215,14 @@ export function getMemberFlags(member: MemberItem, analyticsAvailable: boolean):
   // Exception de playtime requis (accordée à ce membre) : badge visible pour
   // que le staff sache qu'il n'est PAS jugé sur les 300 min habituelles.
   if (hasCustomPlaytimeRequirement(member)) {
+    const exemptPt = req === 0;
     flags.push({
       key: "custom-playtime",
-      label: `Seuil ${req} min`,
+      label: exemptPt ? "Exempté playtime" : `Seuil ${req} min`,
       tone: "cyan",
-      description: `Playtime requis personnalisé : ${req} min en réunion (au lieu de 300).`,
+      description: exemptPt
+        ? "Exempté de playtime : aucun minimum requis en réunion."
+        : `Playtime requis personnalisé : ${req} min en réunion (au lieu de 300).`,
     });
   }
 

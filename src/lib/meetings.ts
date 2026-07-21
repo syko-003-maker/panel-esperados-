@@ -15,9 +15,11 @@ export const MEETING_PLAYTIME_THRESHOLD_MINUTES = 300;
 export function resolveRequiredPlaytimeMinutes(
   playtimeRequiredMinutes: number | null | undefined,
 ): number {
+  // >= 0 : 0 = membre EXEMPTÉ de playtime (aucun minimum requis → toujours
+  // "présent"). null/undefined → seuil par défaut (300).
   return typeof playtimeRequiredMinutes === "number" &&
     Number.isFinite(playtimeRequiredMinutes) &&
-    playtimeRequiredMinutes > 0
+    playtimeRequiredMinutes >= 0
     ? Math.floor(playtimeRequiredMinutes)
     : MEETING_PLAYTIME_THRESHOLD_MINUTES;
 }

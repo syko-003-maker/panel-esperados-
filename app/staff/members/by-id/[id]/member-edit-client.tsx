@@ -186,7 +186,7 @@ export function MemberEditClient({ member }: { member: Member }) {
             <Input
               id="playtimeReq"
               type="number"
-              min={1}
+              min={0}
               step={1}
               value={playtimeReq}
               onChange={(e) => setPlaytimeReq(e.target.value)}
@@ -197,7 +197,8 @@ export function MemberEditClient({ member }: { member: Member }) {
             <p className="text-xs text-muted-foreground">
               Exception accordée à ce membre pour être compté{" "}
               <span className="font-medium text-foreground">présent</span> en réunion.{" "}
-              <span className="text-amber-300/90">Vide = seuil normal (300 min).</span>
+              <span className="text-amber-300/90">Vide = seuil normal (300 min).</span>{" "}
+              <span className="text-emerald-300/90">0 = exempté (aucun playtime requis).</span>
             </p>
           </div>
 

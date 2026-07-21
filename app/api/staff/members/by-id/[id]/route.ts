@@ -56,16 +56,16 @@ export async function PATCH(
     }
 
     // Exception de playtime requis (réunion) : vide/null → retire l'exception
-    // (seuil par défaut 300), sinon un entier de minutes > 0.
+    // (seuil par défaut 300) ; 0 = EXEMPTÉ (aucun minimum) ; sinon entier > 0.
     if (playtimeRequiredMinutes !== undefined) {
       const raw = String(playtimeRequiredMinutes ?? "").trim();
       if (raw === "") {
         updateData.playtimeRequiredMinutes = null;
       } else {
         const n = Number(raw);
-        if (!Number.isInteger(n) || n <= 0 || n > 100000) {
+        if (!Number.isInteger(n) || n < 0 || n > 100000) {
           return NextResponse.json(
-            { ok: false, error: "Playtime requis invalide (entier de minutes > 0)" },
+            { ok: false, error: "Playtime requis invalide (entier de minutes ≥ 0 ; 0 = exempté)" },
             { status: 400 }
           );
         }
