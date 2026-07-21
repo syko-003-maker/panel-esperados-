@@ -153,6 +153,8 @@ import {
 } from "./banklogs-auto-sync.js";
 import { runDebtRemindersJob, getDebtRemindersIntervalMs } from "./debt-reminders-auto.js";
 import { runDepartedSweepJob, getDepartedSweepIntervalMs } from "./departed-sweep-auto.js";
+import { runWlReconcileJob, getWlReconcileIntervalMs } from "./wl-reconcile-auto.js";
+import { runGradeReconcileJob, getGradeReconcileIntervalMs } from "./grade-reconcile-auto.js";
 import {
   runInfosAutoSyncJob,
   getInfosSyncIntervalMs,
@@ -634,6 +636,20 @@ client.once("ready", async () => {
     setTimeout(() => runDepartedSweepJob(), 60_000);
     setInterval(() => runDepartedSweepJob(), departedSweepIntervalMs);
     console.log("[DEPARTED_SWEEP] scheduled", { intervalMs: departedSweepIntervalMs });
+
+    // Réconciliation WL : tout Subteniente encore en WL<3 est remonté en WL3
+    // (en direct sur LYG). N'agit que sur un vrai écart, ne rétrograde jamais.
+    const wlReconcileIntervalMs = getWlReconcileIntervalMs();
+    setTimeout(() => runWlReconcileJob(), 90_000);
+    setInterval(() => runWlReconcileJob(), wlReconcileIntervalMs);
+    console.log("[WL_RECONCILE] scheduled", { intervalMs: wlReconcileIntervalMs });
+
+    // Réconciliation des grades stockés vs rôle Discord réel (base uniquement,
+    // aucune écriture Discord). Corrige les grades restés en retard.
+    const gradeReconcileIntervalMs = getGradeReconcileIntervalMs();
+    setTimeout(() => runGradeReconcileJob(), 100_000);
+    setInterval(() => runGradeReconcileJob(), gradeReconcileIntervalMs);
+    console.log("[GRADE_RECONCILE] scheduled", { intervalMs: gradeReconcileIntervalMs });
 
     // Health check: warn if auto-sync appears stalled.
     // Seuil adaptatif (avant : 120_000 ms hardcodés → bruit énorme car le sync
