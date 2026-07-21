@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { StyledSelect } from "@/components/staff/ui/StyledSelect";
 import { MotionListItem } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
+import TrendCard from "@/components/charts/trend-card";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { useDiscordAvatars } from "@/lib/hooks/useDiscordAvatars";
 
@@ -119,6 +120,13 @@ export default function StatsClient(props: StatsClientProps) {
 
   return (
     <div className="space-y-6">
+      {/* Évolution d'ensemble de la famille — coffre (cumulé) + playtime total */}
+      <TrendCard
+        endpoint="/api/staff/series"
+        title="Évolution de la famille (coffre & playtime)"
+        defaultMetric="money"
+      />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
         <RankedMiniList title="Top entrants"  icon={TrendingUp}  rows={props.topDeposits}  color="text-emerald-300" avatars={avatars} />
         <RankedMiniList title="Top sortants"  icon={TrendingDown} rows={props.topWithdraws} color="text-blue-300"   avatars={avatars} />

@@ -8,6 +8,7 @@ import StaffOnlineStrip from "@/components/lyg/staff-online-strip";
 import FamilyOnlineStrip from "@/components/lyg/family-online-strip";
 import ServerOnlineStrip from "@/components/lyg/server-online-strip";
 import FamiliesRankingCard from "@/components/lyg/families-ranking-card";
+import TrendCard from "@/components/charts/trend-card";
 import {
   Crown,
   AlertCircle,
@@ -363,6 +364,19 @@ export default function DashboardClient() {
             (() => {
               const min = playtime.minutes ?? 0;
               const req = playtime.requiredMinutes;
+              if (req === 0) {
+                return (
+                  <div className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3">
+                    <span className="text-2xl">🎉</span>
+                    <div className="text-sm text-slate-300">
+                      <div className="font-semibold text-emerald-200">Exempté de playtime</div>
+                      <p className="mt-0.5 text-xs leading-5 text-slate-400">
+                        Aucun minimum de temps de jeu ne t'est demandé en réunion.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
               const pct = Math.max(0, Math.min(100, Math.round((min / req) * 100)));
               const reached = min >= req;
               const fmt = (v: number) => {
@@ -487,6 +501,9 @@ export default function DashboardClient() {
           </div>
         );
       })()}
+
+      {/* Courbe d'évolution — argent (solde coffre) + playtime (bascule) */}
+      <TrendCard endpoint="/api/member/series" title="Ton évolution" defaultMetric="money" />
 
       {/* Transactions (réduites) + Hiérarchie famille côte à côte */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
