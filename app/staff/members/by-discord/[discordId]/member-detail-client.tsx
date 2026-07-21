@@ -10,8 +10,10 @@ import { LoadingState } from "@/components/staff/ui/LoadingState";
 import { MotionButtonFrame, MotionSection } from "@/components/staff/ui/motion";
 import { PageShell } from "@/components/staff/ui/PageShell";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
+import TrendCard from "@/components/charts/trend-card";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { getGradeBadgeProps } from "@/lib/grade-colors";
+import { ASSIGNABLE_GRADES } from "@/lib/staff/grade-options";
 import { getMemberDisplayName, getNeutralRankBadge, resolveStableRank } from "@/lib/member-display";
 import { getSanctionLabel } from "@/lib/sanctions";
 import {
@@ -156,6 +158,9 @@ export function MemberDetailClient({
 	const [warnsTotal, setWarnsTotal] = useState(0);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [gradeTarget, setGradeTarget] = useState("");
+	const [gradeSaving, setGradeSaving] = useState(false);
+	const [gradeMsg, setGradeMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
 	useEffect(() => {
 		async function loadRelatedData() {
@@ -232,6 +237,34 @@ export function MemberDetailClient({
 
 	const rankTone = stableRank.rankRoleId || stableRank.rankLabel ? "accent" : stableRank.neutralState ? "warning" : "neutral";
 
+	async function onChangeGrade() {
+		if (!gradeTarget || gradeSaving) return;
+		const label = ASSIGNABLE_GRADES.find((g) => g.roleId === gradeTarget)?.label ?? "ce grade";
+		if (!window.confirm(`Changer le grade de ${displayName} → ${label} ?\nLe rôle Discord sera mis à jour par le bot.`)) return;
+		setGradeSaving(true);
+		setGradeMsg(null);
+		try {
+			const res = await fetch("/api/staff/members/set-grade", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ memberId: member.id, targetRoleId: gradeTarget }),
+			});
+			const json = await res.json();
+			if (!res.ok || !json?.ok) {
+				setGradeMsg({ ok: false, text: json?.message || json?.error || "Échec du changement de grade." });
+			} else {
+				setGradeMsg({
+					ok: true,
+					text: `✅ ${json.oldGrade ?? "?"} → ${json.newGrade}. Le rôle Discord se met à jour dans quelques secondes.`,
+				});
+				setGradeTarget("");
+			}
+		} catch (e: any) {
+			setGradeMsg({ ok: false, text: e?.message || "Erreur réseau." });
+		} finally {
+			setGradeSaving(false);
+		}
+	}
 
 	return (
 		<PageShell
@@ -308,6 +341,55 @@ export function MemberDetailClient({
 					</div>
 				</MotionSection>
 			) : null}
+
+			<MotionSection delay={0.06}>
+				<TrendCard
+					endpoint={`/api/staff/series?memberId=${member.id}`}
+					title="Évolution (argent & playtime)"
+					defaultMetric="money"
+				/>
+			</MotionSection>
+
+			<MotionSection delay={0.065}>
+				<SectionCard
+					title="Changer le grade"
+					description="Promouvoir ou rétrograder ce membre (hors réunion). Le rôle de grade Discord est appliqué par le bot."
+					icon={UserRound}
+				>
+					<div className="flex flex-wrap items-end gap-3">
+						<div className="flex min-w-[200px] flex-1 flex-col gap-1">
+							<label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Nouveau grade</label>
+							<select
+								value={gradeTarget}
+								onChange={(e) => setGradeTarget(e.target.value)}
+								disabled={gradeSaving}
+								className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 focus:border-amber-500/40 focus:outline-none"
+							>
+								<option value="" className="bg-slate-950">— choisir un grade —</option>
+								{ASSIGNABLE_GRADES.map((g) => (
+									<option key={g.roleId} value={g.roleId} className="bg-slate-950 text-slate-100">
+										{g.label}
+									</option>
+								))}
+							</select>
+						</div>
+						<button
+							type="button"
+							onClick={onChangeGrade}
+							disabled={!gradeTarget || gradeSaving}
+							className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{gradeSaving ? "Application…" : "Appliquer"}
+						</button>
+					</div>
+					<p className="mt-2 text-xs text-slate-500">
+						Grade actuel : <span className="font-semibold text-slate-300">{member.grade ?? stableRank.rankLabel ?? "—"}</span>. Chef famille exclu.
+					</p>
+					{gradeMsg && (
+						<p className={`mt-2 text-sm ${gradeMsg.ok ? "text-emerald-300" : "text-red-300"}`}>{gradeMsg.text}</p>
+					)}
+				</SectionCard>
+			</MotionSection>
 
 			{error ? (
 				<SectionCard
