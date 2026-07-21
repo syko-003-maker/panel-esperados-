@@ -24,7 +24,7 @@ import { logAdminCommand } from "./lib/admin-command-log.js";
 import {
   buildModerationCommands,
   handleBan, handleKick, handleMute,
-  handleWarn, handleWarns, handleUnwarn, handleClear,
+  handleWarn, handleWarns, handleUnwarn, handleClear, handlePurgeUser,
 } from "./features/moderation/moderation.js";
 import {
   createLinkCommand,
@@ -489,6 +489,8 @@ export async function handleCommand(
       return handleUnwarn(interaction);
     case "clear":
       return handleClear(interaction);
+    case "purge-user":
+      return handlePurgeUser(interaction);
     default:
       await interaction.reply({
         content: "❌ Commande inconnue.",

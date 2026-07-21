@@ -7,8 +7,10 @@ import {
   SlashCommandBuilder,
   EmbedBuilder,
   PermissionFlagsBits,
+  ChannelType,
   type ChatInputCommandInteraction,
   type Client,
+  type TextChannel,
 } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 
@@ -23,7 +25,7 @@ export function buildModerationCommands() {
       .setDescription("Bannir un membre du serveur")
       .addUserOption((o) => o.setName("membre").setDescription("Membre à bannir").setRequired(true))
       .addStringOption((o) => o.setName("raison").setDescription("Raison du ban").setRequired(true))
-      .addIntegerOption((o) => o.setName("jours").setDescription("Supprimer les messages des X derniers jours (0-7)").setMinValue(0).setMaxValue(7))
+      .addIntegerOption((o) => o.setName("jours").setDescription("Supprimer les messages des X derniers jours (0-7 · défaut 1 = dernières 24h)").setMinValue(0).setMaxValue(7))
       .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
       .setDMPermission(false),
 
@@ -73,6 +75,13 @@ export function buildModerationCommands() {
       .addUserOption((o) => o.setName("membre").setDescription("Filtrer par membre (optionnel)").setRequired(false))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
       .setDMPermission(false),
+
+    new SlashCommandBuilder()
+      .setName("purge-user")
+      .setDescription("Supprimer les messages récents d'un utilisateur (même banni) dans tous les salons")
+      .addStringOption((o) => o.setName("id").setDescription("ID de l'utilisateur (clic droit → Copier l'identifiant, mode dev activé)").setRequired(true))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+      .setDMPermission(false),
   ];
 }
 
@@ -83,7 +92,9 @@ export async function handleBan(interaction: ChatInputCommandInteraction): Promi
 
   const target = interaction.options.getUser("membre", true);
   const reason = interaction.options.getString("raison", true);
-  const days   = interaction.options.getInteger("jours") ?? 0;
+  // Défaut 1 jour : un ban nettoie les messages récents du banni (24h) — évite
+  // qu'un spam reste après coup. Mettre jours:0 pour ne rien supprimer.
+  const days   = interaction.options.getInteger("jours") ?? 1;
 
   if (!interaction.guild) { await interaction.editReply("❌ Commande utilisable uniquement dans un serveur."); return; }
   if (target.id === interaction.user.id) { await interaction.editReply("❌ Tu ne peux pas te bannir toi-même."); return; }
@@ -348,4 +359,46 @@ export async function handleClear(interaction: ChatInputCommandInteraction): Pro
   } catch (err: any) {
     await interaction.editReply(`❌ Erreur : ${err.message}`);
   }
+}
+
+/**
+ * /purge-user — supprime les messages récents (<14j) d'un utilisateur dans TOUS
+ * les salons texte. Prend un ID brut → fonctionne même sur un membre déjà banni
+ * (contrairement à /clear qui demande de pointer un membre encore présent).
+ */
+export async function handlePurgeUser(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ ephemeral: true });
+
+  if (!interaction.guild) { await interaction.editReply("❌ Commande utilisable uniquement dans un serveur."); return; }
+
+  const raw = interaction.options.getString("id", true).trim();
+  const userId = raw.replace(/[<@!>\s]/g, "");
+  if (!/^\d{15,25}$/.test(userId)) {
+    await interaction.editReply("❌ ID invalide. Active le mode développeur, puis clic droit sur l'utilisateur → « Copier l'identifiant ».");
+    return;
+  }
+
+  let total = 0;
+  let channelsHit = 0;
+
+  const channels = interaction.guild.channels.cache.filter(
+    (c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement
+  );
+
+  for (const [, ch] of channels) {
+    const textCh = ch as TextChannel;
+    try {
+      const messages = await textCh.messages.fetch({ limit: 100 });
+      const mine = messages.filter((m) => m.author.id === userId);
+      if (mine.size === 0) continue;
+      const deleted = await textCh.bulkDelete(mine, true); // true = ignore les messages > 14 jours
+      total += deleted.size;
+      if (deleted.size > 0) channelsHit++;
+    } catch { /* pas les permissions dans ce salon → on ignore */ }
+  }
+
+  await interaction.editReply(
+    `✅ **${total}** message(s) supprimé(s) de \`${userId}\` dans **${channelsHit}** salon(s).\n` +
+    `_(Seuls les messages de moins de 14 jours peuvent être supprimés en masse.)_`
+  );
 }

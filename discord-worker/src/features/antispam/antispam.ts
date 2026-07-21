@@ -48,6 +48,20 @@ const LINK_BLACKLIST_PATTERNS: RegExp[] = [
 
 const LINK_REGEX = /https?:\/\/[^\s<>\"]+/gi;
 
+// Invitations Discord EXTERNES (pub pour d'autres serveurs) ─────────────────
+const INVITE_MUTE = 30; // minutes (invite externe SANS signal adulte)
+// Vrais codes d'invitation Discord (résolvables via l'API)
+const DISCORD_INVITE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:discord(?:app)?\.com\/invite|discord\.gg)\/([\w-]+)/gi;
+// Redirecteurs d'invitation tiers (quasi toujours de la pub) → traités comme externes
+const INVITE_REDIRECTOR_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:discord\.me|dsc\.gg|invite\.gg|disboard\.org\/server\/join)\/[\w-]+/i;
+// Signaux "adulte/spam" — combinés à une invite externe → BAN auto
+const ADULT_PATTERNS: RegExp[] = [
+  /18\s*\+/, /\bnsfw\b/i, /onlyfans/i, /\bporn/i, /\bxxx\b/i, /\bnudes?\b/i,
+  /\bteens?\b/i, /sexcam/i, /camgirls?/i, /\bescort/i, /🔞/, /\bhorny\b/i, /\bmilf\b/i,
+  /filles?\s+(?:chaudes?|nues?|coquines?|hot)/i, /nudes?\s+(?:gratuit|leak)/i,
+  /\bleaks?\b/i, /rencontres?\s+coquines?/i, /sexe\s+gratuit/i, /\bsugar\s?daddy\b/i,
+];
+
 // ─── State (en mémoire) ───────────────────────────────────────────────────────
 
 /** Flood : timestamps des messages récents par userId */
@@ -132,6 +146,51 @@ function isBlacklisted(url: string): boolean {
   }
 }
 
+function hasAdultSignals(content: string): boolean {
+  return ADULT_PATTERNS.some((p) => p.test(content));
+}
+
+/**
+ * Détecte une invitation vers un serveur Discord EXTERNE (≠ le nôtre).
+ * Les redirecteurs tiers et les codes non résolvables sont considérés externes.
+ */
+async function hasForeignInvite(message: Message): Promise<boolean> {
+  const content = message.content;
+  if (INVITE_REDIRECTOR_REGEX.test(content)) return true;
+  const codes = [...content.matchAll(DISCORD_INVITE_REGEX)].map((m) => m[1]);
+  for (const code of codes) {
+    try {
+      const invite = await message.client.fetchInvite(code);
+      if (!invite.guild || invite.guild.id !== message.guild!.id) return true;
+    } catch {
+      return true; // code mort / non résolvable → considéré externe
+    }
+  }
+  return false;
+}
+
+/** Supprime le message, bannit le membre (+ purge des messages 24h) et loggue. */
+async function banAndLog(member: GuildMember, reason: string, message: Message): Promise<void> {
+  try {
+    await message.delete().catch(() => {});
+    await member.ban({ reason: `[Anti-spam] ${reason}`, deleteMessageSeconds: 24 * 3600 });
+
+    const embed = new EmbedBuilder()
+      .setTitle("🔨 Anti-spam — Ban automatique")
+      .setColor(0xdc2626)
+      .setAuthor({ name: member.user.tag, iconURL: member.user.displayAvatarURL({ size: 64 }) })
+      .addFields(
+        { name: "👤 Membre",   value: `<@${member.id}> \`${member.id}\``,        inline: true },
+        { name: "📌 Salon",    value: `<#${message.channelId}>`,                 inline: true },
+        { name: "📋 Raison",   value: reason,                                    inline: false },
+        { name: "🧹 Nettoyage", value: "Messages des dernières 24h supprimés",    inline: false },
+      )
+      .setTimestamp();
+
+    sendLog(message.guild!, embed);
+  } catch { /* rôle trop haut / permissions insuffisantes */ }
+}
+
 // ─── Export principal ─────────────────────────────────────────────────────────
 
 export async function handleAntispam(message: Message): Promise<void> {
@@ -176,7 +235,24 @@ export async function handleAntispam(message: Message): Promise<void> {
     return;
   }
 
-  // 3. Lien blacklisté (phishing/scam connu) — système progressif ─────────────
+  // 3. Invitation vers un Discord EXTERNE (pub) ────────────────────────────────
+  // Choix staff : ban auto si signaux adulte/spam, sinon suppression + mute +
+  // alerte (le log embed prévient le staff). Staff exempté plus haut.
+  if (await hasForeignInvite(message)) {
+    if (hasAdultSignals(message.content)) {
+      await banAndLog(member, "Publicité pour un Discord externe à caractère adulte/spam", message);
+    } else {
+      await muteAndLog(
+        member,
+        "Invitation vers un Discord externe (publicité non autorisée)",
+        INVITE_MUTE,
+        message
+      );
+    }
+    return;
+  }
+
+  // 4. Lien blacklisté (phishing/scam connu) — système progressif ─────────────
   // Mode blacklist : tout est autorisé SAUF les domaines de phishing connus.
   // GIFs, embeds, partages média → tout passe désormais.
   const links = message.content.match(LINK_REGEX) ?? [];
