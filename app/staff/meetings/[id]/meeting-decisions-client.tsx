@@ -67,6 +67,8 @@ type MeetingRow = {
   status: AttendanceStatus;
   note: string;
   playtimeMinutes: number;
+  /** Seuil de playtime perso (exception ≠ 300) accordé à ce membre, sinon null. */
+  playtimeRequiredMinutes?: number | null;
   decisionType: MeetingDecisionType;
   sanctionReason: string;
   updatedAt: string;
@@ -78,6 +80,7 @@ type MeetingRow = {
     currentSanctionStatus: string | null;
     validatedWeeksCount: number;
     invalidatedWeeksCount: number;
+    weeksAtRankCount: number;
     continuityIndicator: string | null;
     recentMeetingHistory: Array<{
       meetingId: string;
@@ -161,9 +164,9 @@ const DECISION_OPTIONS: Array<{ value: MeetingDecisionType; label: string; color
   { value: "MAINTAIN",      label: "Maintenir",           color: "#475569", bg: "#f1f5f9" },
   { value: "UP",            label: "Up",                  color: "#166534", bg: "#dcfce7" },
   { value: "DOUBLE_UP",     label: "Double Up",           color: "#166534", bg: "#bbf7d0" },
-  { value: "WEEK_VALID_1",  label: "Semaine validée (1)", color: "#1d4ed8", bg: "#dbeafe" },
-  { value: "WEEK_VALID_2",  label: "Semaine validée (2)", color: "#1d4ed8", bg: "#dbeafe" },
-  { value: "WEEK_VALID_3",  label: "Semaine validée (3)", color: "#1d4ed8", bg: "#dbeafe" },
+  { value: "WEEK_VALID_1",  label: "Semaine validée",    color: "#1d4ed8", bg: "#dbeafe" },
+  { value: "WEEK_VALID_2",  label: "Semaine validée ×2", color: "#1d4ed8", bg: "#dbeafe" },
+  { value: "WEEK_VALID_3",  label: "Semaine validée ×3", color: "#1d4ed8", bg: "#dbeafe" },
   { value: "WEEK_INVALID",  label: "Semaine non validée", color: "#b91c1c", bg: "#fee2e2" },
   { value: "WARN_LIGHT",    label: "Avertissement léger", color: "#92400e", bg: "#fef3c7" },
   { value: "WARN_HEAVY",    label: "Avertissement lourd", color: "#b45309", bg: "#fde68a" },
@@ -280,6 +283,11 @@ function getMeetingTone(status: MeetingStatus, locked: boolean) {
 function getDecisionTone(value: MeetingDecisionType | "NONE") {
   if (["UP", "DOUBLE_UP", "WEEK_VALID_1", "WEEK_VALID_2", "WEEK_VALID_3"].includes(value)) {
     return "success" as const;
+  }
+  // "Retirer rang En test" = vraie décision → couleur (cyan) pour ne pas être
+  // confondue avec "aucune décision" (le ton neutre est presque transparent).
+  if (value === "REMOVE_TEST_RANK") {
+    return "info" as const;
   }
   if (["WARN_LIGHT", "WARN_HEAVY", "PLAYTIME_WARN", "WEEK_INVALID", "RESERVIST"].includes(value)) {
     return "warning" as const;
@@ -1033,6 +1041,18 @@ export function MeetingDecisionsClient({
                       <StatusBadge tone={getAttendanceTone(row.status)}>{getAttendanceLabel(row.status)}</StatusBadge>
                     </div>
 
+                    {/* Semaines validées à ce rang (depuis la dernière promotion) */}
+                    {row.continuity && row.continuity.weeksAtRankCount > 0 && (
+                      <div className="mt-1">
+                        <span
+                          className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-200"
+                          title="Semaines validées depuis sa dernière promotion (à ce rang)."
+                        >
+                          {row.continuity.weeksAtRankCount} sem. validée{row.continuity.weeksAtRankCount > 1 ? "s" : ""} à ce rang
+                        </span>
+                      </div>
+                    )}
+
                     {/* Continuity */}
                     {row.continuity?.continuityIndicator && (
                       <div className="text-[11px] text-slate-500">{row.continuity.continuityIndicator}</div>
@@ -1072,6 +1092,17 @@ export function MeetingDecisionsClient({
                           <StatusBadge>{row.playtimeMinutes} min</StatusBadge>
                         ) : (
                           <input type="number" min={0} step={1} value={Number.isFinite(row.playtimeMinutes) ? row.playtimeMinutes : 0} onChange={(e) => updateRowLocal(row.discordId, { playtimeMinutes: Math.max(0, Math.round(Number(e.target.value || 0))) })} className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none" />
+                        )}
+                        {row.playtimeRequiredMinutes == null ? (
+                          <span className="text-[10px] text-slate-500">seuil 300m</span>
+                        ) : row.playtimeRequiredMinutes === 0 ? (
+                          <span className="inline-flex w-fit items-center gap-1 rounded border border-emerald-500/35 bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200" title="Exempté de playtime : aucun minimum requis.">
+                            exempté playtime
+                          </span>
+                        ) : (
+                          <span className="inline-flex w-fit items-center gap-1 rounded border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200" title={`Exception : ${row.playtimeRequiredMinutes} min requis pour ce membre (au lieu de 300).`}>
+                            seuil perso {row.playtimeRequiredMinutes}m
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1179,6 +1210,23 @@ export function MeetingDecisionsClient({
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
                             <StatusBadge tone={getAttendanceTone(row.status)}>{getAttendanceLabel(row.status)}</StatusBadge>
                             <StatusBadge>{row.playtimeMinutes} min</StatusBadge>
+                            {row.playtimeRequiredMinutes == null ? null : row.playtimeRequiredMinutes === 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded border border-emerald-500/35 bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200" title="Exempté de playtime.">
+                                exempté
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200" title={`Exception : ${row.playtimeRequiredMinutes} min requis (au lieu de 300).`}>
+                                seuil perso {row.playtimeRequiredMinutes}m
+                              </span>
+                            )}
+                            {row.continuity && row.continuity.weeksAtRankCount > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200"
+                                title="Semaines validées depuis sa dernière promotion (à ce rang)."
+                              >
+                                {row.continuity.weeksAtRankCount} sem. validée{row.continuity.weeksAtRankCount > 1 ? "s" : ""}
+                              </span>
+                            )}
                           </div>
                           {row.continuity?.continuityIndicator && (
                             <div className="mt-1 text-[11px] leading-4 text-slate-500">
@@ -1246,6 +1294,15 @@ export function MeetingDecisionsClient({
                           }
                           className="w-24 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/40 focus:outline-none"
                         />
+                      )}
+                      {row.playtimeRequiredMinutes == null ? null : row.playtimeRequiredMinutes === 0 ? (
+                        <div className="mt-1 inline-flex items-center gap-1 rounded border border-emerald-500/35 bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200" title="Exempté de playtime.">
+                          exempté
+                        </div>
+                      ) : (
+                        <div className="mt-1 inline-flex items-center gap-1 rounded border border-cyan-500/35 bg-cyan-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200" title={`Exception : ${row.playtimeRequiredMinutes} min requis (au lieu de 300).`}>
+                          seuil perso {row.playtimeRequiredMinutes}m
+                        </div>
                       )}
                     </td>
 

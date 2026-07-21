@@ -37,6 +37,8 @@ type MeetingRowContinuity = {
   currentSanctionStatus: string | null;
   validatedWeeksCount: number;
   invalidatedWeeksCount: number;
+  /** Semaines validées AU RANG ACTUEL (depuis la dernière promotion). */
+  weeksAtRankCount: number;
   recentMeetingHistory: MeetingHistoryItem[];
   continuityIndicator: string | null;
 };
@@ -109,9 +111,11 @@ function buildContinuityIndicator(continuity: MeetingRowContinuity) {
     parts.push(`Sanction active: ${continuity.currentSanctionStatus}`);
   }
 
-  if (continuity.validatedWeeksCount > 0 || continuity.invalidatedWeeksCount > 0) {
+  if (continuity.weeksAtRankCount > 0 || continuity.invalidatedWeeksCount > 0) {
     parts.push(
-      `Semaines validees ${continuity.validatedWeeksCount} / invalidees ${continuity.invalidatedWeeksCount}`
+      `Semaines validees a ce rang: ${continuity.weeksAtRankCount}${
+        continuity.invalidatedWeeksCount > 0 ? ` (invalidees ${continuity.invalidatedWeeksCount})` : ""
+      }`
     );
   }
 
@@ -270,6 +274,19 @@ async function buildMeetingContinuity(params: {
       .filter((value): value is NonNullable<typeof value> => Boolean(value));
     const uniqueActiveSanctionLabels = Array.from(new Set(activeSanctionLabels));
 
+    // Semaines validées AU RANG ACTUEL = depuis la dernière promotion.
+    // matchingHistory est trié du + récent au + ancien : on additionne les
+    // semaines jusqu'à tomber sur une promotion (UP/DOUBLE_UP), qui borne le
+    // rang courant. WEEK_VALID_2/3 comptent 2/3 semaines (playtime élevé).
+    let weeksAtRankCount = 0;
+    for (const histRow of matchingHistory) {
+      const d = mapStoredMeetingDecisionToBusinessDecision(histRow.decisionType, histRow.sanctionType);
+      if (d === "UP" || d === "DOUBLE_UP") break;
+      if (d === "WEEK_VALID_1") weeksAtRankCount += 1;
+      else if (d === "WEEK_VALID_2") weeksAtRankCount += 2;
+      else if (d === "WEEK_VALID_3") weeksAtRankCount += 3;
+    }
+
     const continuity: MeetingRowContinuity = {
       lastMeetingAt: recentMeetingHistory[0]?.scheduledAt ?? null,
       lastDecision: recentMeetingHistory[0]?.decision ?? null,
@@ -277,6 +294,7 @@ async function buildMeetingContinuity(params: {
       lastSanctionAt: matchingSanctions[0]?.startAt?.toISOString() ?? matchingSanctions[0]?.createdAt.toISOString() ?? null,
       currentSanctionStatus:
         uniqueActiveSanctionLabels.length > 0 ? uniqueActiveSanctionLabels.join(", ") : null,
+      weeksAtRankCount,
       validatedWeeksCount: matchingHistory.filter((row) => {
         const decision = mapStoredMeetingDecisionToBusinessDecision(row.decisionType, row.sanctionType);
         return decision === "WEEK_VALID_1" || decision === "WEEK_VALID_2" || decision === "WEEK_VALID_3";
@@ -708,7 +726,7 @@ async function buildMeetingDetail(id: string) {
   const customReqByDiscordId = new Map<string, number>();
   for (const m of reqMembers) {
     const v = m.playtimeRequiredMinutes;
-    if (typeof v === "number" && v > 0 && v !== 300) {
+    if (typeof v === "number" && v >= 0 && v !== 300) {
       if (m.id) customReqByMemberId.set(m.id, Math.floor(v));
       if (m.discordId) customReqByDiscordId.set(m.discordId, Math.floor(v));
     }
