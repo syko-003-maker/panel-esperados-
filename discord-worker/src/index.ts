@@ -112,6 +112,7 @@ loadEnv();
 import { Client, GatewayIntentBits, Partials, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags, type Interaction } from "discord.js";
 import { setupServerLogs, cacheMessage, preCacheGuildMessages } from "./features/logs/serverLogs.js";
 import { handleAntispam } from "./features/antispam/antispam.js";
+import { handleBotClapback } from "./features/fun/bot-clapback.js";
 import { handleReglementAccept, handleReglementPost, REGLEMENT_ACCEPT_BUTTON } from "./features/reglement/reglementRole.js";
 import { ensureContactPanel } from "./contactPanel.js";
 import { CUSTOM_ID, IDS } from "./ids.js";
@@ -565,6 +566,8 @@ client.once("ready", async () => {
     if (!msg.author.bot) {
       cacheMessage(msg);
       handleAntispam(msg);
+      // Clap back fun : le bot réplique si on l'insulte en le visant.
+      void handleBotClapback(msg, client.user?.id ?? "").catch(() => {});
     }
   });
 
