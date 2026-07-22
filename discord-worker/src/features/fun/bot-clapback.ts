@@ -157,8 +157,8 @@ const INGEST_SECRET = process.env.INGEST_SECRET;
 const DATA_QUESTION =
   /\b(dette|solde|coffre|combien.{0,15}(dois|dette|argent|thune|playtime|temps|heures?)|dois[- ]?je\s+combien|je\s+dois\s+combien|mon\s+(grade|rang|playtime|temps\s+de\s+jeu|wl|argent|solde|niveau)|ma\s+(wl|dette)|j'?ai\s+combien|c'?est\s+quoi\s+mon\s+(grade|rang|playtime|wl|niveau)|je\s+suis\s+(quel|à\s+combien))\b/i;
 
-async function fetchMemberContext(discordId: string): Promise<string | null> {
-  if (!INGEST_SECRET) return null;
+async function fetchMemberFacts(discordId: string): Promise<string[]> {
+  if (!INGEST_SECRET) return [];
   try {
     const res = await fetch(`${PANEL_URL}/api/bot/member-context`, {
       method: "POST",
@@ -166,25 +166,37 @@ async function fetchMemberContext(discordId: string): Promise<string | null> {
       body: JSON.stringify({ discordId }),
       signal: AbortSignal.timeout(6_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const d: any = await res.json().catch(() => null);
-    if (!d?.found) return null;
-    const parts: string[] = [];
-    if (d.grade) parts.push(`grade ${d.grade}`);
-    if (typeof d.wlClass === "number") parts.push(`WL${d.wlClass}`);
-    if (typeof d.playtime7dMin === "number")
-      parts.push(`playtime 7 derniers jours ${Math.round(d.playtime7dMin / 60)} h (${d.playtime7dMin} min)`);
+    if (!d?.found) return [];
+    const facts: string[] = [];
+    if (d.grade) facts.push(`grade ${d.grade}`);
+    if (typeof d.wlClass === "number") facts.push(`WL${d.wlClass}`);
     if (d.debt) {
-      parts.push(
+      facts.push(
         d.debt.inDebt
           ? `DETTE au coffre : ${Math.abs(d.debt.deficit).toLocaleString("fr-FR")} $`
-          : `pas de dette (solde ${d.debt.net >= 0 ? "+" : ""}${d.debt.net.toLocaleString("fr-FR")} $)`,
+          : `solde au coffre : ${d.debt.net >= 0 ? "+" : ""}${d.debt.net.toLocaleString("fr-FR")} $`,
       );
     }
-    return parts.length ? parts.join(" · ") : null;
+    if (typeof d.playtime7dMin === "number") {
+      facts.push(`playtime 7 derniers jours ${Math.round(d.playtime7dMin / 60)} h (${d.playtime7dMin} min)`);
+    }
+    return facts;
   } catch {
-    return null;
+    return [];
   }
+}
+
+/**
+ * UNE seule stat pour un clash : si on lui envoie tout, le bot ressasse
+ * toujours la même (le playtime). Celui-ci n'est gardé qu'en dernier recours.
+ */
+function pickOneFact(facts: string[]): string | null {
+  if (!facts.length) return null;
+  const nonPlaytime = facts.filter((f) => !/playtime/i.test(f));
+  const pool = nonPlaytime.length ? nonPlaytime : facts;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // Mémoire courte : combien de fois cette personne a cherché le bot aujourd'hui.
@@ -275,7 +287,10 @@ async function askClapbackAI(ctx: ClapContext): Promise<string | null> {
     ctx.targetName && ctx.kind !== "insult"
       ? ` [C'est ${ctx.targetName} qui est visé → tape sur ${ctx.targetName}, PAS sur ${ctx.authorName}.]`
       : "";
-  const steer = `${preface}Message de ${ctx.authorName}${kindLabel} : « ${ctx.cleanText} »${dataDirective}${targetDirective}\n[Ta réponse : UNE phrase, directe, sans rien expliquer. Si tu clashes, varie l'angle → « ${angle} ».]`;
+  const noDataGuard = ctx.factSheet
+    ? ""
+    : ` [Tu n'as AUCUNE stat sur ${ctx.authorName} : ne parle ni de son playtime, ni de sa dette, ni de son grade, ni de sa WL, et ne cite AUCUN chiffre le concernant — invente rien, clashe sans donnée.]`;
+  const steer = `${preface}Message de ${ctx.authorName}${kindLabel} : « ${ctx.cleanText} »${dataDirective}${targetDirective}${noDataGuard}\n[Ta réponse : UNE phrase, directe, sans rien expliquer. Si tu clashes, varie l'angle → « ${angle} ».]`;
 
   const text = await callGroq(
     [
@@ -350,9 +365,13 @@ export async function handleBotClapback(message: Message, botId: string): Promis
     // sur une attaque, seulement ~40 % du temps — sinon il ressort les mêmes
     // chiffres à chaque clash (playtime en boucle) et ça devient lassant.
     let factSheet: string | null = null;
+    const isDataQuestion = DATA_QUESTION.test(content);
     const attackWithStats = (kind === "insult" || kind === "provoke") && Math.random() < 0.4;
-    if (DATA_QUESTION.test(content) || attackWithStats) {
-      factSheet = await fetchMemberContext(message.author.id);
+    if (isDataQuestion || attackWithStats) {
+      const facts = await fetchMemberFacts(message.author.id);
+      // Question précise → toutes les infos (il faut pouvoir répondre) ;
+      // clash → UNE seule stat, sinon il ressasse le playtime à chaque fois.
+      factSheet = isDataQuestion ? facts.join(" · ") || null : pickOneFact(facts);
     }
     // Le message vise-t-il un AUTRE membre ? → on récupère SES stats pour
     // pouvoir enchaîner sur lui avec de vrais chiffres.
@@ -361,7 +380,7 @@ export async function handleBotClapback(message: Message, botId: string): Promis
     const firstTarget = mm ? [...mm.values()].find((m) => m.id !== botId && !m.user.bot) : undefined;
     if (firstTarget) {
       targetName = firstTarget.displayName;
-      targetFacts = await fetchMemberContext(firstTarget.id);
+      targetFacts = pickOneFact(await fetchMemberFacts(firstTarget.id));
     }
 
     reply = await askClapbackAI({
