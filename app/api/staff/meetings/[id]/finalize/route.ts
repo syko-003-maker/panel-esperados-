@@ -15,6 +15,7 @@ import {
 import { evaluateSanctionRules } from "@/lib/sanction-rules";
 import { getSanctionExpirationDate } from "@/lib/sanctions";
 import { GRADE_LABEL_BY_ROLE_ID } from "@/lib/grade-colors";
+import { capturePreReservistRank } from "@/lib/staff/pre-reservist";
 import { getRankGradeLevel } from "@/lib/discord-rank";
 
 import {
@@ -352,6 +353,12 @@ export async function POST(
           error: "Member not found",
         });
         continue;
+      }
+
+      // Dernier rang avant réserviste : mémoriser le grade actuel (le rôle de
+      // grade sera retiré par le rolePlan) pour pouvoir le restaurer au retour.
+      if (sanctionType === "RESERVISTE") {
+        await capturePreReservistRank(member);
       }
 
       const existing = await prisma.sanction.findFirst({

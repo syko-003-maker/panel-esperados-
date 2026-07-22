@@ -8,6 +8,7 @@ import { auditStaffAction } from "@/lib/audit";
 import { evaluateSanctionRules } from "@/lib/sanction-rules";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import type { SanctionType } from "@prisma/client";
+import { capturePreReservistRank } from "@/lib/staff/pre-reservist";
 import { enqueueRemoveRole, enqueueSanctionApply, enqueueMemberDm } from "@/lib/discord/discord";
 import { sendPushToDiscordIds } from "@/lib/push";
 import {
@@ -509,6 +510,12 @@ export async function POST(req: Request) {
       complaintId: complaintId || null,
     } as any,
   })) as any;
+
+  // Dernier rang avant réserviste : mémoriser le grade actuel pour le restaurer
+  // au retour du membre (le rôle de grade va être retiré par le rolePlan).
+  if (typeRaw === "RESERVISTE") {
+    await capturePreReservistRank(member);
+  }
 
   // ── Cascade auto-close des sanctions précédentes ─────────────────────────
   // Quand on applique une sanction bloquante (RESERVISTE / DEMOTE / BLACKLIST),

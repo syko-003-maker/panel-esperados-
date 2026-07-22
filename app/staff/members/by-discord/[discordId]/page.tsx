@@ -106,6 +106,8 @@ export default async function MemberDetailPage({
     rankRoleId: member.rankRoleId,
     rankLabel: member.rankLabel,
     discordRoleIds: member.discordRoleIds,
+    preReservistGrade: member.preReservistGrade,
+    preReservistRoleId: member.preReservistRoleId,
     discordLastError: member.discordLastError,
     discordSnapshotRolesJson: member.discordSnapshot?.rolesJson ?? null,
     isActive: member.isActive,

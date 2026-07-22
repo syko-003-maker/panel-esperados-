@@ -63,6 +63,8 @@ type Member = {
 	rankRoleId?: string | null;
 	rankLabel?: string | null;
 	discordRoleIds?: string[];
+	preReservistGrade?: string | null;
+	preReservistRoleId?: string | null;
 	discordLastError?: string | null;
 	discordSnapshotRolesJson?: unknown;
 	isActive: boolean;
@@ -342,20 +344,29 @@ export function MemberDetailClient({
 				</MotionSection>
 			) : null}
 
-			<MotionSection delay={0.06}>
-				<TrendCard
-					endpoint={`/api/staff/series?memberId=${member.id}`}
-					title="Évolution (argent & playtime)"
-					defaultMetric="money"
-				/>
-			</MotionSection>
-
-			<MotionSection delay={0.065}>
+			<MotionSection delay={0.045}>
 				<SectionCard
 					title="Changer le grade"
 					description="Promouvoir ou rétrograder ce membre (hors réunion). Le rôle de grade Discord est appliqué par le bot."
 					icon={UserRound}
 				>
+					{/* Rôle Réserviste (1312845999366209682) encore présent → on propose de restaurer son ancien rang */}
+					{(member.discordRoleIds ?? []).includes("1312845999366209682") && member.preReservistGrade && (
+						<div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+							<span>
+								⭐ Dernier rang avant réserviste : <strong className="text-amber-50">{member.preReservistGrade}</strong>
+							</span>
+							{member.preReservistRoleId && (
+								<button
+									type="button"
+									onClick={() => setGradeTarget(member.preReservistRoleId!)}
+									className="rounded-lg border border-amber-400/40 bg-amber-400/15 px-2.5 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/25"
+								>
+									Restaurer ce rang
+								</button>
+							)}
+						</div>
+					)}
 					<div className="flex flex-wrap items-end gap-3">
 						<div className="flex min-w-[200px] flex-1 flex-col gap-1">
 							<label className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Nouveau grade</label>
@@ -389,6 +400,14 @@ export function MemberDetailClient({
 						<p className={`mt-2 text-sm ${gradeMsg.ok ? "text-emerald-300" : "text-red-300"}`}>{gradeMsg.text}</p>
 					)}
 				</SectionCard>
+			</MotionSection>
+
+			<MotionSection delay={0.06}>
+				<TrendCard
+					endpoint={`/api/staff/series?memberId=${member.id}`}
+					title="Évolution (argent & playtime)"
+					defaultMetric="money"
+				/>
 			</MotionSection>
 
 			{error ? (

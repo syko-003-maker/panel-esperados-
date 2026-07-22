@@ -182,6 +182,11 @@ model Member {
   // Accordé au cas par cas par le staff (membre qui a fait la demande).
   playtimeRequiredMinutes Int?
 
+  // Dernier rang AVANT le passage réserviste (pour le restaurer au retour).
+  // Capturé au moment où on pose le réserviste (réunion / sanction).
+  preReservistGrade   String?
+  preReservistRoleId  String?
+
   // ─── Famille WL (miroir LYG + intent panel) ─────────────────────────────
   // LYG expose member.class (rang WL 1=Chef … 5=plus bas) et member.owner
   // (Chef famille game-side). On stocke les deux versions :
