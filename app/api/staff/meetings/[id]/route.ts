@@ -169,7 +169,7 @@ async function buildMeetingContinuity(params: {
     return new Map<string, MeetingRowContinuity>();
   }
 
-  const [historyRows, historyDecisions, sanctions] = await Promise.all([
+  const [historyRows, historyDecisions, sanctions, gradeHistory] = await Promise.all([
     prisma.meetingRow.findMany({
       where: {
         OR: identityFilters,
@@ -233,7 +233,24 @@ async function buildMeetingContinuity(params: {
       },
       orderBy: [{ startAt: "desc" }, { createdAt: "desc" }],
     }),
+    // Promotions hors réunion (outil « Changer le grade », resync manuel…) :
+    // elles n'écrivent aucune décision de réunion, donc sans ça le compteur de
+    // semaines continuerait de cumuler celles gagnées au rang PRÉCÉDENT.
+    prisma.gradeHistory.findMany({
+      where: { memberId: { in: memberIds.length > 0 ? memberIds : ["__never__"] } },
+      select: { memberId: true, changedAt: true, oldGradeLevel: true, newGradeLevel: true },
+      orderBy: { changedAt: "desc" },
+    }),
   ]);
+
+  // Dernière promotion par membre, toutes sources confondues (niveau en hausse).
+  const lastPromotionByMember = new Map<string, Date>();
+  for (const entry of gradeHistory) {
+    if (entry.newGradeLevel <= (entry.oldGradeLevel ?? Number.NEGATIVE_INFINITY)) continue;
+    if (!lastPromotionByMember.has(entry.memberId)) {
+      lastPromotionByMember.set(entry.memberId, entry.changedAt);
+    }
+  }
 
   const targetGradeByMeetingAndDiscord = new Map(
     historyDecisions.map((decision) => [`${decision.meetingId}:${decision.memberDiscordId}`, decision.newGrade ?? null])
@@ -278,8 +295,13 @@ async function buildMeetingContinuity(params: {
     // matchingHistory est trié du + récent au + ancien : on additionne les
     // semaines jusqu'à tomber sur une promotion (UP/DOUBLE_UP), qui borne le
     // rang courant. WEEK_VALID_2/3 comptent 2/3 semaines (playtime élevé).
+    const lastPromotionAt = currentRow.memberId
+      ? lastPromotionByMember.get(currentRow.memberId) ?? null
+      : null;
     let weeksAtRankCount = 0;
     for (const histRow of matchingHistory) {
+      // Promotion hors réunion : tout ce qui précède appartient au rang d'avant.
+      if (lastPromotionAt && histRow.meeting.meetingDate.getTime() <= lastPromotionAt.getTime()) break;
       const d = mapStoredMeetingDecisionToBusinessDecision(histRow.decisionType, histRow.sanctionType);
       if (d === "UP" || d === "DOUBLE_UP") break;
       if (d === "WEEK_VALID_1") weeksAtRankCount += 1;
