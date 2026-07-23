@@ -106,6 +106,21 @@ const SANCTION_LADDER = [
  */
 const AUTO_SANCTIONS = ["AVERT_LEGER", "AVERT_LOURD", "AVERT_EM"] as const;
 
+const SANCTION_LABELS: Record<string, string> = {
+  AVERT_ORAL_PLAYTIME: "averto oral (playtime)",
+  AVERT_ORAL_REUNION: "averto oral (réunion)",
+  AVERT_LEGER: "averto léger",
+  AVERT_LOURD: "averto lourd",
+  AVERT_EM: "averto EM",
+};
+
+/** Résultat d'une tentative d'escalade, pour distinguer « plafond atteint »
+ *  (→ il faut prévenir l'État-Major) d'un simple « rien à faire ». */
+type DebtSanctionOutcome =
+  | { kind: "applied"; type: string }
+  | { kind: "capped"; highest: string | null }
+  | { kind: "skipped" };
+
 /**
  * Détermine la sanction à appliquer, un cran au-dessus de ce que le membre a
  * déjà. Renvoie null quand le plafond est atteint (on ne monte pas plus haut).
@@ -138,9 +153,9 @@ async function applyDebtSanction(params: {
   member: { id: string; discordId: string | null; rpName: string | null; discordRoleIds: unknown };
   amount: number;
   count: number;
-}): Promise<string | null> {
+}): Promise<DebtSanctionOutcome> {
   const { member } = params;
-  if (!member.discordId) return null;
+  if (!member.discordId) return { kind: "skipped" };
 
   const now = Date.now();
   const active = await prisma.sanction.findMany({
@@ -154,11 +169,22 @@ async function applyDebtSanction(params: {
 
   const roles = Array.isArray(member.discordRoleIds) ? (member.discordRoleIds as string[]) : [];
   const next = pickNextSanction(activeTypes, roles.includes(ETAT_MAJOR_ROLE_ID));
-  if (!next) return null;
+
+  // Plafond atteint : le cran suivant serait un démote, qui n'appartient pas à
+  // l'automate. On remonte l'info pour que l'État-Major tranche.
+  const highest = activeTypes
+    .filter((t) => (SANCTION_LADDER as readonly string[]).includes(t))
+    .sort(
+      (a, b) =>
+        (SANCTION_LADDER as readonly string[]).indexOf(b) -
+        (SANCTION_LADDER as readonly string[]).indexOf(a),
+    )[0] ?? null;
+
+  if (!next) return { kind: "capped", highest };
 
   // Filet : on repasse par le contrôle d'éligibilité officiel plutôt que de se
   // fier au seul calcul ci-dessus (une règle ajoutée plus tard s'appliquera ici).
-  if (!checkSanctionTargetEligibility(next, roles).ok) return null;
+  if (!checkSanctionTargetEligibility(next, roles).ok) return { kind: "capped", highest };
 
   const actorId = await getSystemActorId();
   const reason = `Dette non remboursée — ${params.count}ᵉ rappel sans régularisation (${fmt(params.amount)})`;
@@ -189,7 +215,38 @@ async function applyDebtSanction(params: {
     appliedByUserId: actorId,
   });
 
-  return next;
+  return { kind: "applied", type: next };
+}
+
+/** Alerte spécifique : l'automate est allé au bout, seul un démote reste. */
+function demoteDecisionMessage(params: {
+  rpName: string | null;
+  discordId: string | null;
+  amount: number;
+  count: number;
+  highest: string | null;
+  daysSinceFirst: number;
+}): string {
+  const who = params.rpName
+    ? `**${params.rpName}**${params.discordId ? ` (<@${params.discordId}>)` : ""}`
+    : params.discordId
+      ? `<@${params.discordId}>`
+      : "Membre inconnu";
+  const current = params.highest
+    ? SANCTION_LABELS[params.highest] ?? params.highest
+    : "aucune sanction";
+  const since =
+    params.daysSinceFirst > 0
+      ? ` depuis ${params.daysSinceFirst} jour${params.daysSinceFirst > 1 ? "s" : ""}`
+      : "";
+
+  return (
+    `<@&${ETAT_MAJOR_ROLE_ID}> 🔴 **Décision requise — escalade épuisée**\n` +
+    `${who} est déjà sous **${current}** et sa dette de **${fmt(params.amount)}** ` +
+    `n'a toujours pas bougé après **${params.count} rappels**${since}.\n` +
+    `Le système ne peut pas aller plus loin : le cran suivant serait un **démote**, ` +
+    `qui relève de votre décision.`
+  );
 }
 
 export type DebtReminderCycleResult = {
@@ -198,6 +255,7 @@ export type DebtReminderCycleResult = {
   sent: number;
   escalatedToStaff: number;
   autoSanctioned: number;
+  demoteDecisionRequested: number;
   paidReset: number;
   skippedCooldown: number;
   skippedIneligible: number;
@@ -215,6 +273,7 @@ export async function runDebtReminderCycle(params: {
     sent: 0,
     escalatedToStaff: 0,
     autoSanctioned: 0,
+    demoteDecisionRequested: 0,
     paidReset: 0,
     skippedCooldown: 0,
     skippedIneligible: 0,
@@ -346,14 +405,35 @@ export async function runDebtReminderCycle(params: {
       const member = eligById.get(d.memberId);
       if (member) {
         try {
-          const applied = await applyDebtSanction({
+          const outcome = await applyDebtSanction({
             familySlug,
             familyId: familyDbId,
             member,
             amount,
             count,
           });
-          if (applied) result.autoSanctioned += 1;
+
+          if (outcome.kind === "applied") {
+            result.autoSanctioned += 1;
+          } else if (outcome.kind === "capped") {
+            // Plus rien à appliquer automatiquement : on alerte explicitement
+            // l'État-Major, seul habilité à décider d'un démote.
+            await enqueueMessage({
+              familyId: familySlug,
+              channelId: staffChannelId,
+              content: demoteDecisionMessage({
+                rpName: d.rpName,
+                discordId: d.discordId,
+                amount,
+                count,
+                highest: outcome.highest,
+                daysSinceFirst,
+              }),
+              entity: "BankDebtDemoteDecision",
+              entityId: d.memberId,
+            });
+            result.demoteDecisionRequested += 1;
+          }
         } catch (err) {
           // Une sanction qui échoue ne doit pas interrompre les rappels des
           // autres débiteurs.
