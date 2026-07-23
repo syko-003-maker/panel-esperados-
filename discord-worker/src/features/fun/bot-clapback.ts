@@ -91,6 +91,7 @@ Exemples :
 « c'est quoi le playtime minimum ? » → « 300 minutes par semaine, soit 5h. »
 « merci le bot » → « De rien, quand tu veux. »
 « ça va le bot ? » → « Ça va bien, et toi ? »
+« on est combien dans la famille ? » → « On est 41. » (utilise les chiffres réels si on te les fournit, ne les invente jamais)
 - Il chambre QUELQU'UN D'AUTRE (@mentionné ou pseudo cité, de la famille ou pas) → tu enchaînes AVEC lui et tu tapes sur la cible. Tu ne la défends pas, tu ne clashes pas celui qui t'écrit. Sans stat sur elle : vanne-la quand même (son pseudo, le contexte) — ne dis jamais que tu ne la connais pas.
 
 FRANÇAIS : écris comme un vrai joueur français. Ta phrase doit se comprendre INSTANTANÉMENT, sinon refais plus simple. Interdit : métaphores tordues, comparaisons bizarres, mots rares, tournures traduites de l'anglais, phrases qui veulent faire les malignes.
@@ -178,6 +179,40 @@ const INGEST_SECRET = process.env.INGEST_SECRET;
 const DATA_QUESTION =
   /\b(dette|solde|coffre|combien.{0,15}(dois|dette|argent|thune|playtime|temps|heures?)|dois[- ]?je\s+combien|je\s+dois\s+combien|mon\s+(grade|rang|playtime|temps\s+de\s+jeu|wl|argent|solde|niveau)|ma\s+(wl|dette)|j'?ai\s+combien|c'?est\s+quoi\s+mon\s+(grade|rang|playtime|wl|niveau)|je\s+suis\s+(quel|à\s+combien))\b/i;
 
+// Question sur la FAMILLE (pas sur lui-même) : « on est combien ? », etc.
+const FAMILY_QUESTION =
+  /\b(combien\s+(de\s+)?(membres?|personnes?|joueurs?|gens)|effectif|on\s+est\s+combien|nombre\s+de\s+membres?|combien\s+on\s+est|taille\s+de\s+la\s+famille|combien\s+(de\s+)?(gens|membres?)\s+(en\s+)?dette)\b/i;
+
+async function fetchFamilyStats(): Promise<string | null> {
+  if (!INGEST_SECRET) return null;
+  try {
+    const res = await fetch(`${PANEL_URL}/api/bot/family-stats`, {
+      headers: { "x-ingest-secret": INGEST_SECRET },
+      signal: AbortSignal.timeout(6_000),
+    });
+    if (!res.ok) return null;
+    const d: any = await res.json().catch(() => null);
+    if (!d?.ok) return null;
+    const parts = [`${d.membersCount} membres dans la famille`];
+    if (typeof d.playtimeDone === "number") {
+      parts.push(`${d.playtimeDone} ont fait leur playtime cette semaine`);
+    }
+    if (typeof d.inDebtCount === "number") {
+      parts.push(
+        d.inDebtCount > 0
+          ? `${d.inDebtCount} en dette (${Math.round(d.totalDebt).toLocaleString("fr-FR")} $ au total)`
+          : "personne en dette",
+      );
+    }
+    if (d.topPlaytime?.name) {
+      parts.push(`meilleur playtime : ${d.topPlaytime.name} (${d.topPlaytime.minutes} min)`);
+    }
+    return parts.join(" · ");
+  } catch {
+    return null;
+  }
+}
+
 async function fetchMemberFacts(discordId: string): Promise<string[]> {
   if (!INGEST_SECRET) return [];
   try {
@@ -245,6 +280,7 @@ type ClapContext = {
   provokeCount?: number; // nb de fois qu'il a cherché le bot aujourd'hui
   targetName?: string | null; // autre membre visé par le message
   targetFacts?: string | null; // vraies stats de ce membre visé
+  familyFacts?: string | null; // stats globales de la famille
 };
 
 // Insultes tournantes : « varie » en consigne ne suffit pas (il ressortait
@@ -289,6 +325,9 @@ async function askClapbackAI(ctx: ClapContext): Promise<string | null> {
         ? `Contexte : il répond à TON message précédent (« ${ctx.repliedTo.text} »).`
         : `Contexte : il répond à un message de ${ctx.repliedTo.author} (« ${ctx.repliedTo.text} »).`,
     );
+  }
+  if (ctx.familyFacts) {
+    ctxLines.push(`Données RÉELLES sur la famille (chiffres EXACTS) : ${ctx.familyFacts}.`);
   }
   if (ctx.targetName) {
     ctxLines.push(
@@ -413,6 +452,9 @@ export async function handleBotClapback(message: Message, botId: string): Promis
       // clash → UNE seule stat, sinon il ressasse le playtime à chaque fois.
       factSheet = isDataQuestion ? facts.join(" · ") || null : pickOneFact(facts);
     }
+    // Question sur la famille (« on est combien ? ») → vrais chiffres du panel.
+    const familyFacts = FAMILY_QUESTION.test(content) ? await fetchFamilyStats() : null;
+
     // Le message vise-t-il un AUTRE membre ? → on récupère SES stats pour
     // pouvoir enchaîner sur lui avec de vrais chiffres.
     let targetName: string | null = null;
@@ -433,6 +475,7 @@ export async function handleBotClapback(message: Message, botId: string): Promis
       provokeCount: kind === "other" ? 0 : bumpProvoke(message.author.id),
       targetName,
       targetFacts,
+      familyFacts,
     });
   }
 
