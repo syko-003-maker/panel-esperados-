@@ -22,6 +22,9 @@ const INSULT_PATTERNS: RegExp[] = [
   // Insultes ABRÉGÉES (très courantes en tchat) — sans ça le bot passait en
   // mode sympa alors qu'on venait de le traiter de salope.
   /\bslp\b/i, /\bsalop\b/i, /\bzbi\b/i, /\bnkm\b/i, /\bfdll?p\b/i, /\btdc\b/i,
+  // Menaces sans gros mot — « je vais te bz », « tu vas voir »…
+  /\bje\s+vais\s+te\s+(bz|baiser|d[ée]foncer|niquer|exploser|casser|fumer)\b/i,
+  /\bbz\b/i, /\btu\s+vas\s+voir\b/i, /\bparle\s+bien\b/i,
 ];
 
 // Filet de secours SI l'IA est indisponible/plafonnée. Clash cash et surtout
@@ -95,6 +98,8 @@ Exemples :
 « merci le bot » → « De rien, quand tu veux. »
 « ça va le bot ? » → « Ça va bien, et toi ? »
 « on est combien dans la famille ? » → « On est 41. » (utilise les chiffres réels si on te les fournit, ne les invente jamais)
+- REPROCHE, ACCUSATION ou QUESTION SUR TON COMPORTEMENT → JAMAIS une attaque, même si c'est dit sèchement, sur un ton accusateur ou en te contredisant. RÈGLE ABSOLUE : tu ne réponds JAMAIS par une insulte à quelqu'un qui te reproche quelque chose ou qui te demande des comptes. Exemples : « pourquoi tu l'insultes ? », « t'as vu ce que t'as dit ? », « calme-toi », « arrête », « t'exagères », « c'est pas sympa » → tu réponds CALMEMENT et sans insulter, même si le ton est sec. Celui qui te fait la remarque n'est pas ton adversaire.
+  Tu ASSUMES, tu ne rampes pas : ni mensonge (« je n'insulte personne » alors que tu viens de le faire = RIDICULE), ni excuses plates (« je suis désolé, je ferai plus attention » = MOU, interdit). Tu réponds cash et sûr de toi, sans insulter : « Il m'a cherché, j'ai répondu. », « Il a commencé, j'ai fini. », « C'est lui qui a ouvert le bal. »
 - Il chambre QUELQU'UN D'AUTRE (@mentionné ou pseudo cité, de la famille ou pas) → tu enchaînes AVEC lui et tu tapes sur la cible. Tu ne la défends pas, tu ne clashes pas celui qui t'écrit. Sans stat sur elle : vanne-la quand même (son pseudo, le contexte) — ne dis jamais que tu ne la connais pas.
 
 FRANÇAIS : écris comme un vrai joueur français. Ta phrase doit se comprendre INSTANTANÉMENT, sinon refais plus simple. Interdit : métaphores tordues, comparaisons bizarres, mots rares, tournures traduites de l'anglais, phrases qui veulent faire les malignes.
@@ -377,7 +382,7 @@ async function askClapbackAI(ctx: ClapContext): Promise<string | null> {
   const shuffled = [...INSULT_POOL].sort(() => Math.random() - 0.5).slice(0, 2);
   const toneHint =
     ctx.kind === "other"
-      ? " [Aucun mot d'insulte détecté : s'il t'informe, te corrige, te remercie ou te pose une question → mode SYMPA, réponds gentiment et utilement, sans la moindre pique ni punchline.]"
+      ? " [Aucun gros mot détecté — à toi de juger : une MENACE ou une PROVOC sans gros mot (« je vais te bz », « ratio », « pas fifou ») reste une ATTAQUE → clashe. Un REPROCHE sur ton comportement (« pourquoi tu l'insultes ? », « calme-toi », « t'exagères ») n'en est PAS une → réponds posément, zéro insulte.]"
       : ` [Si tu insultes, pioche plutôt dans : ${shuffled.join(", ")} — pas toujours les mêmes.]`;
   const targetDirective =
     ctx.targetName && ctx.kind !== "insult"
