@@ -744,6 +744,35 @@ async function handleRecruitmentDecision(
 
   await channel.send({ embeds: [embed] });
 
+  // 1bis. MP au candidat REFUSÉ (l'accepté est déjà notifié côté panel). Placé
+  //       ici car les DEUX voies de refus (panel + boutons Discord) passent par
+  //       ce job → un seul point à maintenir.
+  const candidateDiscordId =
+    typeof job.meta.candidateDiscordId === "string" ? job.meta.candidateDiscordId : null;
+  if (decision === "REJECT" && candidateDiscordId) {
+    let dmOk = false;
+    try {
+      const user = await discordClient.users.fetch(candidateDiscordId);
+      const rejectEmbed = new EmbedBuilder()
+        .setColor(0xef4444)
+        .setTitle("❌ Candidature non retenue")
+        .setDescription(
+          "Salut ! Ta candidature pour rejoindre la famille **Los Esperados** n'a pas été retenue cette fois.\n\n" +
+            "Merci d'avoir tenté ta chance — tu peux retenter ta candidature plus tard si tu le souhaites."
+        )
+        .setFooter({ text: "Los Esperados • Recrutement" })
+        .setTimestamp();
+      await user.send({ embeds: [rejectEmbed] });
+      dmOk = true;
+    } catch {
+      // DM fermés / utilisateur introuvable — non bloquant.
+    }
+    log(dmOk ? "recruitment_reject_dm_sent" : "recruitment_reject_dm_failed", {
+      jobId: job.id,
+      candidateDiscordId,
+    });
+  }
+
   // 2. Embed whitelist (uniquement sur ACCEPT)
   //
   // Comportement adapté selon lygAutoAdd (passé par la panel) :
