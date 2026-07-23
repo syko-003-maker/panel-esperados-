@@ -19,6 +19,9 @@ const INSULT_PATTERNS: RegExp[] = [
   /\bgrosse?\s*merde\b/i, /\bgros\s*(con|nul|naze|porc)\b/i, /\bva\s*crever\b/i,
   /\bt.?es?\s*(qu.?un\s*)?(bot\s*)?(nul|d[ée]bile|con|naze|useless)/i, /\bsale\s*(pd|con|merde)\b/i,
   /\bmange\s+tes?\s+mort/i, /\bnique\s+ta\s+(m[èe]re|race)\b/i, /\bsur\s+la\s+(vie|tombe)\s+de\b/i,
+  // Insultes ABRÉGÉES (très courantes en tchat) — sans ça le bot passait en
+  // mode sympa alors qu'on venait de le traiter de salope.
+  /\bslp\b/i, /\bsalop\b/i, /\bzbi\b/i, /\bnkm\b/i, /\bfdll?p\b/i, /\btdc\b/i,
 ];
 
 // Filet de secours SI l'IA est indisponible/plafonnée. Clash cash et surtout
@@ -178,6 +181,27 @@ const INGEST_SECRET = process.env.INGEST_SECRET;
 // Le message pose-t-il une question sur SES propres stats ?
 const DATA_QUESTION =
   /\b(dette|solde|coffre|combien.{0,15}(dois|dette|argent|thune|playtime|temps|heures?)|dois[- ]?je\s+combien|je\s+dois\s+combien|mon\s+(grade|rang|playtime|temps\s+de\s+jeu|wl|argent|solde|niveau)|ma\s+(wl|dette)|j'?ai\s+combien|c'?est\s+quoi\s+mon\s+(grade|rang|playtime|wl|niveau)|je\s+suis\s+(quel|à\s+combien))\b/i;
+
+// Abréviations de tchat FR : on ne compte pas sur le modèle pour les deviner,
+// on lui glisse la traduction des SEULES abréviations présentes dans le
+// message (quasi gratuit en tokens, et fiable).
+const ABBREV: Record<string, string> = {
+  slp: "salope", zbi: "insulte (sexe)", nkm: "nique ta mère", tdc: "tête de con",
+  tg: "ta gueule", ntm: "nique ta mère", fdp: "fils de pute", pd: "insulte homophobe",
+  stp: "s'il te plaît", svp: "s'il vous plaît", tkt: "t'inquiète", askip: "à ce qu'il paraît",
+  jpp: "j'en peux plus", osef: "on s'en fout", dcp: "du coup", grv: "grave",
+  srx: "sérieux", jsp: "je sais pas", pcq: "parce que", pck: "parce que",
+  bcp: "beaucoup", tjr: "toujours", qqn: "quelqu'un", mtn: "maintenant",
+  tmtc: "toi-même tu sais", wsh: "wesh (hé)", ptdr: "mort de rire", mdr: "mort de rire",
+  bg: "beau gosse", chl: "chaud", flm: "flemme", dsl: "désolé", jtm: "je t'aime",
+  ct: "c'était", dr: "drôle", vnr: "énervé", relou: "pénible", zonz: "prison",
+};
+
+function glossFor(text: string): string {
+  const hits = Object.entries(ABBREV).filter(([k]) => new RegExp(`\\b${k}\\b`, "i").test(text));
+  if (hits.length === 0) return "";
+  return ` [Abréviations employées : ${hits.slice(0, 5).map(([k, v]) => `${k} = ${v}`).join(", ")}.]`;
+}
 
 // Question sur la FAMILLE (pas sur lui-même) : « on est combien ? », etc.
 const FAMILY_QUESTION =
@@ -362,7 +386,7 @@ async function askClapbackAI(ctx: ClapContext): Promise<string | null> {
   const noDataGuard = ctx.factSheet
     ? ""
     : ` [Tu n'as AUCUNE stat sur ${ctx.authorName} : ne parle ni de son playtime, ni de sa dette, ni de son grade, ni de sa WL, et ne cite AUCUN chiffre le concernant — invente rien, clashe sans donnée.]`;
-  const steer = `${preface}Message de ${ctx.authorName}${kindLabel} : « ${ctx.cleanText} »${dataDirective}${targetDirective}${noDataGuard}${toneHint}\n[Ta réponse : UNE phrase, directe, sans rien expliquer. Si tu clashes, varie l'angle → « ${angle} ».]`;
+  const steer = `${preface}Message de ${ctx.authorName}${kindLabel} : « ${ctx.cleanText} »${dataDirective}${targetDirective}${noDataGuard}${glossFor(ctx.cleanText)}${toneHint}\n[Ta réponse : UNE phrase, directe, sans rien expliquer. Si tu clashes, varie l'angle → « ${angle} ».]`;
 
   const withStats = Boolean(ctx.factSheet || ctx.targetFacts);
   const persona = buildPersona({
