@@ -12,8 +12,10 @@
 
 import { prisma } from "@/lib/db";
 import { resolveFamilyId } from "@/lib/family";
-import { getOrCreateDiscordConfig, enqueueMessage } from "@/lib/discord/discord";
+import { getOrCreateDiscordConfig, enqueueMessage, enqueueSanctionApply } from "@/lib/discord/discord";
 import { getDebtRows } from "@/lib/bank-debts";
+import { checkSanctionTargetEligibility, ETAT_MAJOR_ROLE_ID } from "@/lib/sanctions";
+import { getSystemActorId, SYSTEM_ACTOR_NAME } from "@/lib/staff/system-actor";
 
 // Démote / Blacklist / Réserviste → pas de rappel (comme le worker single-ping).
 const EXCLUDED_ROLE_IDS = ["1340837563753304075", "1338901141873758288", "1312845999366209682"];
@@ -84,11 +86,118 @@ function staffAlertMessage(params: {
   );
 }
 
+/**
+ * Échelle disciplinaire, du plus léger au plus lourd. Sert à savoir où en est
+ * déjà le membre pour monter d'UN cran, plutôt que de repartir de zéro.
+ */
+const SANCTION_LADDER = [
+  "AVERT_ORAL_PLAYTIME",
+  "AVERT_ORAL_REUNION",
+  "AVERT_LEGER",
+  "AVERT_LOURD",
+  "AVERT_EM",
+] as const;
+
+/**
+ * Sanctions que l'automate a le droit de POSER.
+ *
+ * S'ARRÊTE VOLONTAIREMENT AVANT LE DÉMOTE : au-delà de l'averto, la décision
+ * appartient à l'État-Major. Un cron ne doit jamais rétrograder quelqu'un.
+ */
+const AUTO_SANCTIONS = ["AVERT_LEGER", "AVERT_LOURD", "AVERT_EM"] as const;
+
+/**
+ * Détermine la sanction à appliquer, un cran au-dessus de ce que le membre a
+ * déjà. Renvoie null quand le plafond est atteint (on ne monte pas plus haut).
+ */
+export function pickNextSanction(activeTypes: string[], isEtatMajor: boolean): string | null {
+  let current = -1;
+  for (const type of activeTypes) {
+    const index = (SANCTION_LADDER as readonly string[]).indexOf(type);
+    if (index > current) current = index;
+  }
+
+  for (const candidate of AUTO_SANCTIONS) {
+    if ((SANCTION_LADDER as readonly string[]).indexOf(candidate) <= current) continue;
+    // L'averto EM est réservé aux membres État-Major. Pour les autres, le cran
+    // suivant serait le démote → on s'arrête à l'averto lourd.
+    if (candidate === "AVERT_EM" && !isEtatMajor) return null;
+    return candidate;
+  }
+
+  return null;
+}
+
+/**
+ * Pose automatiquement la sanction suivante sur un débiteur récidiviste.
+ * Renvoie le type appliqué, ou null si le plafond est atteint / membre inéligible.
+ */
+async function applyDebtSanction(params: {
+  familySlug: string;
+  familyId: string;
+  member: { id: string; discordId: string | null; rpName: string | null; discordRoleIds: unknown };
+  amount: number;
+  count: number;
+}): Promise<string | null> {
+  const { member } = params;
+  if (!member.discordId) return null;
+
+  const now = Date.now();
+  const active = await prisma.sanction.findMany({
+    where: { memberId: member.id, status: "ACTIVE", clearedAt: null },
+    select: { type: true, expiresAt: true },
+  });
+
+  const activeTypes = active
+    .filter((s) => !s.expiresAt || s.expiresAt.getTime() > now)
+    .map((s) => String(s.type));
+
+  const roles = Array.isArray(member.discordRoleIds) ? (member.discordRoleIds as string[]) : [];
+  const next = pickNextSanction(activeTypes, roles.includes(ETAT_MAJOR_ROLE_ID));
+  if (!next) return null;
+
+  // Filet : on repasse par le contrôle d'éligibilité officiel plutôt que de se
+  // fier au seul calcul ci-dessus (une règle ajoutée plus tard s'appliquera ici).
+  if (!checkSanctionTargetEligibility(next, roles).ok) return null;
+
+  const actorId = await getSystemActorId();
+  const reason = `Dette non remboursée — ${params.count}ᵉ rappel sans régularisation (${fmt(params.amount)})`;
+
+  const sanction = await prisma.sanction.create({
+    data: {
+      familyId: params.familyId,
+      memberId: member.id,
+      discordId: member.discordId,
+      type: next as never,
+      reason,
+      status: "ACTIVE",
+      source: "SYSTEM",
+      discordStatus: "PENDING",
+      createdById: actorId,
+    },
+  });
+
+  // Application du rôle Discord : sans ça la sanction n'existerait qu'en base.
+  await enqueueSanctionApply({
+    familyId: params.familySlug,
+    sanctionId: sanction.id,
+    discordId: member.discordId,
+    memberName: member.rpName ?? member.discordId,
+    sanctionType: next,
+    reason,
+    staffName: SYSTEM_ACTOR_NAME,
+    appliedByUserId: actorId,
+  });
+
+  return next;
+}
+
 export type DebtReminderCycleResult = {
   ok: boolean;
   reason?: string;
   sent: number;
   escalatedToStaff: number;
+  autoSanctioned: number;
   paidReset: number;
   skippedCooldown: number;
   skippedIneligible: number;
@@ -105,6 +214,7 @@ export async function runDebtReminderCycle(params: {
     ok: false,
     sent: 0,
     escalatedToStaff: 0,
+    autoSanctioned: 0,
     paidReset: 0,
     skippedCooldown: 0,
     skippedIneligible: 0,
@@ -141,7 +251,14 @@ export async function runDebtReminderCycle(params: {
   const eligMembers = debtorMemberIds.length
     ? await prisma.member.findMany({
         where: { id: { in: debtorMemberIds } },
-        select: { id: true, isActive: true, discordInGuild: true, discordRoleIds: true },
+        select: {
+          id: true,
+          isActive: true,
+          discordInGuild: true,
+          discordRoleIds: true,
+          discordId: true,
+          rpName: true,
+        },
       })
     : [];
   const eligById = new Map(eligMembers.map((m) => [m.id, m]));
@@ -221,6 +338,28 @@ export async function runDebtReminderCycle(params: {
       });
       staffAlertedAt = now;
       result.escalatedToStaff += 1;
+
+      // Escalade disciplinaire : un cran au-dessus de ce que le membre a déjà,
+      // et jamais au-delà de l'averto (le démote reste une décision humaine).
+      // Même condition que l'alerte EM, donc soumis au même cooldown : pas de
+      // sanction à chaque passage du cron.
+      const member = eligById.get(d.memberId);
+      if (member) {
+        try {
+          const applied = await applyDebtSanction({
+            familySlug,
+            familyId: familyDbId,
+            member,
+            amount,
+            count,
+          });
+          if (applied) result.autoSanctioned += 1;
+        } catch (err) {
+          // Une sanction qui échoue ne doit pas interrompre les rappels des
+          // autres débiteurs.
+          console.error("[bank-debts] escalade sanction échouée", d.memberId, err);
+        }
+      }
     }
 
     await prisma.bankDebtReminderState.upsert({
