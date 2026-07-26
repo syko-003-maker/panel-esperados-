@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Briefcase } from "lucide-react";
+import { getGradeStripColor } from "@/lib/grade-colors";
 
 /**
  * Bande "En métier Los" pour les dashboards (membre + staff) : qui est
@@ -58,19 +59,24 @@ export default function FamilyOnlineStrip() {
         {members.length === 0 ? (
           <span className="text-xs text-slate-500">Personne en métier famille en ce moment.</span>
         ) : (
-          members.map((m, i) => (
-            <span
-              key={i}
-              className="flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/[0.08] py-1 pl-2.5 pr-2.5 text-xs"
-              title={m.grade ?? undefined}
-            >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full animate-pulse bg-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.9)]" />
-              <span className="flex items-baseline gap-1.5">
-                <span className="font-semibold text-slate-50">{m.name}</span>
-                {m.grade ? <span className="text-[11px] text-amber-200/80">{m.grade}</span> : null}
+          members.map((m, i) => {
+            // Une couleur par grade (alignée sur la liste des membres et les
+            // fiches) au lieu d'un ambre uniforme : chaque rang est reconnaissable.
+            const c = getGradeStripColor(m.grade);
+            return (
+              <span
+                key={i}
+                className={`flex items-center gap-2 rounded-full border py-1 pl-2.5 pr-2.5 text-xs ${c.pill}`}
+                title={m.grade ?? undefined}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full animate-pulse ${c.dot}`} />
+                <span className="flex items-baseline gap-1.5">
+                  <span className="font-semibold text-slate-50">{m.name}</span>
+                  {m.grade ? <span className={`text-[11px] ${c.text}`}>{m.grade}</span> : null}
+                </span>
               </span>
-            </span>
-          ))
+            );
+          })
         )}
       </div>
     </div>

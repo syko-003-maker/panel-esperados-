@@ -17,12 +17,29 @@ type StaffOnline = {
   job: string;
 };
 
-function rankColor(rank: string): string {
-  const r = rank.toLowerCase();
-  if (r.includes("admin")) return "text-red-300";
-  if (r.includes("modérateur") || r.includes("moderateur")) return "text-sky-300";
-  if (r.includes("help")) return "text-emerald-300";
-  return "text-slate-300";
+/**
+ * Pastille colorée par rang staff (helpeur / modo / admin / …). Avant : un simple
+ * texte de couleur, quasi indistinct entre rangs. Les accents sont retirés avant
+ * comparaison (« modérateur », « développeur » contiennent é/è). L'ordre des
+ * tests compte : « super admin » avant « admin », « super » l'emportant.
+ * Classes en LITTÉRAL complet (Tailwind ne scanne pas les chaînes composées).
+ */
+function staffRankChip(rank: string): string {
+  const r = rank
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const base = "rounded-md border px-1.5 py-0.5 text-[11px] font-semibold leading-none ";
+
+  if (r.includes("fondateur")) return base + "border-fuchsia-400/40 bg-fuchsia-500/15 text-fuchsia-200";
+  if (r.includes("responsable")) return base + "border-purple-400/40 bg-purple-500/15 text-purple-200";
+  if (r.includes("develop") || r.includes("dev")) return base + "border-violet-400/40 bg-violet-500/15 text-violet-200";
+  if (r.includes("super")) return base + "border-red-400/40 bg-red-500/15 text-red-200";
+  if (r.includes("admin")) return base + "border-orange-400/40 bg-orange-500/15 text-orange-200";
+  if (r.includes("mod")) return base + "border-sky-400/40 bg-sky-500/15 text-sky-200";
+  if (r.includes("help")) return base + "border-emerald-400/40 bg-emerald-500/15 text-emerald-200";
+  if (r.includes("test")) return base + "border-teal-400/40 bg-teal-500/15 text-teal-200";
+  return base + "border-white/12 bg-white/5 text-slate-300";
 }
 
 function formatJob(job: string): string {
@@ -102,9 +119,9 @@ export default function StaffOnlineStrip() {
                       onDuty ? "animate-pulse bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,1)]" : "bg-emerald-400/70 shadow-[0_0_5px_rgba(52,211,153,0.6)]"
                     }`}
                   />
-                  <span className="flex items-baseline gap-1.5">
+                  <span className="flex items-center gap-1.5">
                     <span className="font-semibold text-slate-50">{s.name}</span>
-                    <span className={`text-[11px] ${rankColor(s.rankStaff)}`}>{s.rankStaff}</span>
+                    {s.rankStaff ? <span className={staffRankChip(s.rankStaff)}>{s.rankStaff}</span> : null}
                   </span>
                   <span
                     className={`rounded-md border px-1.5 py-0.5 text-[11px] font-bold leading-none ${

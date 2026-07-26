@@ -253,3 +253,58 @@ export function isGradeRole(roleId: string): boolean {
 export function getGradeRoleIds(): string[] {
   return [...(GRADE_ROLE_IDS_ORDERED as any as string[])];
 }
+
+/**
+ * Palette compacte pour les BANDEAUX "en ligne" du dashboard (pastille + pilule
+ * + texte), une couleur par grade. Alignée sur GRADE_BADGE_STYLE_BY_ROLE_ID afin
+ * que le dashboard, la liste des membres et les fiches partagent le même code
+ * couleur. Indexée par LABEL (les bandeaux ne disposent que du label, pas du
+ * rôle Discord).
+ */
+export type GradeStripColor = { pill: string; dot: string; text: string };
+
+// ⚠️ Classes écrites en LITTÉRAL complet (jamais composées via `${}`) : Tailwind
+// ne scanne que les chaînes statiques et purgerait toute classe construite
+// dynamiquement. Familles de couleur alignées sur GRADE_BADGE_STYLE_BY_ROLE_ID.
+// Clé = label normalisé (minuscules, sans accent).
+const GRADE_STRIP_COLOR_BY_LABEL: Record<string, GradeStripColor> = {
+  "chef famille": { pill: "border-red-400/30 bg-red-500/10",       dot: "bg-red-300",     text: "text-red-200" },
+  "general":      { pill: "border-amber-400/30 bg-amber-500/10",   dot: "bg-amber-300",   text: "text-amber-200" },
+  "consejero":    { pill: "border-cyan-400/30 bg-cyan-500/10",     dot: "bg-cyan-300",    text: "text-cyan-200" },
+  "comandante":   { pill: "border-lime-400/30 bg-lime-500/10",     dot: "bg-lime-300",    text: "text-lime-200" },
+  "coronel":      { pill: "border-yellow-400/30 bg-yellow-500/10", dot: "bg-yellow-300",  text: "text-yellow-200" },
+  "mayor":        { pill: "border-blue-400/30 bg-blue-500/10",     dot: "bg-blue-300",    text: "text-blue-200" },
+  "capitan":      { pill: "border-sky-400/30 bg-sky-500/10",       dot: "bg-sky-300",     text: "text-sky-200" },
+  "teniente":     { pill: "border-indigo-400/30 bg-indigo-500/10", dot: "bg-indigo-300",  text: "text-indigo-200" },
+  "subteniente":  { pill: "border-violet-400/30 bg-violet-500/10", dot: "bg-violet-300",  text: "text-violet-200" },
+  "veterano":     { pill: "border-fuchsia-400/30 bg-fuchsia-500/10",dot: "bg-fuchsia-300",text: "text-fuchsia-200" },
+  "caporal":      { pill: "border-emerald-400/30 bg-emerald-500/10",dot: "bg-emerald-300",text: "text-emerald-200" },
+  "asesino":      { pill: "border-green-400/30 bg-green-500/10",   dot: "bg-green-300",   text: "text-green-200" },
+  "guardia":      { pill: "border-teal-400/30 bg-teal-500/10",     dot: "bg-teal-300",    text: "text-teal-200" },
+  "soldato":      { pill: "border-slate-400/30 bg-slate-500/10",   dot: "bg-slate-300",   text: "text-slate-200" },
+  "novato":       { pill: "border-zinc-400/30 bg-zinc-500/10",     dot: "bg-zinc-300",    text: "text-zinc-200" },
+  "reserviste":   { pill: "border-rose-400/30 bg-rose-500/10",     dot: "bg-rose-300",    text: "text-rose-200" },
+  "nutella":      { pill: "border-orange-400/30 bg-orange-500/10", dot: "bg-orange-300",  text: "text-orange-200" },
+  "blacklist":    { pill: "border-red-700/40 bg-red-800/20",       dot: "bg-red-400",     text: "text-red-300" },
+};
+
+const GRADE_STRIP_DEFAULT: GradeStripColor = {
+  pill: "border-white/12 bg-white/[0.04]",
+  dot: "bg-slate-300",
+  text: "text-slate-300",
+};
+
+/** Normalise un label pour matcher la table (minuscules + sans accent). */
+function normalizeGradeLabel(label: string | null | undefined): string {
+  return String(label ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Couleurs du bandeau "en ligne" pour un grade donné (par label). */
+export function getGradeStripColor(label: string | null | undefined): GradeStripColor {
+  if (!label) return GRADE_STRIP_DEFAULT;
+  return GRADE_STRIP_COLOR_BY_LABEL[normalizeGradeLabel(label)] ?? GRADE_STRIP_DEFAULT;
+}
