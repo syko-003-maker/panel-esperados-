@@ -24,8 +24,29 @@ export type DebtRow = {
   lastAt: Date | null;
 };
 
+/**
+ * Catégories de mouvements qui comptent dans la dette envers la famille.
+ *
+ * L'API LYG a été modifiée : chaque mouvement porte désormais une `category`.
+ * Les dépôts et retraits réels du coffre sont en "bank" ; le farm remonte en
+ * "production" et "genetics". Ces derniers ne sont PAS de l'argent que le
+ * membre a sorti du coffre — les compter fabriquait des dettes qui n'existent
+ * pas, et pouvait déclencher rappels puis sanctions automatiques.
+ *
+ * Les lignes antérieures au changement d'API n'ont pas de `category` : elles
+ * datent d'avant l'existence du farm dans ce flux, on les traite donc comme
+ * "bank" pour ne pas effacer d'historique.
+ */
+const DEBT_CATEGORY = "bank";
+
+const CATEGORY_FILTER = Prisma.sql`
+  COALESCE(b."raw"->>'category', ${DEBT_CATEGORY}) = ${DEBT_CATEGORY}
+`;
+
 const NET_EXPR = Prisma.sql`
-  SUM(CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END)
+  SUM(CASE WHEN ${CATEGORY_FILTER}
+           THEN (CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END)
+           ELSE 0 END)
 `;
 
 // Rôles qui excluent un membre du module de dettes (démote, blacklist, réserviste)
@@ -145,9 +166,12 @@ export async function getMemberDebt(params: { familyId: string; memberId: string
     return { ok: false, error: "MEMBER_INELIGIBLE", member: null };
   }
 
+  // Même règle que NET_EXPR : le farm ne compte pas dans la dette.
   const rows = await prisma.$queryRaw<{ net: bigint | null; lastAt: Date | null }[]>`
     SELECT
-      SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) AS "net",
+      SUM(CASE WHEN COALESCE("raw"->>'category', ${DEBT_CATEGORY}) = ${DEBT_CATEGORY}
+               THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END)
+               ELSE 0 END) AS "net",
       MAX("at") AS "lastAt"
     FROM "BankLog"
     WHERE "familyId" = ${params.familyId}

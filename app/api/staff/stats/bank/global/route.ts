@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
     console.log(`[bank/global] Query for: ${family.slug} (id=${family.id})`);
 
     // Aggregate credits (type=2) and debits (type=1) by steamId
+    // Farm exclu (categories "production"/"genetics") : ces chiffres mesurent
+    // ce qui a transite par le COFFRE FAMILLE, comme les dettes et les courbes.
     const allTimeData = await prisma.$queryRaw<Array<{
       steamId: string;
       totalCredits: bigint;
@@ -44,8 +46,10 @@ export async function GET(request: NextRequest) {
     }>>`
       SELECT
         "steamId",
-        SUM(CASE WHEN "type" = 2 THEN "money" ELSE 0 END)::bigint AS "totalCredits",
-        SUM(CASE WHEN "type" = 1 THEN "money" ELSE 0 END)::bigint AS "totalDebits"
+        SUM(CASE WHEN "type" = 2 AND COALESCE("raw"->>'category', 'bank') = 'bank'
+                 THEN "money" ELSE 0 END)::bigint AS "totalCredits",
+        SUM(CASE WHEN "type" = 1 AND COALESCE("raw"->>'category', 'bank') = 'bank'
+                 THEN "money" ELSE 0 END)::bigint AS "totalDebits"
       FROM "BankLog"
       WHERE ("familyId" = ${family.id} OR "familyId" = ${family.slug})
         AND "steamId" IS NOT NULL

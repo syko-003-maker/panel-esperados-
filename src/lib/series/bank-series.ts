@@ -16,6 +16,10 @@ export type SeriesPoint = { t: number; v: number };
  * ⚠️ `BankLog.familyId` contient historiquement soit l'id (cuid) soit le slug
  * ("esperados") — on matche les deux, comme /api/staff/stats/bank/global.
  */
+// Le farm (categories "production" et "genetics") est exclu : la courbe
+// montre ce que le membre a verse a la FAMILLE, pas tout l'argent qu'il a
+// brasse. Meme regle que le calcul des dettes, pour que les deux concordent.
+// Les lignes sans categorie datent d'avant ce champ : traitees comme "bank".
 export async function getBankBalanceSeries(opts: {
   familyDbId: string;
   familySlug: string;
@@ -27,7 +31,9 @@ export async function getBankBalanceSeries(opts: {
     steamId != null && steamId !== ""
       ? await prisma.$queryRaw<Array<{ day: Date; delta: bigint }>>`
           SELECT date_trunc('day', "at") AS day,
-                 SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END)::bigint AS delta
+                 SUM(CASE WHEN COALESCE("raw"->>'category', 'bank') = 'bank'
+                          THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END)
+                          ELSE 0 END)::bigint AS delta
           FROM "BankLog"
           WHERE ("familyId" = ${familyDbId} OR "familyId" = ${familySlug})
             AND "steamId" = ${steamId}
@@ -36,7 +42,9 @@ export async function getBankBalanceSeries(opts: {
         `
       : await prisma.$queryRaw<Array<{ day: Date; delta: bigint }>>`
           SELECT date_trunc('day', "at") AS day,
-                 SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END)::bigint AS delta
+                 SUM(CASE WHEN COALESCE("raw"->>'category', 'bank') = 'bank'
+                          THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END)
+                          ELSE 0 END)::bigint AS delta
           FROM "BankLog"
           WHERE ("familyId" = ${familyDbId} OR "familyId" = ${familySlug})
           GROUP BY day

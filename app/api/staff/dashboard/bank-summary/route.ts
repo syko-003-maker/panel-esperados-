@@ -34,10 +34,10 @@ export async function GET() {
     type Row = { steamId: string; net: bigint };
     const rows = await prisma.$queryRaw<Row[]>`
       SELECT "steamId",
-        SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) AS "net"
+        SUM(CASE WHEN COALESCE("raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) ELSE 0 END) AS "net"
       FROM "BankLog"
       GROUP BY "steamId"
-      HAVING SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) < 0
+      HAVING SUM(CASE WHEN COALESCE("raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) ELSE 0 END) < 0
     `;
 
     const steamIds = rows.map(r => r.steamId).filter(Boolean);

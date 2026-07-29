@@ -1678,7 +1678,7 @@ async function handleBankDebtPingBatch(
       b."steamId"   AS "steamId",
       m."discordId" AS "discordId",
       m."rpName"    AS "rpName",
-      SUM(CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END) AS "net"
+      SUM(CASE WHEN COALESCE(b."raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END) ELSE 0 END) AS "net"
     FROM "BankLog" b
     LEFT JOIN "Member" m
       ON m."steamId" = b."steamId"
@@ -1691,8 +1691,8 @@ async function handleBankDebtPingBatch(
         OR NOT (m."discordRoleIds" && ARRAY['1340837563753304075','1338901141873758288','1312845999366209682']::text[])
       )
     GROUP BY m."id", m."discordId", m."rpName", b."steamId"
-    HAVING SUM(CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END) <= ${-effectiveThreshold}
-    ORDER BY SUM(CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END) ASC
+    HAVING SUM(CASE WHEN COALESCE(b."raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END) ELSE 0 END) <= ${-effectiveThreshold}
+    ORDER BY SUM(CASE WHEN COALESCE(b."raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN b."type" = 2 THEN b."money" ELSE -b."money" END) ELSE 0 END) ASC
   `;
 
   if (rows.length === 0) {

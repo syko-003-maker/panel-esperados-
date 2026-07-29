@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   // calcul, sans les règles d'éligibilité. Évite qu'il n'ait que le playtime.
   if (!debt && member.steamId) {
     const rows = await prisma.$queryRaw<{ net: bigint | null }[]>`
-      SELECT SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) AS "net"
+      SELECT SUM(CASE WHEN COALESCE("raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) ELSE 0 END) AS "net"
       FROM "BankLog"
       WHERE "familyId" = ${familyId} AND "steamId" = ${member.steamId}
     `;

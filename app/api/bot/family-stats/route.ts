@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   let totalDebt = 0;
   if (steamIds.size > 0) {
     const rows = await prisma.$queryRaw<{ steamId: string; net: bigint | null }[]>`
-      SELECT "steamId", SUM(CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) AS "net"
+      SELECT "steamId", SUM(CASE WHEN COALESCE("raw"->>'category', 'bank') = 'bank' THEN (CASE WHEN "type" = 2 THEN "money" ELSE -"money" END) ELSE 0 END) AS "net"
       FROM "BankLog"
       WHERE "familyId" = ${familyId}
       GROUP BY "steamId"
