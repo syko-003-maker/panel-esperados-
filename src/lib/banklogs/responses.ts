@@ -1,37 +1,16 @@
 /**
- * Helpers JSON pour /api/banklogs : réponse OK/erreur cohérente + auth ingest.
+ * Helpers JSON pour /api/banklogs : réponse OK + auth ingest.
  *
  * Extrait de app/api/banklogs/route.ts (Lot 8).
  */
 
 import { NextResponse } from "next/server";
-import { FAMILY_SLUG } from "./constants";
 
 export function jsonOk(payload: unknown, status = 200): NextResponse {
   return NextResponse.json(payload, {
     status,
     headers: { "cache-control": "no-store" },
   });
-}
-
-export function jsonErr(
-  message: string,
-  status = 500,
-  extra?: Record<string, unknown>
-): NextResponse {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "BANKLOGS_FAILED",
-      message,
-      familySlug: FAMILY_SLUG,
-      ...(extra ?? {}),
-    },
-    {
-      status,
-      headers: { "cache-control": "no-store" },
-    }
-  );
 }
 
 /**
@@ -43,12 +22,4 @@ export function hasValidIngestSecret(req: Request): boolean {
   if (!expected) return false;
   const provided = req.headers.get("x-ingest-secret");
   return Boolean(provided && provided === expected);
-}
-
-export function safeJsonParse<T = unknown>(text: string): T | null {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
-  }
 }

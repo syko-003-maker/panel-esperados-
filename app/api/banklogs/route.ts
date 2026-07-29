@@ -6,26 +6,28 @@
 // Endpoints :
 //   GET  → lecture paginée DB (cache TTL via banklogs-cache module-level)
 //          Auth : INGEST_SECRET worker OU staff session
-//   POST → sync depuis LYG vers DB (best-effort)
-//          Auth : INGEST_SECRET worker OU privileged session
+//          Réponse : { ok, familySlug, page, limit, total, items[], source }
 //
-// Aucun changement de shape API depuis avant Lot 8 :
-//   GET  : { ok, familySlug, page, limit, total, items[], source }
-//   POST : { ok, familySlug, lyg: {url, status}, itemsCount, stored, created, preview }
+// Il exista un POST de sync depuis LYG. Il n'a jamais rien écrit : son insert
+// omettait id, fingerprint et raw, trois colonnes NOT NULL sans valeur par
+// défaut, et l'échec était avalé par un catch marqué « non-blocking ». Aucun
+// appelant en quinze jours de logs, et zéro ligne de cette origine en base.
+// Le vrai sync est runLygBanklogsSync (src/lib/lyg/sync-banklogs.ts), branché
+// sur le cron et les boutons staff. Le POST a donc été retiré plutôt que
+// réparé : deux implémentations du même sync, dont une muette, est un piège.
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { requirePrivileged } from "@/lib/guards";
 import { requireStaffAccess } from "@/lib/rbac";
 import { resolveFamilyId } from "@/lib/family";
 import { debug, logger } from "@/lib/logger";
 import { getBanklogsCache, setBanklogsCache } from "@/lib/banklogs-cache";
 
 import { FAMILY_SLUG } from "@/lib/banklogs/constants";
-import { jsonOk, jsonErr, hasValidIngestSecret, safeJsonParse } from "@/lib/banklogs/responses";
+import { jsonOk, hasValidIngestSecret } from "@/lib/banklogs/responses";
 import { parseBanklogsQuery, makeBanklogsCacheParams } from "@/lib/banklogs/query-params";
 import { fetchBanklogsPage } from "@/lib/banklogs/query-banklogs";
 import {
@@ -33,7 +35,6 @@ import {
   serializeBanklogRows,
   computeDebugStats,
 } from "@/lib/banklogs/build-row";
-import { syncBanklogsFromLyg } from "@/lib/banklogs/sync-from-lyg";
 
 // ─────────────────────────────────────────────────────────────────────
 // GET /api/banklogs — lecture DB paginée + filtres
@@ -122,78 +123,6 @@ export async function GET(req: Request) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errStack = err instanceof Error ? err.stack : undefined;
     logger.error("banklogs", "GET failed", { err: errMsg, stack: errStack });
-
-    return NextResponse.json(
-      { ok: false, error: "BANKLOGS_FAILED", message: errMsg },
-      { status: 502, headers: { "Cache-Control": "no-store" } }
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// POST /api/banklogs — sync depuis LYG (best-effort)
-// ─────────────────────────────────────────────────────────────────────
-export async function POST(req: Request) {
-  try {
-    if (!hasValidIngestSecret(req)) {
-      const guard = await requirePrivileged();
-      if (guard instanceof Response) return guard;
-    }
-
-    const familyDbId = await resolveFamilyId(FAMILY_SLUG);
-
-    // Body optionnel (paramètres de sync futurs)
-    let body: unknown = null;
-    try {
-      const text = await req.text();
-      body = text ? safeJsonParse(text) : null;
-    } catch {
-      body = null;
-    }
-
-    console.log("[banklogs] POST sync requested", { familySlug: FAMILY_SLUG, familyDbId });
-    debug("[banklogs] POST sync requested", { familySlug: FAMILY_SLUG, familyDbId, body });
-
-    const result = await syncBanklogsFromLyg({ familyDbId });
-
-    if (!result.ok) {
-      const err = result.error!;
-      logger.error("banklogs", "LYG fetch failed", {
-        url: result.lyg.url,
-        status: result.lyg.status,
-        contentType: err.contentType,
-        rawTextLength: err.rawText.length,
-        rawText: err.rawText,
-      });
-      return jsonErr(err.message, 502, {
-        url: result.lyg.url,
-        status: result.lyg.status,
-        contentType: err.contentType,
-        rawText: err.rawText,
-      });
-    }
-
-    console.log("[banklogs] POST LYG returned", { itemsCount: result.itemsCount });
-    if (result.stored) {
-      console.log("[banklogs] POST DB insert success", {
-        created: result.created,
-        total: result.itemsCount,
-      });
-    }
-
-    return jsonOk({
-      ok: true,
-      familySlug: FAMILY_SLUG,
-      lyg: { url: result.lyg.url, status: result.lyg.status },
-      itemsCount: result.itemsCount,
-      stored: result.stored,
-      created: result.created,
-      preview: result.preview,
-    });
-  } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    const errStack = err instanceof Error ? err.stack : undefined;
-    logger.error("banklogs", "POST failed", { err: errMsg, stack: errStack });
 
     return NextResponse.json(
       { ok: false, error: "BANKLOGS_FAILED", message: errMsg },
