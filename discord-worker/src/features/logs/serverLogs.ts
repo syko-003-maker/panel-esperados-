@@ -594,6 +594,54 @@ export async function onMemberUpdate(old: GuildMember | PartialGuildMember, memb
 
 // ─── Vocal ───────────────────────────────────────────────────────────────────
 
+/**
+ * Retrouve qui a déconnecté / déplacé un membre du vocal.
+ *
+ * Discord ne facilite pas la tâche : contrairement à un ban, les entrées
+ * MEMBER_DISCONNECT (27) et MEMBER_MOVE (26) n'ont PAS de cible. Elles portent
+ * seulement l'auteur et un compteur (`extra.count`), parce qu'une même action
+ * peut déconnecter plusieurs personnes d'un coup. Impossible donc de dire
+ * « cette entrée concerne ce membre » : on corrèle par le temps.
+ *
+ * Le risque de cette corrélation, c'est d'attribuer une vieille entrée à
+ * quelqu'un qui vient simplement de partir de lui-même. D'où le compteur de
+ * consommation : une entrée qui annonce 3 déconnexions ne peut être utilisée
+ * que 3 fois. Au-delà, on considère que le départ est volontaire.
+ */
+const auditCredits = new Map<string, number>();
+
+async function findVoiceExecutor(
+  guild: Guild,
+  type: 26 | 27,
+  windowMs = 5000,
+): Promise<{ id: string; reason: string | null } | null> {
+  try {
+    // Discord écrit l'audit log de façon asynchrone : sans ce délai, l'entrée
+    // n'existe pas encore au moment où on la cherche.
+    await new Promise((r) => setTimeout(r, 700));
+
+    const logs = await guild.fetchAuditLogs({ type, limit: 5 });
+    const now = Date.now();
+
+    for (const entry of logs.entries.values()) {
+      const e = entry as any;
+      if (now - e.createdTimestamp > windowMs) continue;
+
+      const total = Number(e.extra?.count ?? 1) || 1;
+      const used = auditCredits.get(e.id) ?? 0;
+      if (used >= total) continue;
+
+      auditCredits.set(e.id, used + 1);
+      // Le cache ne doit pas grossir indéfiniment sur un serveur actif.
+      if (auditCredits.size > 500) {
+        for (const k of Array.from(auditCredits.keys()).slice(0, 250)) auditCredits.delete(k);
+      }
+      return { id: e.executor?.id ?? "?", reason: e.reason ?? null };
+    }
+  } catch { /* pas la permission de lire l'audit log, ou API indisponible */ }
+  return null;
+}
+
 export async function onVoiceStateUpdate(oldState: any, newState: any): Promise<void> {
   const member = newState.member ?? oldState.member;
   if (!member || member.user.bot) return;
@@ -663,19 +711,24 @@ export async function onVoiceStateUpdate(oldState: any, newState: any): Promise<
   const oldChannel = oldChannelId ? (guild.channels.cache.get(oldChannelId) ?? { id: oldChannelId }) : null;
   const newChannel = newChannelId ? (guild.channels.cache.get(newChannelId) ?? { id: newChannelId }) : null;
 
-  // Détecter si un modérateur a déplacé le membre (audit log type 26 = MEMBER_MOVE)
+  // Déplacement par un modérateur (audit log 26 = MEMBER_MOVE)
   let movedBy: string | null = null;
   if (oldChannel && newChannel) {
-    try {
-      await new Promise((r) => setTimeout(r, 600));
-      const logs = await guild.fetchAuditLogs({ type: 26, limit: 5 });
-      const entry = logs.entries.find(
-        (e: any) =>
-          e.executor?.id !== member.id &&
-          Date.now() - e.createdTimestamp < 5000
-      );
-      if (entry) movedBy = `<@${entry.executor?.id}>`;
-    } catch { /* non bloquant */ }
+    const mv = await findVoiceExecutor(guild, 26);
+    if (mv && mv.id !== member.id) movedBy = `<@${mv.id}>`;
+  }
+
+  // Déconnexion forcée (audit log 27 = MEMBER_DISCONNECT). Sans cette
+  // vérification, une expulsion du vocal était journalisée exactement comme un
+  // départ volontaire — on ne savait donc jamais qui avait déconnecté qui.
+  let kickedBy: string | null = null;
+  let kickReason: string | null = null;
+  if (oldChannel && !newChannel) {
+    const kick = await findVoiceExecutor(guild, 27);
+    if (kick && kick.id !== member.id) {
+      kickedBy = kick.id;
+      kickReason = kick.reason;
+    }
   }
 
   let title: string;
@@ -690,12 +743,28 @@ export async function onVoiceStateUpdate(oldState: any, newState: any): Promise<
       { name: "🔊 Salon rejoint", value: `<#${newChannel.id}>`, inline: true },
     ];
   } else if (oldChannel && !newChannel) {
-    title = `🔇 ${member.user.tag} a quitté un salon vocal`;
-    color = 0xef4444;
-    fields = [
-      { name: "👤 Membre",       value: `<@${member.id}>`, inline: true },
-      { name: "🔇 Salon quitté", value: `<#${oldChannel.id}>`, inline: true },
-    ];
+    // Deux cas très différents à ne pas confondre dans les logs : partir de
+    // soi-même, ou se faire éjecter par un membre du staff.
+    if (kickedBy) {
+      title = `⛔ ${member.user.tag} a été déconnecté du vocal`;
+      color = 0xdc2626;
+      fields = [
+        { name: "🎯 Déconnecté",      value: `<@${member.id}>`,   inline: true },
+        { name: "👮 Responsable",     value: `<@${kickedBy}>`,    inline: true },
+        { name: "🔇 Salon",           value: `<#${oldChannel.id}>`, inline: true },
+        ...(kickReason
+          ? [{ name: "📝 Raison", value: kickReason.slice(0, 1024), inline: false }]
+          : []),
+      ];
+    } else {
+      title = `🔇 ${member.user.tag} a quitté un salon vocal`;
+      color = 0xef4444;
+      fields = [
+        { name: "👤 Membre",       value: `<@${member.id}>`, inline: true },
+        { name: "👮 Responsable",  value: "De lui-même",     inline: true },
+        { name: "🔇 Salon quitté", value: `<#${oldChannel.id}>`, inline: true },
+      ];
+    }
   } else {
     title = movedBy
       ? `🔀 ${member.user.tag} a été déplacé dans un salon vocal`
