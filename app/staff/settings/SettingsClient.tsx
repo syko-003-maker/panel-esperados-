@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { PageShell, SectionCard } from "@/components/staff/ui";
+import { AppearanceSwitch } from "@/components/appearance-switch";
+import { AccessLogPanel } from "@/components/access-log-panel";
 import { Bot, ClipboardList, FileText, KeyRound, Send, Server, ShieldCheck } from "lucide-react";
 
 export default function SettingsClient() {
@@ -12,6 +14,20 @@ export default function SettingsClient() {
       icon={Bot}
     >
       <div className="grid gap-6">
+        <SectionCard
+          title="Accès au panel"
+          description="Qui se connecte, qui essaie, et qui se fait refuser"
+        >
+          <AccessLogPanel />
+        </SectionCard>
+
+        <SectionCard
+          title="Apparence"
+          description="Thème de l'application installée, et diagnostic de la détection automatique"
+        >
+          <AppearanceSwitch />
+        </SectionCard>
+
         <SectionCard title="Accès & sécurité" description="Qui a le droit de faire quoi sur le panel (réservé Chef / Sous-Chef)">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link href="/staff/settings/access" className="block group">

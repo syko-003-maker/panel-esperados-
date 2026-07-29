@@ -1528,3 +1528,32 @@ model SuggestionVote {
   @@unique([suggestionId, memberId]) // 1 vote / membre / suggestion (site OU Discord)
   @@index([memberId])
 }
+
+/// Journal des accès au panel : qui se connecte, qui essaie, qui est refusé.
+///
+/// Sert au contrôle : un ancien membre qui tente encore d'entrer apparaît ici,
+/// avec la raison du refus. Sans ce journal, un blocage silencieux est
+/// invisible — on ne sait ni qu'il a eu lieu, ni s'il était justifié.
+model AccessLog {
+  id        String   @id @default(cuid())
+  at        DateTime @default(now())
+
+  /// LOGIN = authentification réussie · BLOCKED = membre refusé (parti)
+  /// NOT_LINKED = compte Discord sans fiche membre
+  event     String
+  reason    String?
+
+  discordId String?
+  userId    String?
+  rpName    String?
+  /// Pseudo Discord au moment de la tentative : un ancien membre peut ne plus
+  /// avoir de fiche, on garde donc de quoi l'identifier.
+  username  String?
+
+  ip        String?
+  userAgent String?
+
+  @@index([at])
+  @@index([discordId, at])
+  @@index([event, at])
+}

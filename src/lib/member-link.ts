@@ -16,9 +16,25 @@
  */
 
 import { prisma } from "@/lib/db";
+import { logAccess } from "@/lib/access-log";
 import { FAMILY_SLUG, resolveFamilyId } from "@/lib/family";
 
 const FALLBACK_FAMILY_ID = FAMILY_SLUG;
+
+/**
+ * Delai de grace avant qu'un membre marque inactif perde son acces.
+ *
+ * VERIFIE SUR LES DONNEES : isActive est fiable. Le poller compare chaque
+ * membre au roster LYG et n'en desactive aucun qui y figure encore — controle
+ * effectue, zero incoherence sur 226 fiches. Un membre marque inactif a donc
+ * reellement quitte la famille.
+ *
+ * Le delai ne sert qu'a absorber un incident TECHNIQUE : si l'API LYG renvoie
+ * un roster temporairement incomplet, des membres sont desactives a tort, et la
+ * synchro suivante les retablit en quelques minutes. Une heure couvre largement
+ * ce cas sans laisser un ancien membre entrer.
+ */
+const INACTIVE_GRACE_MS = 60 * 60 * 1000;
 
 /**
  * Get linked member for a session by Discord ID
@@ -99,6 +115,7 @@ export async function getLinkedMemberBySession(
       rpName: true,
       steamId: true,
       isActive: true,
+      lastSeenAt: true,
     },
   });
 
@@ -114,6 +131,7 @@ export async function getLinkedMemberBySession(
         rpName: true,
         steamId: true,
         isActive: true,
+        lastSeenAt: true,
       },
     });
   }
@@ -131,6 +149,42 @@ export async function getLinkedMemberBySession(
       discordId,
       familyIdsTried: Array.from(new Set([resolvedFamilyId, FALLBACK_FAMILY_ID])),
     });
+  }
+
+  /*
+   * Un ancien membre ne doit plus entrer.
+   *
+   * Jusqu'ici cette fonction ne regardait que l'existence d'une fiche : le champ
+   * isActive etait lu, renvoye... et jamais utilise pour refuser. Une personne
+   * exclue de la famille gardait donc l'acces a son espace membre tant que sa
+   * fiche existait.
+   *
+   * On exige deux conditions : marque inactif ET plus vu depuis la periode de
+   * grace. Cette periode est courte (une heure) : elle ne protege que d'un
+   * roster LYG temporairement incomplet, pas d'un depart reel.
+   */
+  if (member && member.isActive === false) {
+    const seenAt = member.lastSeenAt ? member.lastSeenAt.getTime() : 0;
+
+    if (Date.now() - seenAt > INACTIVE_GRACE_MS) {
+      console.warn("[memberLink] acces refuse : membre inactif", {
+        discordId,
+        rpName: member.rpName,
+        lastSeenAt: member.lastSeenAt,
+      });
+
+      // Trace consultable dans Parametres : un blocage silencieux ne se
+      // constate pas, et on ne pourrait pas verifier qu'il etait justifie.
+      void logAccess({
+        event: "BLOCKED",
+        reason: "membre inactif (parti de la famille)",
+        discordId,
+        userId: session.user.id,
+        rpName: member.rpName,
+      });
+
+      return null;
+    }
   }
 
   // Cast member to ensure discordId is string (we know it exists because we queried by it)

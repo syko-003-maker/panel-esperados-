@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import type { NextAuthOptions } from "next-auth";
 import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/db";
+import { logAccess, shouldLogLogin } from "@/lib/access-log";
 import { logger } from "@/lib/logger";
 import { logStaffRolesConfig } from "@/lib/discord-rbac";
 import { syncDiscordRoleToPanel } from "@/lib/rbac";
@@ -111,6 +112,27 @@ export const authOptions: NextAuthOptions = {
         // ✅ Exposer dans session.user ET session racine (compatibilité)
         (session as any).userId = user.id;
         (session as any).discordId = discordId;
+
+        // Journal des connexions. Ce callback se declenche a chaque navigation :
+        // shouldLogLogin evite d'ecrire une ligne par page consultee.
+        if (discordId && shouldLogLogin(`${user.id}:${discordId}`)) {
+          const linked = await prisma.member
+            .findFirst({ where: { discordId }, select: { rpName: true, isActive: true } })
+            .catch(() => null);
+
+          void logAccess({
+            event: linked ? "LOGIN" : "NOT_LINKED",
+            reason: linked
+              ? linked.isActive === false
+                ? "fiche marquee inactive"
+                : null
+              : "aucune fiche membre pour ce Discord",
+            discordId,
+            userId: user.id,
+            rpName: linked?.rpName ?? null,
+            username: (user as any).name ?? null,
+          });
+        }
         if (session.user) {
           (session.user as any).id = user.id;
           (session.user as any).discordId = discordId;
