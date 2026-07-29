@@ -58,6 +58,7 @@ describe("buildStaffMemberRow — shape API", () => {
       "_isReservist",
       "currentGradeName",
       "discordAvatarHash",
+      "discordDisplayName",
       "discordId",
       "discordInGuild",
       "discordLastError",
@@ -69,6 +70,8 @@ describe("buildStaffMemberRow — shape API", () => {
       "playtime7d",
       "playtime7dUpdatedAt",
       "playtimeDelta7d",
+      // Seuil de présence propre au membre : null = seuil global.
+      "playtimeRequiredMinutes",
       "previousPlaytime7d",
       "rankLabel",
       "rankRoleId",
