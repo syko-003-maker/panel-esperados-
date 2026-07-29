@@ -26,17 +26,56 @@ function fmt(amount: number): string {
   return `${Math.abs(Math.round(amount)).toLocaleString("fr-FR")}$`;
 }
 
+/**
+ * Mouvements de coffre d'un membre depuis son dernier rappel.
+ *
+ * Comparer deux soldes ne raconte pas ce qui s'est passe : entre deux rappels
+ * espaces de plusieurs jours, une dette peut monter a 4 M, etre remboursee,
+ * puis remonter. Le bot ne voyait que les extremites et annoncait « ta dette a
+ * augmente » a quelqu'un qui venait de rembourser des millions.
+ *
+ * On lit donc les VRAIS mouvements de la periode. Seuls les mouvements de
+ * coffre comptent : le farm (categories production/genetics) n'est pas de
+ * l'argent pris a la famille.
+ *
+ * Une requete par membre relance : leur nombre est limite par le cooldown, et
+ * l'alternative (une requete unique avec une date differente par membre) serait
+ * nettement plus lourde a lire pour un gain nul a cette echelle.
+ */
+async function movementsSince(steamId: string | null, since: Date | null) {
+  if (!steamId || !since) return null;
+
+  const rows = await prisma.$queryRaw<Array<{ remis: bigint | null; retire: bigint | null }>>`
+    SELECT
+      SUM(CASE WHEN "type" = 2 THEN "money" ELSE 0 END) AS "remis",
+      SUM(CASE WHEN "type" = 1 THEN "money" ELSE 0 END) AS "retire"
+    FROM "BankLog"
+    WHERE "steamId" = ${steamId}
+      AND "at" > ${since}
+      AND COALESCE("raw"->>'category', 'bank') = 'bank'
+  `;
+
+  const remis = Number(rows[0]?.remis ?? 0);
+  const retire = Number(rows[0]?.retire ?? 0);
+  if (remis === 0 && retire === 0) return null;
+  return { remis, retire };
+}
+
 type Trend = "new" | "reduced" | "static" | "increased";
 
 function memberMessage(params: {
   mention: string;
   amount: number;
+  /** Dette au rappel precedent : citee explicitement quand elle a augmente. */
+  prevAmount: number;
+  /** Mouvements reels depuis le dernier rappel, s'il y en a eu. */
+  moves: { remis: number; retire: number } | null;
   count: number;
   trend: Trend;
   daysSinceFirst: number;
   escalateAfter: number;
 }): string {
-  const { mention, amount, count, trend, daysSinceFirst, escalateAfter } = params;
+  const { mention, amount, prevAmount, moves, count, trend, daysSinceFirst, escalateAfter } = params;
   const amt = fmt(amount);
 
   if (count <= 1) {
@@ -47,8 +86,20 @@ function memberMessage(params: {
     if (trend === "reduced") {
       return `${mention} 📌 **${count}ᵉ rappel** — ta dette a baissé (**${amt}** restants) mais n'est pas soldée. Continue, merci de finir de régulariser.`;
     }
-    const evol = trend === "increased" ? "n'a pas baissé, elle a même augmenté" : "n'a pas bougé";
-    return `${mention} ⚠️ **${count}ᵉ rappel** — ta dette (**${amt}**) ${evol} depuis le dernier rappel. Merci de régulariser rapidement.`;
+    if (trend === "increased") {
+      // On cite le montant de reference. Sans lui, le membre compare
+      // mentalement a son pic historique — qu'il a peut-etre rembourse — et
+      // croit le bot en erreur alors qu'il ne compare qu'au dernier rappel.
+      const depuis = prevAmount > 0 ? ` (elle était de **${fmt(prevAmount)}**)` : "";
+      // Quand on connait les mouvements, on les cite : dire « tu as remis 7 M
+      // mais retire 9,6 M » est juste et verifiable, la ou « ta dette a
+      // augmente » passe pour une erreur aux yeux de quelqu'un qui a rembourse.
+      const detail = moves
+        ? ` Sur la période tu as remis **${fmt(moves.remis)}** et retiré **${fmt(moves.retire)}**.`
+        : "";
+      return `${mention} ⚠️ **${count}ᵉ rappel** — ta dette a augmenté depuis le dernier rappel${depuis} : elle est maintenant de **${amt}**.${detail} Merci de régulariser rapidement.`;
+    }
+    return `${mention} ⚠️ **${count}ᵉ rappel** — ta dette (**${amt}**) n'a pas bougé depuis le dernier rappel. Merci de régulariser rapidement.`;
   }
 
   // count >= escalateAfter → dernier avertissement
@@ -363,11 +414,13 @@ export async function runDebtReminderCycle(params: {
     const firstRemindedAt = state?.firstRemindedAt ?? now;
     const daysSinceFirst = Math.floor((now.getTime() - firstRemindedAt.getTime()) / DAY_MS);
     const mention = `<@${d.discordId}>`;
+      // Ce qui s'est reellement passe depuis le dernier rappel.
+      const moves = await movementsSince(d.steamId ?? null, state?.lastRemindedAt ?? null);
 
     await enqueueMessage({
       familyId: familySlug,
       channelId,
-      content: memberMessage({ mention, amount, count, trend, daysSinceFirst, escalateAfter }),
+      content: memberMessage({ mention, amount, prevAmount, moves, count, trend, daysSinceFirst, escalateAfter }),
       entity: "BankDebtReminder",
       entityId: d.memberId,
     });
