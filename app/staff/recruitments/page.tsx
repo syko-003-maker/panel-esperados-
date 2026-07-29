@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { requireRecruiterOrAbove } from "@/lib/guards";
-import { parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { extractRecruitmentEvaluation, parseRecruitmentNotes } from "@/lib/recruitment/legacy";
+import { resolveModelForRecruitment } from "@/lib/recruitment/models";
+import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { RecruitmentsListClient } from "./recruitments-list-client";
 import { PageShell } from "@/components/staff/ui";
@@ -79,10 +81,43 @@ export default async function RecruitmentsPage() {
     return [u.id, getDiscordAvatarUrl(discordId, hash) ?? u.image ?? null];
   }));
 
+  // Note du candidat, pour l'afficher sous chaque recruteur.
+  //
+  // On ne peut PAS se contenter du barème par défaut : les points sont indexés
+  // sur les identifiants de questions, donc un ticket évalué avec un autre
+  // modèle donnerait une note fausse. On résout donc le modèle de chaque ticket
+  // — en le mettant en cache, car beaucoup de tickets partagent le même.
+  const modelCache = new Map<string, Awaited<ReturnType<typeof resolveModelForRecruitment>>>();
+  const scoreByRecruitmentId = new Map<string, number | null>();
+
+  for (let i = 0; i < recruitments.length; i++) {
+    const notes = allNotes[i];
+    const evaluation = extractRecruitmentEvaluation(notes, recruitments[i].payload);
+
+    // Aucune évaluation saisie : pas de note à afficher (≠ note de zéro).
+    if (!evaluation.scoresJson || Object.keys(evaluation.scoresJson).length === 0) {
+      scoreByRecruitmentId.set(recruitments[i].id, null);
+      continue;
+    }
+
+    const key = notes.modelId ?? "__default__";
+    let model = modelCache.get(key);
+    if (!model) {
+      model = await resolveModelForRecruitment(notes.modelId ?? null);
+      modelCache.set(key, model);
+    }
+
+    scoreByRecruitmentId.set(
+      recruitments[i].id,
+      computeRecruitmentTotals(evaluation.scoresJson, model.questions).totalOn20
+    );
+  }
+
   const data = recruitments.map((r, i) => {
     const notes = allNotes[i];
     const claimedById = notes.claimedById ?? null;
     return {
+      score: scoreByRecruitmentId.get(r.id) ?? null,
       id: r.id,
       ticketKey: r.ticketKey!,
       status: r.status,

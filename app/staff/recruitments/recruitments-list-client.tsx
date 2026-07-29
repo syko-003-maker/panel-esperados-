@@ -5,7 +5,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Award, FileSpreadsheet, MessageSquare, Search, Trash2, UserCheck, Users } from "lucide-react";
+import { Award, ChevronDown, FileSpreadsheet, MessageSquare, Search, Trash2, UserCheck, Users } from "lucide-react";
 import { getDiscordThreadUrl } from "@/lib/discord-config";
 import { DataTile } from "@/components/staff/ui/DataTile";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
@@ -29,7 +29,16 @@ type Recruitment = {
   closedAt: string | null;
   claimedByName: string | null;
   claimedByAvatar: string | null;
+  /** Note sur 20, ou null si le dossier n'a pas encore été évalué. */
+  score: number | null;
 };
+
+/** Vert au-dessus de 14, ambre entre 10 et 14, rouge en dessous. */
+function scoreTone(score: number) {
+  if (score >= 14) return "bg-emerald-500/15 text-emerald-300";
+  if (score >= 10) return "bg-amber-500/15 text-amber-300";
+  return "bg-red-500/15 text-red-300";
+}
 
 // Avatar Discord du recruteur, avec repli sur les initiales si pas d'image / 404.
 function RecruiterAvatar({ src, name, ring }: { src: string | null; name: string; ring: string }) {
@@ -83,6 +92,8 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
   const [refusingId, setRefusingId] = useState<string | null>(null);
   const [refusedIds, setRefusedIds] = useState<Set<string>>(new Set());
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  // Recruteur déplié dans le classement (un seul à la fois).
+  const [openRecruiter, setOpenRecruiter] = useState<string | null>(null);
   const router = useRouter();
 
   const visible = useMemo(() => {
@@ -107,10 +118,16 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
 
   // Quota recruteurs : agrégation par recruteur (claimedByName). Reste en phase
   // avec les suppressions/refus en direct via deletedIds/refusedIds.
+  // `items` garde les recrutements de chacun pour le dépliage au clic : la
+  // liste complète est déjà en mémoire, inutile d'appeler l'API pour la détailler.
   const recruiterStats = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; avatar: string | null; accepted: number; refused: number; pending: number; total: number }
+      {
+        name: string; avatar: string | null;
+        accepted: number; refused: number; pending: number; total: number;
+        items: Recruitment[];
+      }
     >();
     recruitments
       .filter((r) => !deletedIds.has(r.id))
@@ -118,14 +135,19 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
         const name = r.claimedByName;
         if (!name) return;
         const eff: DbStatus = refusedIds.has(r.id) ? "REJECTED" : r.status;
-        const cur = map.get(name) ?? { name, avatar: r.claimedByAvatar, accepted: 0, refused: 0, pending: 0, total: 0 };
+        const cur = map.get(name)
+          ?? { name, avatar: r.claimedByAvatar, accepted: 0, refused: 0, pending: 0, total: 0, items: [] };
         if (!cur.avatar && r.claimedByAvatar) cur.avatar = r.claimedByAvatar;
         cur.total += 1;
         if (eff === "ACCEPTED") cur.accepted += 1;
         else if (eff === "REJECTED") cur.refused += 1;
         else if (eff === "PENDING") cur.pending += 1;
+        cur.items.push(r);
         map.set(name, cur);
       });
+    for (const s of map.values()) {
+      s.items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
     return [...map.values()].sort((a, b) => b.accepted - a.accepted || b.total - a.total);
   }, [recruitments, deletedIds, refusedIds]);
 
@@ -243,6 +265,7 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                 i === 0
                   ? "from-amber-300 to-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.45)]"
                   : "from-emerald-400/80 to-amber-500/70";
+              const isOpen = openRecruiter === s.name;
               return (
                 <div
                   key={s.name}
@@ -252,13 +275,25 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                       : "border-white/10 bg-white/[0.025]"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenRecruiter((cur) => (cur === s.name ? null : s.name))}
+                    aria-expanded={isOpen}
+                    className="flex w-full items-center gap-3 text-left"
+                  >
                     <span className={`w-6 shrink-0 text-center text-sm font-bold ${rankText}`}>
                       {medal ?? `#${i + 1}`}
                     </span>
                     <RecruiterAvatar src={s.avatar} name={s.name} ring={ringColor} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold text-amber-200">{s.name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate font-semibold text-amber-200">{s.name}</span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${
+                            isOpen ? "rotate-180" : ""
+                          }`}
+                        />
+                      </div>
                       <div className="text-[11px] text-slate-500">
                         {s.total} pris en charge · {rate}% d&apos;acceptation
                       </div>
@@ -285,13 +320,51 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
+
                   <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-black/30">
                     <div
                       className={`h-full rounded-full bg-gradient-to-r ${barGradient}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
+
+                  {isOpen && (
+                    <div className="mt-3 space-y-1 border-t border-white/10 pt-3">
+                      {s.items.map((r) => {
+                        const eff: DbStatus = refusedIds.has(r.id) ? "REJECTED" : r.status;
+                        const badge = STATUS_BADGE[eff];
+                        return (
+                          <Link
+                            key={r.id}
+                            href={`/staff/recruitments/${r.ticketKey}`}
+                            prefetch={false}
+                            className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-white/[0.06]"
+                          >
+                            <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+                            <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
+                              {r.rpName || r.authorTag || r.authorDiscordId}
+                            </span>
+                            {r.score !== null ? (
+                              <span
+                                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${scoreTone(r.score)}`}
+                                title="Note obtenue au test de recrutement"
+                              >
+                                {r.score.toFixed(1)}/20
+                              </span>
+                            ) : (
+                              <span className="shrink-0 text-[11px] italic text-slate-600">
+                                non évalué
+                              </span>
+                            )}
+                            <span className="shrink-0 text-[11px] text-slate-500">
+                              {fmtDate(r.createdAt)}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -350,7 +423,7 @@ export function RecruitmentsListClient({ recruitments }: { recruitments: Recruit
               placeholder="Ticket, Discord, RP, Steam..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-8 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+              className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface3)/0.85)] pl-8 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
