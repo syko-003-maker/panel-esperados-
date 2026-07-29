@@ -224,7 +224,7 @@ export default function AccessClient() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Rechercher un membre (nom RP, pseudo, ID)…"
-              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+              className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 

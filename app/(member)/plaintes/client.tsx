@@ -116,7 +116,7 @@ export function PlaintesClient({ targets }: { targets: Target[] }) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.08, ease: EASE }}
-        className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm"
+        className="space-y-3 app-card p-5 backdrop-blur-sm"
       >
         <div>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Membre concerné</label>

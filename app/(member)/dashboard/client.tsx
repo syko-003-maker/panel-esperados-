@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Component, type ReactNode } from "react";
+import { Reveal, TiltCard } from "@/components/app-motion";
 import Link from "next/link";
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
 import PushToggle from "@/components/push-toggle";
@@ -244,24 +245,29 @@ export default function DashboardClient() {
   return (
   <DashboardErrorBoundary>
     <div className="space-y-6">
-      {/* Hero header */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-300/70 mb-2">
-          Espace Membre
-        </p>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-50 md:text-3xl">
-          Bienvenue,{" "}
-          <span className="text-amber-300">{member.rpName || member.discordId}</span>
-        </h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Gérez vos informations et accédez à vos données personnelles.
-        </p>
-      </div>
+      {/* Bandeau d'accueil — carte en relief, titre degrade sur la palette */}
+      <Reveal>
+        <TiltCard featured className="p-6">
+          <div className="app-lift">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[hsl(var(--sunset-gold))]/80">
+              Espace Membre
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-50 md:text-3xl">
+              Bienvenue,{" "}
+              <span className="app-title-gradient">{member.rpName || member.discordId}</span>
+            </h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Gérez vos informations et accédez à vos données personnelles.
+            </p>
+          </div>
+        </TiltCard>
+      </Reveal>
 
       {/* Stats grid */}
+      <Reveal delay={90}>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Sanctions */}
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-red-500/20 transition-colors">
+        <div className="app-card p-5 flex flex-col gap-4 hover:border-red-500/20 transition-colors">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -286,7 +292,7 @@ export default function DashboardClient() {
         </div>
 
         {/* Absences */}
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-blue-500/20 transition-colors">
+        <div className="app-card p-5 flex flex-col gap-4 hover:border-blue-500/20 transition-colors">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -311,7 +317,7 @@ export default function DashboardClient() {
         </div>
 
         {/* Banque */}
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-emerald-500/20 transition-colors">
+        <div className="app-card p-5 flex flex-col gap-4 hover:border-emerald-500/20 transition-colors">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -335,6 +341,7 @@ export default function DashboardClient() {
           </Link>
         </div>
       </div>
+      </Reveal>
 
       {/* Mini-chat Assistant Règlement (même IA que /reglement sur Discord) */}
       <ReglementQuickChat fullToolHref="/reglement" />

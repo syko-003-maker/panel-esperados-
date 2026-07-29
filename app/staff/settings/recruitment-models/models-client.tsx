@@ -205,7 +205,7 @@ export default function RecruitmentModelsClient() {
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   placeholder="Ex. Recrutement rapide, Recrutement Encadrant…"
-                  className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                  className="rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
                 />
               </label>
               <label className="grid gap-1.5">
@@ -217,7 +217,7 @@ export default function RecruitmentModelsClient() {
                   step={0.5}
                   value={draft.minOn20}
                   onChange={(e) => setDraft({ ...draft, minOn20: Number(e.target.value) })}
-                  className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 focus:border-amber-500/40 focus:outline-none"
+                  className="rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 focus:border-amber-500/40 focus:outline-none"
                 />
               </label>
             </div>
@@ -228,7 +228,7 @@ export default function RecruitmentModelsClient() {
                 value={draft.description}
                 onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 placeholder="À quoi sert ce modèle ?"
-                className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                className="rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
               />
             </label>
 
@@ -241,7 +241,7 @@ export default function RecruitmentModelsClient() {
                     <select
                       value={q.section}
                       onChange={(e) => updateQuestion(i, { section: e.target.value as Question["section"] })}
-                      className="rounded-lg border border-white/10 bg-[rgba(10,4,6,0.85)] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500/40 focus:outline-none"
+                      className="rounded-lg border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500/40 focus:outline-none"
                     >
                       <option value="GENERAL">Question générale</option>
                       <option value="TRAP">Question piège</option>
@@ -254,7 +254,7 @@ export default function RecruitmentModelsClient() {
                         step={0.5}
                         value={q.pointsMax}
                         onChange={(e) => updateQuestion(i, { pointsMax: Number(e.target.value) })}
-                        className="w-20 rounded-lg border border-white/10 bg-[rgba(10,4,6,0.85)] px-2 py-1.5 text-xs text-slate-100 focus:border-amber-500/40 focus:outline-none"
+                        className="w-20 rounded-lg border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-2 py-1.5 text-xs text-slate-100 focus:border-amber-500/40 focus:outline-none"
                       />
                     </label>
                     <button
@@ -273,14 +273,14 @@ export default function RecruitmentModelsClient() {
                     onChange={(e) => updateQuestion(i, { label: e.target.value })}
                     placeholder="Intitulé de la question…"
                     rows={2}
-                    className="mt-3 w-full resize-y whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm leading-6 text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                    className="mt-3 w-full resize-y whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm leading-6 text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
                   />
                   <textarea
                     value={q.expectedAnswer ?? ""}
                     onChange={(e) => updateQuestion(i, { expectedAnswer: e.target.value })}
                     placeholder="Réponse attendue (affichée au recruteur)…"
                     rows={2}
-                    className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-xs leading-5 text-slate-200 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                    className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-xs leading-5 text-slate-200 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
                   />
                 </div>
               ))}

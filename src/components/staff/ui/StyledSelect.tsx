@@ -96,7 +96,7 @@ export function StyledSelect({
     <div
       data-styled-select-dropdown
       style={dropdownStyle}
-      className="overflow-hidden rounded-xl border border-white/10 bg-[rgba(14,5,8,0.97)] shadow-[0_16px_48px_-8px_rgba(0,0,0,0.8)] backdrop-blur-sm"
+      className="overflow-hidden rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.97)] shadow-[0_16px_48px_-8px_hsl(var(--sunset-surface2)/0.8)] backdrop-blur-sm"
     >
       {options.map((opt) => {
         const isSelected = opt.value === currentValue;
@@ -131,8 +131,8 @@ export function StyledSelect({
         className={[
           "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition-all",
           open
-            ? "border-amber-500/40 bg-[rgba(14,5,8,0.95)] text-slate-100"
-            : "border-white/10 bg-[rgba(10,4,6,0.85)] text-slate-100 hover:border-white/20 hover:bg-[rgba(14,5,8,0.9)]",
+            ? "border-amber-500/40 bg-[hsl(var(--sunset-surface)/0.95)] text-slate-100"
+            : "border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] text-slate-100 hover:border-white/20 hover:bg-[hsl(var(--sunset-surface)/0.9)]",
           disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
         ].join(" ")}
       >

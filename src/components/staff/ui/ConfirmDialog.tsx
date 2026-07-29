@@ -10,11 +10,11 @@ const TONE_STYLES: Record<
   { accent: string; iconWrap: string; iconColor: string; confirm: string }
 > = {
   danger: {
-    accent: "via-[#c42a43]/70",
-    iconWrap: "border-[#c42a43]/30 bg-gradient-to-br from-[#c42a43]/15 to-[#7a1f2b]/15",
-    iconColor: "text-[#ff5266] drop-shadow-[0_0_10px_rgba(196,42,67,0.55)]",
+    accent: "via-[hsl(var(--sunset-coral))]/70",
+    iconWrap: "border-[hsl(var(--sunset-coral))]/30 bg-gradient-to-br from-[hsl(var(--sunset-coral))]/15 to-[hsl(var(--sunset-deep))]/15",
+    iconColor: "text-[#ff5266] drop-shadow-[0_0_10px_hsl(var(--sunset-coral)/0.55)]",
     confirm:
-      "border-[#c42a43]/40 bg-gradient-to-r from-[#c42a43]/20 via-[#9b2335]/15 to-[#7a1f2b]/10 text-[#ffd2d8] hover:from-[#c42a43]/30 hover:via-[#9b2335]/22 hover:to-[#7a1f2b]/16 shadow-[0_8px_30px_-12px_rgba(196,42,67,0.65)]",
+      "border-[hsl(var(--sunset-coral))]/40 bg-gradient-to-r from-[hsl(var(--sunset-coral))]/20 via-[hsl(var(--sunset-magenta))]/15 to-[hsl(var(--sunset-deep))]/10 text-[#ffd2d8] hover:from-[hsl(var(--sunset-coral))]/30 hover:via-[hsl(var(--sunset-magenta))]/22 hover:to-[hsl(var(--sunset-deep))]/16 shadow-[0_8px_30px_-12px_hsl(var(--sunset-coral)/0.65)]",
   },
   warning: {
     accent: "via-amber-500/65",
@@ -87,7 +87,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(18,7,9,0.96),rgba(10,3,5,0.97))] shadow-[0_40px_100px_-30px_rgba(0,0,0,0.9)]"
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.96),hsl(var(--sunset-surface2)/0.97))] shadow-[0_40px_100px_-30px_hsl(var(--sunset-surface2)/0.9)]"
       >
         {/* Liseré supérieur bordeaux/ambre selon la tonalité */}
         <div

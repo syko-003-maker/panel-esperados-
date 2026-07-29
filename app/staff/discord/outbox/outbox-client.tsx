@@ -477,9 +477,9 @@ export default function DiscordOutboxClient() {
           </div>
         ) : items.length === 0 ? (
           <div className="premium-surface-elevated relative overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03] px-6 py-14 text-center">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.07),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(155,35,53,0.07),transparent_38%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.07),transparent_30%),radial-gradient(circle_at_bottom_left,hsl(var(--sunset-magenta)/0.07),transparent_38%)]" />
             <div className="relative space-y-3">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-[#9b2335]/40 bg-gradient-to-br from-[#9b2335]/30 to-[#5a1620]/15 shadow-[0_10px_28px_-8px_rgba(155,35,53,0.5)]">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-[hsl(var(--sunset-magenta))]/40 bg-gradient-to-br from-[hsl(var(--sunset-magenta))]/30 to-[#5a1620]/15 shadow-[0_10px_28px_-8px_hsl(var(--sunset-magenta)/0.5)]">
                 <Inbox className="h-6 w-6 text-amber-300" />
               </div>
               {hasFilters ? (
@@ -503,7 +503,7 @@ export default function DiscordOutboxClient() {
           <>
             {/* Table premium (desktop) */}
             <div className="premium-surface-elevated relative hidden overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03] md:block">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#9b2335]/60 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-[hsl(var(--sunset-magenta))]/60 to-transparent" />
               <div className="relative overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b border-white/8 bg-white/[0.03]">
@@ -540,7 +540,7 @@ export default function DiscordOutboxClient() {
                           {/* Action */}
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#7a1f2b]/40 bg-gradient-to-br from-[#7a1f2b]/30 to-[#4a0f18]/15">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[hsl(var(--sunset-deep))]/40 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/30 to-[#4a0f18]/15">
                                 <TypeIcon className="h-4 w-4 text-amber-300/90" />
                               </div>
                               <span className="font-medium text-slate-100">{getTypeLabel(job.type)}</span>
@@ -643,7 +643,7 @@ export default function DiscordOutboxClient() {
                     <div className="relative space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#7a1f2b]/40 bg-gradient-to-br from-[#7a1f2b]/30 to-[#4a0f18]/15">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[hsl(var(--sunset-deep))]/40 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/30 to-[#4a0f18]/15">
                             <TypeIcon className="h-4 w-4 text-amber-300/90" />
                           </div>
                           <div className="min-w-0">

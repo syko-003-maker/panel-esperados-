@@ -80,7 +80,7 @@ export default function ReglementQuickChat({ fullToolHref = "/reglement" }: { fu
           maxLength={300}
           disabled={loading}
           placeholder="Ex. : j'ai le droit de braquer seul ?"
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none disabled:opacity-60"
         />
         <button
           type="submit"
@@ -117,7 +117,7 @@ export default function ReglementQuickChat({ fullToolHref = "/reglement" }: { fu
 
       {/* Réponse en place */}
       {current && (
-        <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-[rgba(10,4,6,0.55)]">
+        <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.55)]">
           <div className="border-b border-white/8 px-4 py-2">
             <p className="truncate text-xs text-slate-400">
               ❓ <span className="text-slate-300">{current.question}</span>

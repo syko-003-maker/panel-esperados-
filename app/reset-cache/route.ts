@@ -33,7 +33,7 @@ export async function GET() {
   .box { max-width:420px; }
   h1 { font-size:20px; margin:0 0 12px; }
   p  { color:#bbb; line-height:1.5; }
-  .spin { width:32px; height:32px; border:3px solid #444; border-top-color:#9b2335;
+  .spin { width:32px; height:32px; border:3px solid #444; border-top-color:hsl(var(--sunset-magenta));
           border-radius:50%; margin:16px auto 8px; animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
 </style>

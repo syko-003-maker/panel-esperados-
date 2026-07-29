@@ -10,7 +10,7 @@ export function SkeletonRow({ className }: { className?: string }) {
 
 export function SkeletonCard({ rows = 3 }: { rows?: number }) {
   return (
-    <MotionSection className="rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.65),rgba(10,3,5,0.75))] p-6 space-y-3 shadow-[0_24px_60px_-38px_rgba(2,0,1,0.72)] backdrop-blur-xl">
+    <MotionSection className="rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,hsl(var(--sunset-surface)/0.65),hsl(var(--sunset-surface2)/0.75))] p-6 space-y-3 shadow-[0_24px_60px_-38px_hsl(var(--sunset-surface2)/0.72)] backdrop-blur-xl">
       {Array.from({ length: rows }).map((_, i) => (
         <SkeletonRow key={i} />
       ))}

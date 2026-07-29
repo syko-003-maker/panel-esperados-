@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppBackground } from "@/components/app-background";
+import { PwaSurface } from "@/components/pwa-surface";
 import PWARegister from "@/components/pwa-register";
 import DesktopNotify from "@/components/desktop-notify";
 
@@ -66,7 +67,7 @@ export const metadata: Metadata = {
 
 // Couleur de la barre verticale de l'embed Discord (rouge bordeaux famille).
 export const viewport: Viewport = {
-  themeColor: "#9b2335",
+  themeColor: "hsl(var(--sunset-magenta))",
 };
 
 export default function RootLayout({
@@ -86,6 +87,9 @@ export default function RootLayout({
             __html: "try{if(localStorage.getItem('perf-lite')==='1')document.documentElement.classList.add('perf-lite')}catch(e){}",
           }}
         />
+        {/* Pose data-display="app" sur <html> quand la page tourne dans une
+            fenetre installee : c_est ce qui bascule toute la charte. */}
+        <PwaSurface />
         <AppBackground />
         <PWARegister />
         <DesktopNotify />

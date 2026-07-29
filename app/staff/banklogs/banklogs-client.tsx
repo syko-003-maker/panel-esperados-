@@ -385,7 +385,7 @@ export default function BanklogsClient() {
                 syncUrl({ page: 1, steamId: v });
               }}
               placeholder="ex: 7656119..."
-              className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+              className="rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
@@ -400,7 +400,7 @@ export default function BanklogsClient() {
                 syncUrl({ page: 1, member: v });
               }}
               placeholder="rpName / pseudo"
-              className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+              className="rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 

@@ -123,7 +123,7 @@ function MemberPicker({
       {/* Sélection confirmée */}
       {value && (
         <div className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg border border-white/12 bg-white/[0.04] text-sm">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#9b2335]/30 bg-[#9b2335]/15 text-xs font-semibold text-rose-300 uppercase flex-shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--sunset-magenta))]/30 bg-[hsl(var(--sunset-magenta))]/15 text-xs font-semibold text-rose-300 uppercase flex-shrink-0">
             {(value.rpName ?? "?").charAt(0)}
           </div>
           <div className="min-w-0">
@@ -206,7 +206,7 @@ type AbsenceItem = {
 
 const TYPE_COLORS: Record<AbsenceItem["type"], string> = {
   MEETING: "bg-amber-500/15 text-amber-300 border border-amber-500/25",
-  GENERAL: "bg-[#9b2335]/20 text-rose-300 border border-[#9b2335]/40",
+  GENERAL: "bg-[hsl(var(--sunset-magenta))]/20 text-rose-300 border border-[hsl(var(--sunset-magenta))]/40",
 };
 
 const STATUSES: Array<AbsenceItem["uiStatus"]> = ["PENDING", "APPROVED", "REJECTED", "EXPIRED"];
@@ -576,7 +576,7 @@ export default function AbsencesClient() {
                       className={`flex flex-col gap-1.5 px-4 py-4 rounded-xl border text-left transition-all ${
                         active
                           ? t === "GENERAL"
-                            ? "bg-[#9b2335]/20 border-[#9b2335]/60 text-rose-200"
+                            ? "bg-[hsl(var(--sunset-magenta))]/20 border-[hsl(var(--sunset-magenta))]/60 text-rose-200"
                             : "bg-amber-500/12 border-amber-500/40 text-amber-200"
                           : "bg-white/4 border-white/8 text-muted-foreground hover:border-white/15 hover:text-foreground"
                       }`}

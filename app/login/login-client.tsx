@@ -37,7 +37,7 @@ function LoginContent() {
             <div className="absolute inset-0 rounded-2xl bg-red-700/25 blur-2xl scale-[1.6]" />
             {/* Encadrement premium */}
             <div className="relative rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-sm p-5
-                            shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_32px_rgba(0,0,0,0.6)]">
+                            shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_32px_hsl(var(--sunset-surface2)/0.6)]">
               <img
                 src="/branding/los-esperados.png"
                 alt="Los Esperados"
@@ -60,7 +60,7 @@ function LoginContent() {
         {/* ── Carte de connexion ── */}
         <div className="relative overflow-hidden rounded-2xl border border-white/8
                         bg-white/[0.04] backdrop-blur-xl
-                        shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_40px_80px_-20px_rgba(0,0,0,0.85)]">
+                        shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_40px_80px_-20px_hsl(var(--sunset-surface2)/0.85)]">
 
           {/* Liseré supérieur néon */}
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/30 to-transparent" />

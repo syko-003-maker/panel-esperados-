@@ -132,8 +132,8 @@ export default function ReglementAssistant() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 sm:px-6">
       {/* ── Héro ── */}
-      <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-amber-500/[0.12] via-[#1a0a0e]/60 to-transparent shadow-[0_20px_70px_rgba(2,6,23,0.45)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(201,148,10,0.16),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(122,31,43,0.22),transparent_42%)]" />
+      <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-amber-500/[0.12] via-[#1a0a0e]/60 to-transparent shadow-[0_20px_70px_hsl(var(--sunset-surface3)/0.45)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(201,148,10,0.16),transparent_38%),radial-gradient(circle_at_bottom_left,hsl(var(--sunset-deep)/0.22),transparent_42%)]" />
         <div className="relative flex items-center gap-5 px-6 py-7 sm:px-9 sm:py-8">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-amber-500/35 bg-amber-500/15 shadow-[0_0_28px_rgba(201,148,10,0.25)]">
             <BookOpen className="h-7 w-7 text-amber-300" />
@@ -151,7 +151,7 @@ export default function ReglementAssistant() {
       </div>
 
       {/* ── Console de chat ── */}
-      <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(12,5,7,0.55)] shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+      <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[hsl(var(--sunset-surface)/0.55)] shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)] backdrop-blur-sm">
         {/* Conversation */}
         <div ref={scrollRef} className="max-h-[64vh] min-h-[52vh] overflow-y-auto px-4 py-6 sm:px-8">
           {history.length === 0 && !loading ? (
@@ -231,7 +231,7 @@ export default function ReglementAssistant() {
               maxLength={300}
               disabled={loading}
               placeholder="Ex. : j'ai le droit de braquer la supérette seul ?"
-              className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[rgba(10,4,6,0.9)] px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/45 focus:outline-none focus:ring-1 focus:ring-amber-500/20 disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.9)] px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/45 focus:outline-none focus:ring-1 focus:ring-amber-500/20 disabled:opacity-60"
             />
             <button
               type="submit"

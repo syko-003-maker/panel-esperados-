@@ -40,7 +40,7 @@ type ErrorScreenProps = {
 
 const TONE_BADGE: Record<NonNullable<ErrorScreenProps["tone"]>, string> = {
   danger:
-    "border-[#9b2335]/35 bg-[#9b2335]/15 text-amber-300",
+    "border-[hsl(var(--sunset-magenta))]/35 bg-[hsl(var(--sunset-magenta))]/15 text-amber-300",
   warning:
     "border-amber-500/35 bg-amber-500/15 text-amber-200",
   info:
@@ -70,7 +70,7 @@ export function ErrorScreen({
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b0305] px-4 py-12"
       style={{
         backgroundImage:
-          "radial-gradient(circle at 50% 35%, rgba(155,35,53,0.18) 0%, rgba(155,35,53,0.06) 35%, transparent 70%), linear-gradient(180deg, #0b0305 0%, #060203 100%)",
+          "radial-gradient(circle at 50% 35%, hsl(var(--sunset-magenta)/0.18) 0%, hsl(var(--sunset-magenta)/0.06) 35%, transparent 70%), linear-gradient(180deg, #0b0305 0%, #060203 100%)",
       }}
     >
       {/* Décor : grille subtile en arrière-plan + halo bordeaux radial */}
@@ -88,7 +88,7 @@ export function ErrorScreen({
         className="pointer-events-none absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(196,42,67,0.12) 0%, transparent 70%)",
+            "radial-gradient(circle, hsl(var(--sunset-coral)/0.12) 0%, transparent 70%)",
         }}
       />
 
@@ -100,9 +100,9 @@ export function ErrorScreen({
           className="mb-8 flex h-20 w-20 items-center justify-center overflow-hidden rounded-3xl border border-white/10"
           style={{
             background:
-              "linear-gradient(140deg, rgba(122,31,43,0.40), rgba(196,42,67,0.18) 60%, rgba(245,158,11,0.10))",
+              "linear-gradient(140deg, hsl(var(--sunset-deep)/0.40), hsl(var(--sunset-coral)/0.18) 60%, rgba(245,158,11,0.10))",
             boxShadow:
-              "0 20px 60px -20px rgba(155,35,53,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
+              "0 20px 60px -20px hsl(var(--sunset-magenta)/0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -138,7 +138,7 @@ export function ErrorScreen({
             {actions.map((action, idx) => {
               const isPrimary = (action.variant ?? "primary") === "primary";
               const className = isPrimary
-                ? "inline-flex items-center gap-2 rounded-2xl border border-[#9b2335]/40 bg-gradient-to-r from-[#7a1f2b] to-[#9b2335] px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_-10px_rgba(155,35,53,0.6)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-10px_rgba(155,35,53,0.8)]"
+                ? "inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--sunset-magenta))]/40 bg-gradient-to-r from-[hsl(var(--sunset-deep))] to-[hsl(var(--sunset-magenta))] px-6 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_-10px_hsl(var(--sunset-magenta)/0.6)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-10px_hsl(var(--sunset-magenta)/0.8)]"
                 : "inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-3 text-sm font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]";
 
               if (action.href) {

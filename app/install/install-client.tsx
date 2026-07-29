@@ -40,7 +40,7 @@ function Card({
     <div
       className={`relative flex flex-col overflow-hidden rounded-2xl border p-5 backdrop-blur-sm transition-colors ${
         highlight
-          ? "border-red-500/40 bg-red-500/[0.06] shadow-[0_0_0_1px_rgba(239,68,68,0.15),0_20px_50px_-20px_rgba(0,0,0,0.8)]"
+          ? "border-red-500/40 bg-red-500/[0.06] shadow-[0_0_0_1px_rgba(239,68,68,0.15),0_20px_50px_-20px_hsl(var(--sunset-surface2)/0.8)]"
           : "border-white/8 bg-white/[0.03]"
       }`}
     >
@@ -122,7 +122,7 @@ export default function InstallClient({ windowsReady, windowsUrl, windowsVersion
         <div className="mb-10 flex flex-col items-center gap-5 text-center">
           <div className="relative">
             <div className="absolute inset-0 scale-[1.6] rounded-2xl bg-red-700/25 blur-2xl" />
-            <div className="relative rounded-2xl border border-white/10 bg-slate-900/60 p-4 backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_32px_rgba(0,0,0,0.6)]">
+            <div className="relative rounded-2xl border border-white/10 bg-slate-900/60 p-4 backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_32px_hsl(var(--sunset-surface2)/0.6)]">
               <img src="/branding/los-esperados.png" alt="Los Esperados" width={64} height={64} className="block h-16 w-16" />
             </div>
           </div>

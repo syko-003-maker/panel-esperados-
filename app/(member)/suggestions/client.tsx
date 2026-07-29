@@ -151,7 +151,7 @@ export function SuggestionsClient() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
-        className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm"
+        className="app-card p-5 backdrop-blur-sm"
       >
         <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
           <Sparkles className="h-3.5 w-3.5 text-amber-400" /> Proposer une idée

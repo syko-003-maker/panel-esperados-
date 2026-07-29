@@ -173,7 +173,7 @@ function PickerSelect({
         disabled={disabled}
         onClick={toggleOpen}
         className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
-          open ? "border-amber-500/40 bg-[rgba(10,4,6,0.95)]" : "border-white/10 bg-[rgba(10,4,6,0.85)] hover:border-white/20"
+          open ? "border-amber-500/40 bg-[hsl(var(--sunset-surface)/0.95)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] hover:border-white/20"
         } disabled:cursor-not-allowed disabled:opacity-50`}
       >
         {current ? (
@@ -216,7 +216,7 @@ function PickerSelect({
             width: menuPos.width,
             transform: menuPos.up ? "translateY(-100%)" : undefined,
           }}
-          className="z-[200] overflow-hidden rounded-xl border border-white/15 bg-[#120608] shadow-[0_18px_50px_rgba(0,0,0,0.6)]"
+          className="z-[200] overflow-hidden rounded-xl border border-white/15 bg-[#120608] shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.6)]"
         >
           <div className="relative border-b border-white/10 p-2">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
@@ -438,7 +438,7 @@ export default function DiscordConfigClient() {
                 value={form.bankDebtPingThreshold}
                 onChange={(e) => set({ bankDebtPingThreshold: e.target.value })}
                 placeholder="Ex. 50000"
-                className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
               />
             </Field>
             <Field label="Cooldown (jours)" hint="Délai minimum entre deux rappels au même membre.">
@@ -448,7 +448,7 @@ export default function DiscordConfigClient() {
                 value={form.bankDebtPingCooldownDays}
                 onChange={(e) => set({ bankDebtPingCooldownDays: e.target.value })}
                 placeholder="7"
-                className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
               />
             </Field>
           </div>
@@ -464,7 +464,7 @@ export default function DiscordConfigClient() {
                 value={form.bankDebtEscalateAfter}
                 onChange={(e) => set({ bankDebtEscalateAfter: e.target.value })}
                 placeholder="3"
-                className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
               />
             </Field>
           </div>

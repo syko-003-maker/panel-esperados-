@@ -136,7 +136,7 @@ export function ImportRunDetailClient({ importRun }: { importRun: ImportRunWithR
                 onClick={() => setFilterAction(f.value)}
                 className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   filterAction === f.value
-                    ? "border-[#9b2335]/45 bg-[#9b2335]/25 text-rose-100 shadow-[0_0_12px_-4px_rgba(155,35,53,0.4)]"
+                    ? "border-[hsl(var(--sunset-magenta))]/45 bg-[hsl(var(--sunset-magenta))]/25 text-rose-100 shadow-[0_0_12px_-4px_hsl(var(--sunset-magenta)/0.4)]"
                     : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-white/20 hover:bg-white/[0.08]"
                 }`}
               >
@@ -151,7 +151,7 @@ export function ImportRunDetailClient({ importRun }: { importRun: ImportRunWithR
             placeholder="Rechercher (discordId, steamId, nom, message)…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none lg:max-w-xs"
+            className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none lg:max-w-xs"
           />
         </div>
 

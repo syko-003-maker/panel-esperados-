@@ -75,29 +75,29 @@ function Flourish({ wide = false }: { wide?: boolean }) {
       <svg width={wide ? 80 : 56} height={10} viewBox="0 0 80 10">
         <defs>
           <linearGradient id="gold-fade-l" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#d4af37" stopOpacity="0" />
-            <stop offset="100%" stopColor="#d4af37" stopOpacity="0.9" />
+            <stop offset="0%" stopColor="hsl(var(--sunset-gold))" stopOpacity="0" />
+            <stop offset="100%" stopColor="hsl(var(--sunset-gold))" stopOpacity="0.9" />
           </linearGradient>
         </defs>
         <line x1="0" y1="5" x2="80" y2="5" stroke="url(#gold-fade-l)" strokeWidth="1" />
-        <circle cx="76" cy="5" r="1.2" fill="#d4af37" />
+        <circle cx="76" cy="5" r="1.2" fill="hsl(var(--sunset-gold))" />
       </svg>
       <span
         className="inline-block h-2.5 w-2.5 rotate-45"
         style={{
-          background: "linear-gradient(140deg, #f5e1a8, #d4af37 50%, #a47d20)",
-          boxShadow: "0 0 12px rgba(212,175,55,0.7), inset 0 0 4px rgba(255,255,255,0.4)",
+          background: "linear-gradient(140deg, #f5e1a8, hsl(var(--sunset-gold)) 50%, #a47d20)",
+          boxShadow: "0 0 12px hsl(var(--sunset-gold)/0.7), inset 0 0 4px rgba(255,255,255,0.4)",
         }}
       />
       <svg width={wide ? 80 : 56} height={10} viewBox="0 0 80 10">
         <defs>
           <linearGradient id="gold-fade-r" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#d4af37" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#d4af37" stopOpacity="0" />
+            <stop offset="0%" stopColor="hsl(var(--sunset-gold))" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="hsl(var(--sunset-gold))" stopOpacity="0" />
           </linearGradient>
         </defs>
         <line x1="0" y1="5" x2="80" y2="5" stroke="url(#gold-fade-r)" strokeWidth="1" />
-        <circle cx="4" cy="5" r="1.2" fill="#d4af37" />
+        <circle cx="4" cy="5" r="1.2" fill="hsl(var(--sunset-gold))" />
       </svg>
     </div>
   );
@@ -117,7 +117,7 @@ function CornerOrnament({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
       width="22"
       height="22"
       viewBox="0 0 22 22"
-      className={`absolute ${placement} text-[#d4af37]/65`}
+      className={`absolute ${placement} text-[hsl(var(--sunset-gold))]/65`}
     >
       <path
         d="M2 2 L8 2 M2 2 L2 8 M2 2 L6 6"
@@ -145,9 +145,9 @@ function Gold({
       className={`inline-block bg-clip-text text-transparent ${className}`}
       style={{
         backgroundImage:
-          "linear-gradient(180deg, #fff2c2 0%, #f5d76e 22%, #d4af37 50%, #b8860b 78%, #6e5111 100%)",
+          "linear-gradient(180deg, #fff2c2 0%, #f5d76e 22%, hsl(var(--sunset-gold)) 50%, #b8860b 78%, #6e5111 100%)",
         WebkitTextStroke: "0.3px rgba(255, 220, 140, 0.15)",
-        filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6)) drop-shadow(0 0 18px rgba(212,175,55,0.25))",
+        filter: "drop-shadow(0 1px 2px hsl(var(--sunset-surface2)/0.6)) drop-shadow(0 0 18px hsl(var(--sunset-gold)/0.25))",
         fontFamily: serif ? "var(--font-cinzel), Georgia, serif" : undefined,
       }}
     >
@@ -170,15 +170,15 @@ function OrnateCard({
         className="relative overflow-hidden rounded-2xl"
         style={{
           // Double bordure : externe or, interne ombre noire (effet "cadre encadré")
-          background: "linear-gradient(180deg, rgba(10,3,3,0.94), rgba(6,1,2,0.97))",
-          border: "1px solid rgba(212,175,55,0.30)",
+          background: "linear-gradient(180deg, hsl(var(--sunset-surface)/0.94), hsl(var(--sunset-surface2)/0.97))",
+          border: "1px solid hsl(var(--sunset-gold)/0.30)",
           boxShadow:
-            "0 30px 80px -30px rgba(212,175,55,0.18), inset 0 0 0 1px rgba(212,175,55,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+            "0 30px 80px -30px hsl(var(--sunset-gold)/0.18), inset 0 0 0 1px hsl(var(--sunset-gold)/0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
         {/* Liseré or supérieur fin (rappel poster) */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/85 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/55 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[hsl(var(--sunset-gold))]/85 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-[hsl(var(--sunset-gold))]/55 to-transparent" />
         {/* Coins gravés */}
         <CornerOrnament pos="tl" />
         <CornerOrnament pos="tr" />
@@ -197,13 +197,13 @@ function GoldDisc({ Icon, size = 26 }: { Icon: LucideIcon; size?: number }) {
       className="relative flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl"
       style={{
         background:
-          "radial-gradient(circle at 30% 25%, rgba(255,230,160,0.32), rgba(122,31,43,0.20) 60%, rgba(0,0,0,0.6))",
-        border: "1px solid rgba(212,175,55,0.55)",
+          "radial-gradient(circle at 30% 25%, rgba(255,230,160,0.32), hsl(var(--sunset-deep)/0.20) 60%, hsl(var(--sunset-surface2)/0.6))",
+        border: "1px solid hsl(var(--sunset-gold)/0.55)",
         boxShadow:
-          "inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 24px -10px rgba(212,175,55,0.55), 0 0 0 2px rgba(0,0,0,0.6), 0 0 0 3px rgba(212,175,55,0.18)",
+          "inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 24px -10px hsl(var(--sunset-gold)/0.55), 0 0 0 2px hsl(var(--sunset-surface2)/0.6), 0 0 0 3px hsl(var(--sunset-gold)/0.18)",
       }}
     >
-      <Icon size={size} strokeWidth={1.5} className="text-[#f5d76e] drop-shadow-[0_0_6px_rgba(212,175,55,0.55)]" />
+      <Icon size={size} strokeWidth={1.5} className="text-[#f5d76e] drop-shadow-[0_0_6px_hsl(var(--sunset-gold)/0.55)]" />
     </div>
   );
 }
@@ -221,7 +221,7 @@ export default function JlgPage() {
       style={{
         background:
           // Fond noir profond avec halos bordeaux et or, pour matcher l'affiche.
-          "radial-gradient(circle at 50% -10%, rgba(212,175,55,0.13) 0%, transparent 55%), radial-gradient(circle at 18% 32%, rgba(122,31,43,0.22) 0%, transparent 50%), radial-gradient(circle at 82% 70%, rgba(122,31,43,0.18) 0%, transparent 55%), radial-gradient(circle at 50% 110%, rgba(212,175,55,0.10) 0%, transparent 50%), linear-gradient(180deg, #050102 0%, #0a0304 60%, #050102 100%)",
+          "radial-gradient(circle at 50% -10%, hsl(var(--sunset-gold)/0.13) 0%, transparent 55%), radial-gradient(circle at 18% 32%, hsl(var(--sunset-deep)/0.22) 0%, transparent 50%), radial-gradient(circle at 82% 70%, hsl(var(--sunset-deep)/0.18) 0%, transparent 55%), radial-gradient(circle at 50% 110%, hsl(var(--sunset-gold)/0.10) 0%, transparent 50%), linear-gradient(180deg, #050102 0%, #0a0304 60%, #050102 100%)",
       }}
     >
       {/* ════════════════════════════════════════════════════════════════
@@ -257,7 +257,7 @@ export default function JlgPage() {
             className="pointer-events-none fixed inset-0 z-0"
             style={{
               background:
-                "radial-gradient(ellipse at 50% 30%, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.95) 100%), radial-gradient(circle at 50% 0%, rgba(212,175,55,0.10) 0%, transparent 50%)",
+                "radial-gradient(ellipse at 50% 30%, hsl(var(--sunset-surface2)/0.45) 0%, hsl(var(--sunset-surface2)/0.85) 60%, hsl(var(--sunset-surface2)/0.95) 100%), radial-gradient(circle at 50% 0%, hsl(var(--sunset-gold)/0.10) 0%, transparent 50%)",
             }}
           />
         </>
@@ -279,7 +279,7 @@ export default function JlgPage() {
         className="pointer-events-none fixed inset-0 opacity-[0.025]"
         style={{
           backgroundImage:
-            "linear-gradient(45deg, rgba(212,175,55,1) 1px, transparent 1px), linear-gradient(-45deg, rgba(212,175,55,1) 1px, transparent 1px)",
+            "linear-gradient(45deg, hsl(var(--sunset-gold)/1) 1px, transparent 1px), linear-gradient(-45deg, hsl(var(--sunset-gold)/1) 1px, transparent 1px)",
           backgroundSize: "30px 30px",
         }}
       />
@@ -309,12 +309,12 @@ export default function JlgPage() {
             <div
               aria-hidden
               className="absolute inset-0 -z-10 blur-3xl"
-              style={{ background: "radial-gradient(circle, rgba(212,175,55,0.45) 0%, transparent 70%)" }}
+              style={{ background: "radial-gradient(circle, hsl(var(--sunset-gold)/0.45) 0%, transparent 70%)" }}
             />
             <Crown
               size={92}
               strokeWidth={1.3}
-              className="drop-shadow-[0_8px_28px_rgba(212,175,55,0.65)]"
+              className="drop-shadow-[0_8px_28px_hsl(var(--sunset-gold)/0.65)]"
               style={{ color: "#f5d76e" }}
             />
           </div>
@@ -356,9 +356,9 @@ export default function JlgPage() {
                 style={{
                   padding: "3px",
                   background:
-                    "linear-gradient(135deg, #f5d76e 0%, #d4af37 30%, #6e5111 55%, #d4af37 80%, #f5d76e 100%)",
+                    "linear-gradient(135deg, #f5d76e 0%, hsl(var(--sunset-gold)) 30%, #6e5111 55%, hsl(var(--sunset-gold)) 80%, #f5d76e 100%)",
                   boxShadow:
-                    "0 25px 60px -20px rgba(212,175,55,0.55), 0 0 0 2px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.15)",
+                    "0 25px 60px -20px hsl(var(--sunset-gold)/0.55), 0 0 0 2px hsl(var(--sunset-surface2)/0.6), inset 0 0 0 1px rgba(255,255,255,0.15)",
                 }}
               >
                 <div className="h-full w-full overflow-hidden rounded-[14px] ring-1 ring-black/40">
@@ -373,7 +373,7 @@ export default function JlgPage() {
               </div>
               {/* Badge "Affiche officielle" sous la médaille */}
               <span
-                className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.3em] text-[#d4af37]/80"
+                className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.3em] text-[hsl(var(--sunset-gold))]/80"
                 style={{ fontFamily: "var(--font-cinzel), Georgia, serif" }}
               >
                 Affiche officielle ↗
@@ -384,7 +384,7 @@ export default function JlgPage() {
 
         {/* ────────────────────── TITRE SECTION ────────────────────── */}
         <section className={`text-center ${posterSrc ? "mt-20" : "mt-14"}`}>
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.4em] text-[#d4af37]/80">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.4em] text-[hsl(var(--sunset-gold))]/80">
             Los Esperados · Présente
           </p>
           <h2
@@ -480,10 +480,10 @@ export default function JlgPage() {
                         className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl"
                         style={{
                           background:
-                            "radial-gradient(circle at 30% 25%, rgba(255,230,160,0.30), rgba(122,31,43,0.18) 60%, rgba(0,0,0,0.65))",
-                          border: "1px solid rgba(212,175,55,0.55)",
+                            "radial-gradient(circle at 30% 25%, rgba(255,230,160,0.30), hsl(var(--sunset-deep)/0.18) 60%, hsl(var(--sunset-surface2)/0.65))",
+                          border: "1px solid hsl(var(--sunset-gold)/0.55)",
                           boxShadow:
-                            "inset 0 1px 0 rgba(255,255,255,0.15), 0 10px 32px -10px rgba(212,175,55,0.55), 0 0 0 2px rgba(0,0,0,0.55)",
+                            "inset 0 1px 0 rgba(255,255,255,0.15), 0 10px 32px -10px hsl(var(--sunset-gold)/0.55), 0 0 0 2px hsl(var(--sunset-surface2)/0.55)",
                         }}
                       >
                         <Icon size={30} strokeWidth={1.5} className="text-[#f5d76e]" />
@@ -564,10 +564,10 @@ export default function JlgPage() {
                     className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl"
                     style={{
                       background:
-                        "radial-gradient(circle at 30% 25%, rgba(255,230,160,0.28), rgba(122,31,43,0.14) 60%, rgba(0,0,0,0.55))",
-                      border: "1px solid rgba(212,175,55,0.50)",
+                        "radial-gradient(circle at 30% 25%, rgba(255,230,160,0.28), hsl(var(--sunset-deep)/0.14) 60%, hsl(var(--sunset-surface2)/0.55))",
+                      border: "1px solid hsl(var(--sunset-gold)/0.50)",
                       boxShadow:
-                        "inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 28px -12px rgba(212,175,55,0.50)",
+                        "inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 28px -12px hsl(var(--sunset-gold)/0.50)",
                     }}
                   >
                     <Icon size={24} strokeWidth={1.6} className="text-[#f5d76e]" />
@@ -604,7 +604,7 @@ export default function JlgPage() {
           <Flourish wide />
         </section>
 
-        <p className="mt-12 text-center text-[10px] uppercase tracking-[0.32em] text-[#d4af37]/40">
+        <p className="mt-12 text-center text-[10px] uppercase tracking-[0.32em] text-[hsl(var(--sunset-gold))]/40">
           Technique J.L.G — losesperados.fr/jlg
         </p>
       </div>

@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ScrollDriver } from "@/components/app-motion";
+import { AppBottomNav } from "@/components/app-bottom-nav";
+import { LayoutDashboard, Users, ShieldAlert, Landmark, Inbox } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -13,6 +16,16 @@ import {
   MotionPageTransition,
   StaffMotionProvider,
 } from "@/components/staff/ui";
+
+// Les cinq sections que le staff ouvre le plus. Une barre basse au-dela de
+// cinq entrees devient illisible sur telephone.
+const STAFF_BOTTOM_NAV = [
+  { href: "/staff/dashboard",    label: "Accueil",    icon: LayoutDashboard },
+  { href: "/staff/members",      label: "Membres",    icon: Users },
+  { href: "/staff/recruitments", label: "Recrut.",    icon: Inbox },
+  { href: "/staff/sanctions",    label: "Sanctions",  icon: ShieldAlert },
+  { href: "/staff/banklogs",     label: "Banque",     icon: Landmark },
+];
 
 export function StaffLayout({
   children,
@@ -58,17 +71,24 @@ export function StaffLayout({
 
   return (
     <StaffMotionProvider>
-      <div className="relative flex min-h-screen text-foreground">
+      {/* app-scene, ScrollDriver et la barre de progression sont INERTES sur le
+          site : leurs styles sont tous prefixes par [data-display="app"]. Ils ne
+          prennent vie que dans l_application installee. */}
+      <div className="app-scene relative flex min-h-screen text-foreground">
+        <ScrollDriver />
+        <div className="app-scroll-bar" aria-hidden />
         <AppBackground />
-        <aside className="relative z-10 hidden lg:flex lg:w-72 flex-col border-r border-white/10 bg-[linear-gradient(180deg,rgba(18,5,8,0.72),rgba(11,3,5,0.90))] backdrop-blur-2xl">
+        <aside className="relative z-10 hidden lg:flex lg:w-72 flex-col border-r border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.72),hsl(var(--sunset-surface)/0.90))] backdrop-blur-2xl">
           <Link
             href="/staff/dashboard"
             className="group flex h-auto flex-col items-center gap-3 border-b border-white/10 px-6 pt-6 pb-5 transition-colors hover:bg-white/[0.03]"
           >
             <div className="relative h-16 w-16 overflow-hidden rounded-2xl ring-1 ring-white/10 shadow-[0_18px_50px_-28px_rgba(245,158,11,0.25)] transition-all group-hover:ring-amber-400/30">
               <BrandLogo size={64} className="w-full h-full" />
-            </div>
-            <div className="flex items-center gap-2 rounded-full border border-[#7a1f2b]/35 bg-[#7a1f2b]/20 px-3 py-1">
+      
+        <AppBottomNav items={STAFF_BOTTOM_NAV} />
+      </div>
+            <div className="flex items-center gap-2 rounded-full border border-[hsl(var(--sunset-deep))]/35 bg-[hsl(var(--sunset-deep))]/20 px-3 py-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-100">Staff Panel</span>
             </div>
           </Link>
@@ -84,7 +104,7 @@ export function StaffLayout({
         )}
 
         <aside
-          className={`fixed left-0 top-0 z-50 h-screen w-[min(288px,85vw)] border-r border-white/10 bg-[linear-gradient(180deg,rgba(18,5,8,0.93),rgba(11,3,5,0.98))] backdrop-blur-2xl transition-transform duration-300 lg:hidden ${
+          className={`fixed left-0 top-0 z-50 h-screen w-[min(288px,85vw)] border-r border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.93),hsl(var(--sunset-surface)/0.98))] backdrop-blur-2xl transition-transform duration-300 lg:hidden ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -116,7 +136,7 @@ export function StaffLayout({
         </aside>
 
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden min-w-0">
-          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[linear-gradient(180deg,rgba(11,3,5,0.62),rgba(11,3,5,0.46))] px-4 backdrop-blur-xl md:px-6">
+          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface)/0.62),hsl(var(--sunset-surface)/0.46))] px-4 backdrop-blur-xl md:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <MotionButtonFrame className="lg:hidden">
                 <button
@@ -143,7 +163,7 @@ export function StaffLayout({
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[#7a1f2b]/40 text-xs font-bold text-amber-200 sm:h-8 sm:w-8">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[hsl(var(--sunset-deep))]/40 text-xs font-bold text-amber-200 sm:h-8 sm:w-8">
                     {(user.name ?? "?").charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -154,12 +174,14 @@ export function StaffLayout({
             )}
           </header>
 
-          <main className="flex-1 overflow-y-auto">
+          <main data-app-scroll className="flex-1 overflow-y-auto">
+            <div data-app-page className="contents">
             <MotionSection className="w-full p-3 sm:p-4 md:p-6 lg:p-8">
               <MotionPageTransition pathname={pathname ?? ""}>
                 {children}
               </MotionPageTransition>
             </MotionSection>
+            </div>
           </main>
         </div>
       </div>

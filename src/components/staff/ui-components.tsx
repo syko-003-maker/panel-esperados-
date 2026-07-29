@@ -40,7 +40,7 @@ export function StatCard({
   className = "",
 }: StatCardProps) {
   return (
-    <MotionCard className={`rounded-[22px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.72),rgba(10,3,5,0.82))] p-5 shadow-[0_22px_58px_-36px_rgba(2,0,1,0.80)] backdrop-blur-xl ${className}`}>
+    <MotionCard className={`rounded-[22px] border border-white/8 bg-[linear-gradient(180deg,hsl(var(--sunset-surface)/0.72),hsl(var(--sunset-surface2)/0.82))] p-5 shadow-[0_22px_58px_-36px_hsl(var(--sunset-surface2)/0.80)] backdrop-blur-xl ${className}`}>
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
         {icon && <div className="text-slate-400">{icon}</div>}
@@ -71,7 +71,7 @@ interface TableProps {
 
 export function DataTable({ headers, children, empty }: TableProps) {
   return (
-    <MotionSection className="overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.68),rgba(10,3,5,0.78))] shadow-[0_24px_64px_-38px_rgba(2,0,1,0.75)] backdrop-blur-xl">
+    <MotionSection className="overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,hsl(var(--sunset-surface)/0.68),hsl(var(--sunset-surface2)/0.78))] shadow-[0_24px_64px_-38px_hsl(var(--sunset-surface2)/0.75)] backdrop-blur-xl">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

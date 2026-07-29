@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 const TONES = {
   neutral: "border-white/10 bg-white/[0.06] text-slate-200",
-  info: "border-[#7a1f2b]/35 bg-[#7a1f2b]/15 text-rose-200",
+  info: "border-[hsl(var(--sunset-deep))]/35 bg-[hsl(var(--sunset-deep))]/15 text-rose-200",
   success: "border-emerald-500/30 bg-emerald-500/12 text-emerald-200",
   warning: "border-amber-500/30 bg-amber-500/12 text-amber-200",
   danger: "border-red-500/30 bg-red-500/12 text-red-200",

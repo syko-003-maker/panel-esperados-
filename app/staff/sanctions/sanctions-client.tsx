@@ -520,7 +520,7 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
       <SectionCard
         title="Créer une sanction"
         description="Attribuer rapidement une sanction avec des libellés métier clairs et un formulaire plus lisible."
-        className="border-white/8 bg-[linear-gradient(180deg,rgba(18,5,8,0.92),rgba(14,4,6,0.72))] shadow-[0_18px_60px_-28px_rgba(0,0,0,0.75)]"
+        className="border-white/8 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.92),hsl(var(--sunset-surface)/0.72))] shadow-[0_18px_60px_-28px_hsl(var(--sunset-surface2)/0.75)]"
       >
         <form onSubmit={onCreate} className="space-y-5">
           <div className="rounded-2xl border border-white/8 bg-card/40 p-5 shadow-inner shadow-black/10">
@@ -646,7 +646,7 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
                 !createForm.memberId ||
                 (isDerank && (!derankTarget || derankIsChef || derankNotRankable || derankAlreadyLowest))
               }
-              className="h-12 w-full rounded-xl bg-gradient-to-r from-[#7a1f2b] via-[#9a2535] to-amber-700 text-sm font-semibold text-white shadow-[0_14px_30px_-14px_rgba(122,31,43,0.8)] transition-transform hover:translate-y-[-1px] hover:from-[#8a2535] hover:via-[#aa2d40] hover:to-amber-600"
+              className="h-12 w-full rounded-xl bg-gradient-to-r from-[hsl(var(--sunset-deep))] via-[#9a2535] to-amber-700 text-sm font-semibold text-white shadow-[0_14px_30px_-14px_hsl(var(--sunset-deep)/0.8)] transition-transform hover:translate-y-[-1px] hover:from-[#8a2535] hover:via-[#aa2d40] hover:to-amber-600"
             >
               {saving
                 ? isDerank
@@ -667,7 +667,7 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
         </form>
 
         <Dialog open={memberPickerOpen} onOpenChange={setMemberPickerOpen}>
-          <DialogContent className="border-white/8 bg-card p-0 text-foreground shadow-[0_32px_80px_-32px_rgba(0,0,0,0.9)] sm:max-w-xl">
+          <DialogContent className="border-white/8 bg-card p-0 text-foreground shadow-[0_32px_80px_-32px_hsl(var(--sunset-surface2)/0.9)] sm:max-w-xl">
             <DialogHeader className="border-b border-white/8 px-6 py-5">
               <DialogTitle className="text-foreground">Choisir un membre</DialogTitle>
               <DialogDescription className="text-muted-foreground">
@@ -698,7 +698,7 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
                           onClick={() => selectMember(member.id)}
                           className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${
                             isSelected
-                              ? "bg-[#7a1f2b]/20 text-rose-100"
+                              ? "bg-[hsl(var(--sunset-deep))]/20 text-rose-100"
                               : "text-foreground/80 hover:bg-white/8 hover:text-foreground"
                           }`}
                         >

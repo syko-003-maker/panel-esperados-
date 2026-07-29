@@ -82,7 +82,7 @@ export function AbsencePageClient() {
     // pas coller le contenu au header mobile.
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-2 sm:gap-6 sm:py-4 lg:py-6">
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm sm:p-6">
+      <div className="app-card p-5 backdrop-blur-sm sm:p-6">
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-300/70 sm:text-[11px]">
           Justificatifs
         </p>
@@ -120,7 +120,7 @@ export function AbsencePageClient() {
       {/* ── Form ─────────────────────────────────────────────────────────── */}
       <form
         onSubmit={handleSubmit}
-        className="space-y-5 rounded-2xl border border-white/8 bg-white/[0.03] p-5 backdrop-blur-sm sm:space-y-6 sm:p-6"
+        className="space-y-5 app-card p-5 backdrop-blur-sm sm:space-y-6 sm:p-6"
       >
         {/* ─ Sélecteur du type d'absence ─ */}
         <div>
@@ -150,7 +150,7 @@ export function AbsencePageClient() {
                     active
                       ? isMeeting
                         ? "border-amber-500/40 bg-amber-500/12 text-amber-200"
-                        : "border-[#9b2335]/60 bg-[#9b2335]/20 text-rose-200"
+                        : "border-[#c026d3]/60 bg-[#c026d3]/20 text-rose-200"
                       : "border-white/8 bg-white/[0.04] text-slate-400 hover:border-white/15 hover:text-slate-200"
                   }`}
                 >
@@ -224,7 +224,7 @@ export function AbsencePageClient() {
                   type="date"
                   value={from}
                   onChange={(e) => setFrom(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 transition focus:border-[#7a1f2b]/40 focus:outline-none focus:ring-1 focus:ring-[#7a1f2b]/60"
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 transition focus:border-[#7d1a8f]/40 focus:outline-none focus:ring-1 focus:ring-[#7d1a8f]/60"
                 />
               </div>
               <div>
@@ -238,7 +238,7 @@ export function AbsencePageClient() {
                   type="date"
                   value={to}
                   onChange={(e) => setTo(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 transition focus:border-[#7a1f2b]/40 focus:outline-none focus:ring-1 focus:ring-[#7a1f2b]/60"
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 transition focus:border-[#7d1a8f]/40 focus:outline-none focus:ring-1 focus:ring-[#7d1a8f]/60"
                 />
               </div>
             </div>
@@ -259,7 +259,7 @@ export function AbsencePageClient() {
             required
             placeholder="Décrivez la raison de votre absence (vacances, maladie, déplacement…)"
             rows={4}
-            className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 transition placeholder:text-slate-600 focus:border-[#7a1f2b]/40 focus:outline-none focus:ring-1 focus:ring-[#7a1f2b]/60"
+            className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-slate-100 transition placeholder:text-slate-600 focus:border-[#7d1a8f]/40 focus:outline-none focus:ring-1 focus:ring-[#7d1a8f]/60"
           />
           <p className={`text-xs ${isReasonValid ? "text-slate-500" : "text-red-400/80"}`}>
             {reasonLength}/10 caractères minimum
@@ -278,7 +278,7 @@ export function AbsencePageClient() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="flex-1 rounded-xl bg-[#7a1f2b] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#9a2535] disabled:cursor-not-allowed disabled:opacity-40 sm:order-1"
+            className="flex-1 rounded-xl bg-[#7d1a8f] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#c026d3] disabled:cursor-not-allowed disabled:opacity-40 sm:order-1"
           >
             {loading ? "Envoi en cours..." : "Envoyer la justification"}
           </button>
@@ -286,7 +286,7 @@ export function AbsencePageClient() {
       </form>
 
       {/* ── Info footer ──────────────────────────────────────────────────── */}
-      <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
+      <div className="flex gap-3 app-card p-4 sm:p-5">
         <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
         <p className="text-xs leading-relaxed text-slate-400 sm:text-sm">
           Votre justification d'absence sera envoyée sur le canal Discord dédié et

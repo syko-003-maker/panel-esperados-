@@ -6,9 +6,22 @@ import { Menu, X } from "lucide-react";
 import { AppBackground } from "@/components/app-background";
 import { BrandLogo } from "@/components/BrandLogo";
 import { MemberSidebar } from "./member-sidebar";
+import { ScrollDriver } from "@/components/app-motion";
+import { AppBottomNav } from "@/components/app-bottom-nav";
+import { Home, Landmark, Lightbulb, FileWarning, BookOpen } from "lucide-react";
 
 const SIDEBAR_STYLE =
-  "bg-[linear-gradient(180deg,rgba(18,5,8,0.85),rgba(11,3,5,0.95))] backdrop-blur-2xl border-r border-white/10";
+  "bg-[linear-gradient(180deg,rgba(31,18,44,0.88),hsl(var(--sunset-surface3)/0.96))] backdrop-blur-2xl border-r border-white/10";
+
+// Cinq entrees maximum : au-dela, une barre basse devient illisible sur
+// telephone. On garde ce qu'un membre ouvre reellement.
+const BOTTOM_NAV = [
+  { href: "/dashboard",    label: "Accueil",      icon: Home },
+  { href: "/banque",       label: "Banque",       icon: Landmark },
+  { href: "/suggestions",  label: "Suggestions",  icon: Lightbulb },
+  { href: "/plaintes",     label: "Plainte",      icon: FileWarning },
+  { href: "/reglement",    label: "Règlement",    icon: BookOpen },
+];
 
 export function MemberLayoutShell({
   children,
@@ -22,8 +35,13 @@ export function MemberLayoutShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-      <div className="relative flex h-screen text-foreground overflow-hidden">
+      <div
+        className="app-scene relative flex h-screen text-foreground overflow-hidden"
+      >
         <AppBackground />
+        <ScrollDriver />
+        {/* Progression de lecture : discrete, mais elle donne le rythme. */}
+        <div className="app-scroll-bar" aria-hidden />
 
         {/* Desktop sidebar */}
         <aside
@@ -33,10 +51,10 @@ export function MemberLayoutShell({
             href="/dashboard"
             className="group flex flex-col items-center gap-3 border-b border-white/10 px-6 pt-6 pb-5 transition-colors hover:bg-white/[0.03]"
           >
-            <div className="relative h-14 w-14 overflow-hidden rounded-2xl ring-1 ring-white/10 shadow-[0_18px_50px_-28px_rgba(245,158,11,0.25)] transition-all group-hover:ring-amber-400/30">
+            <div className="relative h-14 w-14 overflow-hidden rounded-2xl ring-1 ring-white/10 shadow-[0_18px_50px_-28px_rgba(251,191,36,0.35)] transition-all group-hover:ring-[hsl(var(--sunset-gold))]/40">
               <BrandLogo size={56} className="w-full h-full" />
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-[#7a1f2b]/35 bg-[#7a1f2b]/20 px-3 py-1">
+            <div className="flex items-center gap-2 rounded-full border border-[hsl(var(--sunset-magenta))]/35 bg-[hsl(var(--sunset-magenta))]/15 px-3 py-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-100">
                 Espace Membre
               </span>
@@ -87,7 +105,7 @@ export function MemberLayoutShell({
         {/* Main content */}
         <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
           {/* Mobile header */}
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-white/10 bg-[linear-gradient(180deg,rgba(11,3,5,0.62),rgba(11,3,5,0.46))] px-4 backdrop-blur-xl lg:hidden">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.68),hsl(var(--sunset-surface3)/0.5))] px-4 backdrop-blur-xl lg:hidden">
             <div className="inline-flex">
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -102,12 +120,14 @@ export function MemberLayoutShell({
             </span>
           </header>
 
-          <main className="flex-1 overflow-y-auto">
-            <div className="w-full p-3 sm:p-4 md:p-6 lg:p-8">
+          <main data-app-scroll className="flex-1 overflow-y-auto">
+            <div data-app-page className="w-full p-3 sm:p-4 md:p-6 lg:p-8">
               {children}
             </div>
           </main>
         </div>
+
+        <AppBottomNav items={BOTTOM_NAV} />
       </div>
   );
 }

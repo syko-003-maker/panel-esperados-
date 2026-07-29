@@ -243,7 +243,7 @@ function DiscordMessage({ content, compact = false }: { content: string; compact
     <div className={`rounded-xl border border-white/5 bg-[#313338] ${compact ? "px-3 py-2.5" : "p-4"}`}>
       <div className="flex items-start gap-3">
         <div
-          className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#9b2335] to-[#5a1620] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
+          className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[hsl(var(--sunset-magenta))] to-[#5a1620] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
             compact ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs"
           }`}
         >
@@ -370,7 +370,7 @@ function TemplateEditor({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Rédige ton message ici…"
-            className="min-h-[220px] resize-y rounded-xl border-white/10 bg-[rgba(10,4,6,0.85)] text-[13px] leading-relaxed focus-visible:ring-amber-500/40"
+            className="min-h-[220px] resize-y rounded-xl border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] text-[13px] leading-relaxed focus-visible:ring-amber-500/40"
           />
         </div>
 
@@ -577,7 +577,7 @@ export default function DiscordTemplatesClient() {
           {groups.map(({ cat, items: catItems }) => (
             <section key={cat.id} className="space-y-3">
               <div className="flex items-center gap-2.5 px-0.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#7a1f2b]/45 bg-gradient-to-br from-[#7a1f2b]/35 to-[#4a0f18]/20 shadow-[0_6px_16px_-6px_rgba(155,35,53,0.5),inset_0_1px_0_rgba(255,255,255,0.07)]">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[hsl(var(--sunset-deep))]/45 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/35 to-[#4a0f18]/20 shadow-[0_6px_16px_-6px_hsl(var(--sunset-magenta)/0.5),inset_0_1px_0_rgba(255,255,255,0.07)]">
                   <cat.icon className="h-4 w-4 text-amber-300 drop-shadow-[0_0_4px_rgba(245,158,11,0.45)]" />
                 </div>
                 <h2 className="text-base font-semibold tracking-tight text-slate-50">{cat.label}</h2>
@@ -600,7 +600,7 @@ export default function DiscordTemplatesClient() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-[#0d1a12]/95 px-4 py-2.5 text-sm text-emerald-200 shadow-[0_18px_50px_rgba(0,0,0,0.6)] backdrop-blur">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-[#0d1a12]/95 px-4 py-2.5 text-sm text-emerald-200 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.6)] backdrop-blur">
           <CheckCircle2 className="h-4 w-4" />
           {toast}
         </div>

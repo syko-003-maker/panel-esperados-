@@ -245,7 +245,7 @@ export default function MeetingsClient() {
               </button>
 
               {pickerOpen ? (
-                <div className="absolute left-0 top-full z-[90] mt-2 w-[min(92vw,22rem)] rounded-xl border border-white/12 bg-[rgba(14,5,7,0.96)] p-3 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+                <div className="absolute left-0 top-full z-[90] mt-2 w-[min(92vw,22rem)] rounded-xl border border-white/12 bg-[hsl(var(--sunset-surface)/0.96)] p-3 shadow-[0_20px_50px_-12px_hsl(var(--sunset-surface2)/0.9)] backdrop-blur-xl">
                   <div className="mb-2 flex items-center justify-between">
                     <button
                       type="button"
@@ -286,7 +286,7 @@ export default function MeetingsClient() {
                             setCreateDate(next);
                           }}
                           className={`rounded-md px-1 py-1 text-[11px] transition-colors sm:px-2 sm:text-xs ${selected
-                            ? "bg-[#7a1f2b] text-white"
+                            ? "bg-[hsl(var(--sunset-deep))] text-white"
                             : inMonth
                               ? "text-slate-200 hover:bg-white/[0.06]"
                               : "text-slate-600 hover:bg-white/[0.04]"
@@ -336,7 +336,7 @@ export default function MeetingsClient() {
               type="button"
               onClick={onCreate}
               disabled={saving}
-              className="rounded-xl bg-gradient-to-r from-[#7a1f2b] to-[#9b2335] px-5 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(155,35,53,0.55)] transition-all hover:-translate-y-px hover:shadow-[0_10px_24px_-8px_rgba(155,35,53,0.75)] disabled:opacity-50"
+              className="rounded-xl bg-gradient-to-r from-[hsl(var(--sunset-deep))] to-[hsl(var(--sunset-magenta))] px-5 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_hsl(var(--sunset-magenta)/0.55)] transition-all hover:-translate-y-px hover:shadow-[0_10px_24px_-8px_hsl(var(--sunset-magenta)/0.75)] disabled:opacity-50"
             >
               {saving ? "Création..." : "Créer réunion"}
             </button>

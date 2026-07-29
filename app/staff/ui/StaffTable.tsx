@@ -9,7 +9,7 @@ type StaffTableProps = {
 
 export function StaffTable({ headers, children, stickyHeader = false }: StaffTableProps) {
   return (
-    <MotionSection className="overflow-x-auto rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.8),rgba(2,6,23,0.9))] shadow-[0_24px_64px_-38px_rgba(2,6,23,0.92)]">
+    <MotionSection className="overflow-x-auto rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.8),hsl(var(--sunset-surface3)/0.9))] shadow-[0_24px_64px_-38px_hsl(var(--sunset-surface3)/0.92)]">
       <table className="min-w-full border-collapse text-sm">
         <thead className={stickyHeader ? "sticky top-0 z-10 bg-slate-950/95" : undefined}>
           <tr className="border-b border-white/8 bg-white/[0.03]">

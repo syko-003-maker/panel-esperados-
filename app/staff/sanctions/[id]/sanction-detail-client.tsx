@@ -262,7 +262,7 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
         ) : null}
 
         {/* Récap principal */}
-        <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.6),rgba(2,6,23,0.6))] p-5">
+        <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.6),hsl(var(--sunset-surface3)/0.6))] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">

@@ -274,7 +274,7 @@ export default function SuggestionsClient() {
                             placeholder="Ajouter un commentaire (visible par l'auteur et sur Discord)…"
                             rows={2}
                             maxLength={2000}
-                            className="flex-1 resize-y rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-xs leading-5 text-slate-200 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
+                            className="flex-1 resize-y rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-xs leading-5 text-slate-200 placeholder:text-slate-500 focus:border-amber-500/40 focus:outline-none"
                           />
                           <Button
                             size="sm"

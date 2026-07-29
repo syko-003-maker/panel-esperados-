@@ -56,7 +56,7 @@
 
   /* Gradient Accents */
   .gradient-purple {
-    background: linear-gradient(135deg, rgb(122, 31, 43) 0%, rgb(180, 55, 75) 100%);
+    background: linear-gradient(135deg, hsl(var(--sunset-deep)) 0%, rgb(180, 55, 75) 100%);
   }
 
   .gradient-blue {
@@ -64,7 +64,7 @@
   }
 
   .gradient-emerald {
-    background: linear-gradient(135deg, rgb(122, 31, 43) 0%, rgb(245, 158, 11) 100%);
+    background: linear-gradient(135deg, hsl(var(--sunset-deep)) 0%, rgb(245, 158, 11) 100%);
   }
 
   /* Premium Typography */
@@ -99,7 +99,7 @@
   }
 
   .badge-info {
-    @apply bg-[#7a1f2b]/20 text-rose-300 border border-[#7a1f2b]/30;
+    @apply bg-[hsl(var(--sunset-deep))]/20 text-rose-300 border border-[hsl(var(--sunset-deep))]/30;
   }
 }
 
@@ -282,8 +282,8 @@
   background: radial-gradient(
     ellipse 96% 88% at 50% 50%,
     transparent              22%,
-    rgba(6, 4, 8, 0.42)     54%,
-    rgba(6, 4, 8, 0.90)    100%
+    hsl(var(--sunset-surface)/0.42)     54%,
+    hsl(var(--sunset-surface)/0.90)    100%
   );
 }
 
@@ -315,7 +315,7 @@
 
 /* ✅ Glass Card Utility */
 .glass-card {
-  @apply bg-white/6 border border-white/8 backdrop-blur-xl rounded-2xl shadow-[0_30px_80px_-45px_rgba(5,10,20,0.9)];
+  @apply bg-white/6 border border-white/8 backdrop-blur-xl rounded-2xl shadow-[0_30px_80px_-45px_hsl(var(--sunset-surface3)/0.9)];
 }
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -337,9 +337,9 @@
   /* Pas de scale : il provoque un flou de subpixel sur le texte. Glow + border + translateY suffisent. */
   transform: translate3d(0, -3px, 0);
   box-shadow:
-    0 18px 40px -22px rgba(0, 0, 0, 0.65),
+    0 18px 40px -22px hsl(var(--sunset-surface2)/0.65),
     0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 0 28px -10px rgba(155, 35, 53, 0.28);
+    0 0 28px -10px hsl(var(--sunset-magenta)/0.28);
 }
 .premium-card:active {
   transform: translate3d(0, -1px, 0);
@@ -360,8 +360,8 @@
   box-shadow:
     0 0 0 1px rgba(220, 60, 90, 0.32),
     0 0 18px 0 rgba(220, 60, 90, 0.30),
-    0 0 44px 4px rgba(155, 35, 53, 0.22),
-    0 22px 44px -10px rgba(0, 0, 0, 0.6) !important;
+    0 0 44px 4px hsl(var(--sunset-magenta)/0.22),
+    0 22px 44px -10px hsl(var(--sunset-surface2)/0.6) !important;
 }
 
 /* Variante ambre (top grades : Chef famille, Général, Consejero, Comandante) */
@@ -372,7 +372,7 @@
     0 0 0 1px rgba(251, 191, 36, 0.35),
     0 0 20px 0 rgba(251, 191, 36, 0.32),
     0 0 48px 4px rgba(245, 158, 11, 0.25),
-    0 22px 44px -10px rgba(0, 0, 0, 0.6) !important;
+    0 22px 44px -10px hsl(var(--sunset-surface2)/0.6) !important;
 }
 
 /* Glow accent (rouge famille) — usage sur CTA primaires */
@@ -385,8 +385,8 @@
 .premium-glow:hover {
   transform: translateY(-1px);
   box-shadow:
-    0 10px 30px -10px rgba(155, 35, 53, 0.45),
-    0 0 0 1px rgba(155, 35, 53, 0.35);
+    0 10px 30px -10px hsl(var(--sunset-magenta)/0.45),
+    0 0 0 1px hsl(var(--sunset-magenta)/0.35);
   filter: brightness(1.06);
 }
 
@@ -481,20 +481,20 @@ a[role="button"]:not([data-no-press]):not([aria-disabled="true"]):active {
 .btn-press-bordeaux:hover:not(:disabled) {
   box-shadow:
     0 0 0 1px rgba(220, 60, 90, 0.35),
-    0 0 16px -3px rgba(155, 35, 53, 0.30),
-    0 8px 18px -8px rgba(0, 0, 0, 0.55);
+    0 0 16px -3px hsl(var(--sunset-magenta)/0.30),
+    0 8px 18px -8px hsl(var(--sunset-surface2)/0.55);
 }
 .btn-press-amber:hover:not(:disabled) {
   box-shadow:
     0 0 0 1px rgba(251, 191, 36, 0.40),
     0 0 16px -3px rgba(245, 158, 11, 0.32),
-    0 8px 18px -8px rgba(0, 0, 0, 0.55);
+    0 8px 18px -8px hsl(var(--sunset-surface2)/0.55);
 }
 .btn-press-neutral:hover:not(:disabled) {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.18),
     0 0 14px -3px rgba(255, 255, 255, 0.12),
-    0 8px 18px -8px rgba(0, 0, 0, 0.55);
+    0 8px 18px -8px hsl(var(--sunset-surface2)/0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -566,4 +566,463 @@ html.perf-lite *:not([class*="animate-spin"])::after {
 html.perf-lite * {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+/* Jetons de teinte partagés SITE / APPLICATION.
+ *
+ * Les composants n'écrivent plus leurs couleurs en dur : ils passent par ces
+ * variables. Ici, les valeurs EXACTES du bordeaux d'origine — le site ne bouge
+ * pas d'un pixel. Le bloc [data-display="app"] plus bas les remplace par le
+ * coucher de soleil, et toute l'interface suit d'un coup. */
+:root {
+  --sunset-night:    350 10% 5%;
+  --sunset-deep:     352 59% 30%;   /* #7a1f2b */
+  --sunset-magenta:  351 63% 37%;   /* #9b2335 */
+  --sunset-coral:    350 65% 47%;   /* #c42a43 */
+  --sunset-gold:      46 65% 52%;   /* #d4af37 */
+  --sunset-surface:  347 47% 4%;
+  --sunset-surface2: 343 54% 3%;
+  --sunset-surface3: 346 57% 5%;
+}
+
+/* Applique la charte dès le premier rendu dans une fenêtre installée, sans
+   attendre le JavaScript. Safari iOS ignore display-mode : PwaSurface prend
+   le relais en posant le même attribut. */
+@media (display-mode: standalone), (display-mode: minimal-ui),
+       (display-mode: fullscreen), (display-mode: window-controls-overlay) {
+  :root {
+  --sunset-night:    270 12% 5%;
+  --sunset-deep:     293 60% 26%;
+  --sunset-magenta:  293 69% 42%;
+  --sunset-coral:    351 88% 62%;
+  --sunset-gold:      43 92% 52%;
+  --sunset-surface:  271 30% 4%;
+  --sunset-surface2: 273 34% 3%;
+  --sunset-surface3: 271 28% 5%;
+
+  --background: 270 14% 5%;
+  --foreground: 300 8% 93%;
+  --card: 271 12% 8%;
+  --card-foreground: 300 8% 93%;
+  --popover: 271 12% 8%;
+  --muted: 272 10% 15%;
+  --muted-foreground: 285 6% 58%;
+  --accent: var(--sunset-gold);
+  --border: 275 11% 13%;
+  --input: 275 11% 13%;
+  --ring: var(--sunset-coral);
+  --primary: 351 78% 56%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: var(--sunset-magenta);
+  --secondary-foreground: 0 0% 100%;
+  --destructive: 348 76% 48%;
+  --warning: var(--sunset-gold);
+  --info: var(--sunset-magenta);
+
+  --app-depth: 14px;
+  --app-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * APPLICATION INSTALLÉE — identité propre
+ *
+ * TOUT ce qui suit est enfermé sous `[data-display="app"]`, posé par la
+ * coquille de l'espace membre. Le site staff n'est pas concerné : il garde son
+ * bordeaux, sa densité et son absence d'animation. C'est ce qui rend les deux
+ * surfaces reconnaissables au premier coup d'œil.
+ *
+ * PALETTE « COUCHER DE SOLEIL » — 4 couleurs, et rien d'autre :
+ *   #1A1024  nuit pourpre   fonds et surfaces
+ *   #FB7185  corail         actions, liens, focus
+ *   #C026D3  magenta        mises en avant, ombres colorées
+ *   #FBBF24  or             réussites, classements, titres
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-display="app"] {
+  --sunset-night:    270 12% 5%;
+  --sunset-deep:     293 60% 26%;
+  --sunset-magenta:  293 69% 42%;
+  --sunset-coral:    351 88% 62%;
+  --sunset-gold:      43 92% 52%;
+  --sunset-surface:  271 30% 4%;
+  --sunset-surface2: 273 34% 3%;
+  --sunset-surface3: 271 28% 5%;
+
+  --background: 270 14% 5%;
+  --foreground: 300 8% 93%;
+  --card: 271 12% 8%;
+  --card-foreground: 300 8% 93%;
+  --popover: 271 12% 8%;
+  --muted: 272 10% 15%;
+  --muted-foreground: 285 6% 58%;
+  --accent: var(--sunset-gold);
+  --border: 275 11% 13%;
+  --input: 275 11% 13%;
+  --ring: var(--sunset-coral);
+  --primary: 351 78% 56%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: var(--sunset-magenta);
+  --secondary-foreground: 0 0% 100%;
+  --destructive: 348 76% 48%;
+  --warning: var(--sunset-gold);
+  --info: var(--sunset-magenta);
+
+  --app-depth: 14px;
+  --app-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Fond animé aux teintes du coucher de soleil, app uniquement. */
+[data-display="app"] .app-bg-base {
+  background:
+    radial-gradient(ellipse 82% 55% at 50% -8%, rgba(96, 16, 78, 0.34) 0%, transparent 65%),
+    linear-gradient(168deg, #120b19 0%, #0a0510 46%, #0e0716 100%);
+}
+[data-display="app"] .app-bg-halo-1 {
+  background: radial-gradient(circle,
+    rgba(225, 70, 100, 0.22) 0%, rgba(180, 45, 75, 0.10) 45%, transparent 70%);
+}
+[data-display="app"] .app-bg-halo-2 {
+  background: radial-gradient(circle,
+    rgba(150, 26, 170, 0.20) 0%, rgba(110, 18, 130, 0.09) 45%, transparent 70%);
+}
+[data-display="app"] .app-bg-vignette {
+  background: radial-gradient(ellipse 96% 88% at 50% 50%,
+    transparent 22%, hsl(var(--sunset-surface3)/0.42) 54%, hsl(var(--sunset-surface3)/0.92) 100%);
+}
+
+/* ─── Scène : perspective commune ────────────────────────────────────────── */
+[data-display="app"] .app-scene {
+  perspective: 1400px;
+  perspective-origin: 50% 30%;
+}
+
+/* ─── Carte en relief ──────────────────────────────────────────────────────
+ * Le relief vient de trois choses superposées, pas d'une seule ombre : un
+ * liseré clair en haut (la lumière tombe d'en haut), une ombre portée colorée,
+ * et un léger basculement au survol.
+ * ───────────────────────────────────────────────────────────────────────── */
+[data-display="app"] .app-card {
+  position: relative;
+  border-radius: 1.15rem;
+  background: linear-gradient(160deg,
+    hsl(271 14% 10% / 0.92) 0%, hsl(271 16% 7% / 0.94) 100%);
+  border: 1px solid hsl(300 20% 100% / 0.07);
+  box-shadow:
+    0 1px 0 0 hsl(0 0% 100% / 0.06) inset,
+    0 18px 40px -22px hsl(293 69% 20% / 0.9),
+    0 2px 10px -4px hsl(270 40% 2% / 0.8);
+  transform-style: preserve-3d;
+  transition:
+    transform 420ms var(--app-ease),
+    box-shadow 420ms var(--app-ease),
+    border-color 420ms var(--app-ease);
+}
+[data-display="app"] .app-card:hover {
+  transform: translateY(-4px) rotateX(2.2deg);
+  border-color: hsl(var(--sunset-coral) / 0.32);
+  box-shadow:
+    0 1px 0 0 hsl(0 0% 100% / 0.10) inset,
+    0 30px 60px -28px hsl(var(--sunset-magenta) / 0.55),
+    0 0 0 1px hsl(var(--sunset-coral) / 0.12);
+}
+[data-display="app"] .app-card-featured {
+  border-color: hsl(var(--sunset-gold) / 0.28);
+  box-shadow:
+    0 1px 0 0 hsl(0 0% 100% / 0.09) inset,
+    0 24px 50px -26px hsl(var(--sunset-gold) / 0.42),
+    0 0 40px -18px hsl(var(--sunset-gold) / 0.35);
+}
+
+/* Élévation : au survol, titres et chiffres avancent vers le lecteur. */
+[data-display="app"] .app-lift {
+  transform: translateZ(0);
+  transition: transform 420ms var(--app-ease);
+}
+[data-display="app"] .app-card:hover .app-lift {
+  transform: translateZ(var(--app-depth));
+}
+
+/* Apparition au défilement — `is-visible` est posé par le composant Reveal. */
+[data-display="app"] .app-reveal {
+  opacity: 0;
+  transform: translateY(26px) scale(0.985);
+  transition: opacity 620ms var(--app-ease), transform 620ms var(--app-ease);
+}
+[data-display="app"] .app-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Parallaxe — `--app-scroll` est alimenté par ScrollDriver. */
+[data-display="app"] .app-parallax {
+  transform: translate3d(0, calc(var(--app-scroll, 0) * -1px), 0);
+  will-change: transform;
+}
+
+[data-display="app"] .app-title-gradient {
+  background: linear-gradient(100deg,
+    hsl(var(--sunset-gold)) 0%, hsl(var(--sunset-coral)) 45%, hsl(var(--sunset-magenta)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-display="app"] .app-scroll-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  z-index: 60;
+  width: var(--app-progress, 0%);
+  background: linear-gradient(90deg,
+    hsl(var(--sunset-gold)), hsl(var(--sunset-coral)) 55%, hsl(var(--sunset-magenta)));
+  box-shadow: 0 0 12px hsl(var(--sunset-coral) / 0.6);
+  transition: width 120ms linear;
+}
+
+/* Une interface vivante ne doit pas rendre malade ceux qui y sont sensibles. */
+@media (prefers-reduced-motion: reduce) {
+  [data-display="app"] .app-card,
+  [data-display="app"] .app-card:hover,
+  [data-display="app"] .app-lift,
+  [data-display="app"] .app-card:hover .app-lift,
+  [data-display="app"] .app-parallax {
+    transform: none;
+    transition: none;
+  }
+  [data-display="app"] .app-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * COMPORTEMENTS D'APPLICATION
+ *
+ * Changer les couleurs ne fait pas une application : ce sont ces détails-là
+ * qui la distinguent d'une page web. Tout est enfermé sous [data-display="app"],
+ * le site n'en voit rien.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── L'interface ne se sélectionne pas ────────────────────────────────────
+ * Sur une page web on surligne le texte des menus par accident ; dans une
+ * application, la coquille n'est pas du texte, c'est du mobilier. Le CONTENU
+ * reste sélectionnable, lui — sinon on ne pourrait plus copier un SteamID.
+ * ───────────────────────────────────────────────────────────────────────── */
+[data-display="app"] nav,
+[data-display="app"] aside,
+[data-display="app"] header,
+[data-display="app"] button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── Retour au toucher ────────────────────────────────────────────────────
+ * Un bouton d'application s'enfonce. C'est le retour physique qui manque le
+ * plus quand une application n'est qu'un site déguisé.
+ * ───────────────────────────────────────────────────────────────────────── */
+[data-display="app"] button:not(:disabled):active,
+[data-display="app"] a[class*="rounded"]:active {
+  transform: scale(0.97);
+  transition: transform 90ms ease-out;
+}
+
+/* ─── Pas d'effet élastique en bout de course ─────────────────────────────
+ * Le rebond du navigateur en haut de page trahit immédiatement une page web.
+ * ───────────────────────────────────────────────────────────────────────── */
+[data-display="app"],
+[data-display="app"] [data-app-scroll] {
+  overscroll-behavior: contain;
+}
+
+/* ─── Barres de défilement discrètes ─────────────────────────────────────── */
+[data-display="app"] [data-app-scroll]::-webkit-scrollbar {
+  width: 8px;
+}
+[data-display="app"] [data-app-scroll]::-webkit-scrollbar-thumb {
+  background: hsl(var(--sunset-magenta) / 0.35);
+  border-radius: 8px;
+}
+[data-display="app"] [data-app-scroll]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ─── Arrivée de page ──────────────────────────────────────────────────────
+ * Chaque écran se pose au lieu d'apparaître d'un coup. C'est ce qui donne
+ * l'impression de naviguer DANS quelque chose plutôt que de recharger.
+ * ───────────────────────────────────────────────────────────────────────── */
+@keyframes app-page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+[data-display="app"] [data-app-page] {
+  animation: app-page-in 280ms var(--app-ease) both;
+}
+
+/* ─── Barre de navigation basse (téléphone) ───────────────────────────────
+ * Le signal « application » le plus fort : les destinations principales sous
+ * le pouce, en permanence, au lieu d'un menu à ouvrir.
+ * ───────────────────────────────────────────────────────────────────────── */
+.app-bottom-nav { display: none; }
+
+[data-display="app"] .app-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 2px;
+  padding: 6px 8px;
+  /* Encoche et barre gestuelle des téléphones récents. */
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  background: hsl(var(--sunset-surface2) / 0.94);
+  border-top: 1px solid hsl(0 0% 100% / 0.07);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 -12px 34px -20px hsl(var(--sunset-magenta) / 0.6);
+}
+
+@media (min-width: 1024px) {
+  /* Sur grand écran la barre latérale reste plus efficace. */
+  [data-display="app"] .app-bottom-nav { display: none; }
+}
+
+[data-display="app"] .app-bottom-nav-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 2px 5px;
+  border-radius: 14px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: hsl(var(--muted-foreground));
+  transition: color 200ms var(--app-ease), background-color 200ms var(--app-ease);
+}
+[data-display="app"] .app-bottom-nav-item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-display="app"] .app-bottom-nav-item.is-active {
+  color: hsl(var(--sunset-gold));
+  background: hsl(var(--sunset-gold) / 0.10);
+}
+
+/* La barre recouvre le bas de page : on rend sa hauteur au contenu. */
+@media (max-width: 1023px) {
+  [data-display="app"] [data-app-scroll] {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-display="app"] [data-app-page] { animation: none; }
+  [data-display="app"] button:not(:disabled):active,
+  [data-display="app"] a[class*="rounded"]:active { transform: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * BUREAU : RAIL D'ICÔNES
+ *
+ * Sur grand écran, c'est la NAVIGATION qui distingue une application d'un site.
+ * Un site affiche un menu large et bavard ; une application de bureau range ses
+ * sections dans un rail étroit, et ne montre le libellé qu'au survol.
+ *
+ * Uniquement dans l'application installée, et uniquement à partir de 1024px :
+ * en dessous, c'est la barre basse qui prend le relais.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+
+  [data-display="app"] aside {
+    width: 78px;
+    transition: width 260ms var(--app-ease);
+  }
+
+  /* Le rail s'ouvre au survol : on retrouve les libellés sans quitter la page. */
+  [data-display="app"] aside:hover {
+    width: 232px;
+  }
+
+  /* Titres de section : du bruit dans un rail fermé. */
+  [data-display="app"] aside h3 {
+    opacity: 0;
+    transition: opacity 180ms var(--app-ease);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  [data-display="app"] aside:hover h3 {
+    opacity: 1;
+  }
+
+  /* Libellés : effacés au repos, révélés à l'ouverture du rail. */
+  [data-display="app"] aside nav a > span:not([aria-hidden]),
+  [data-display="app"] aside nav button > span:not([aria-hidden]) {
+    opacity: 0;
+    transition: opacity 180ms var(--app-ease);
+    white-space: nowrap;
+  }
+  [data-display="app"] aside:hover nav a > span:not([aria-hidden]),
+  [data-display="app"] aside:hover nav button > span:not([aria-hidden]) {
+    opacity: 1;
+  }
+
+  /* Rail fermé : icônes centrées. Rail ouvert : alignées à gauche. */
+  [data-display="app"] aside nav a,
+  [data-display="app"] aside nav button {
+    justify-content: center;
+    transition: justify-content 0ms, padding 260ms var(--app-ease);
+  }
+  [data-display="app"] aside:hover nav a,
+  [data-display="app"] aside:hover nav button {
+    justify-content: flex-start;
+  }
+
+  /* L'icône grossit un peu : seule information visible au repos, elle doit
+     porter la lecture à elle toute seule. */
+  [data-display="app"] aside nav a svg,
+  [data-display="app"] aside nav button svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    transition: width 200ms var(--app-ease), height 200ms var(--app-ease);
+  }
+
+  /* Le bloc de marque se compacte avec le rail. */
+  [data-display="app"] aside > a:first-child > div:last-child {
+    opacity: 0;
+    transition: opacity 180ms var(--app-ease);
+  }
+  [data-display="app"] aside:hover > a:first-child > div:last-child {
+    opacity: 1;
+  }
+
+  /* Le rail ouvert passe AU-DESSUS du contenu au lieu de le pousser : sans ça,
+     toute la page se réagencerait à chaque survol. */
+  [data-display="app"] aside {
+    position: relative;
+    z-index: 40;
+  }
+  [data-display="app"] aside:hover {
+    box-shadow: 24px 0 60px -30px hsl(var(--sunset-magenta) / 0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-display="app"] aside,
+  [data-display="app"] aside h3,
+  [data-display="app"] aside nav a,
+  [data-display="app"] aside nav button,
+  [data-display="app"] aside nav a svg {
+    transition: none;
+  }
 }

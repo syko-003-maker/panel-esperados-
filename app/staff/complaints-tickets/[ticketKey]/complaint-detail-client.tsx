@@ -229,7 +229,7 @@ export function ComplaintDetailClient({
                 href={getDiscordThreadUrl(complaint.threadId)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-2xl border border-[#7a1f2b]/40 bg-[#7a1f2b]/20 px-4 py-2 text-sm font-semibold text-rose-100 transition-colors hover:bg-[#7a1f2b]/30"
+                className="inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--sunset-deep))]/40 bg-[hsl(var(--sunset-deep))]/20 px-4 py-2 text-sm font-semibold text-rose-100 transition-colors hover:bg-[hsl(var(--sunset-deep))]/30"
               >
                 Ouvrir le thread Discord
               </a>
@@ -275,7 +275,7 @@ export function ComplaintDetailClient({
               onChange={(e) => setNewSummary(e.target.value)}
               rows={4}
               placeholder="Notes visibles uniquement par le staff…"
-              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
+              className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 

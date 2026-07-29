@@ -177,9 +177,9 @@ const CATEGORY_ACCENT: Record<
   { tag: string; glow: string; bar: string }
 > = {
   bordeaux: {
-    tag: "border-[#9b2335]/45 bg-[#9b2335]/12 text-rose-200",
-    glow: "bg-[#9b2335]/25",
-    bar: "from-[#9b2335]/0 via-[#9b2335]/60 to-[#9b2335]/0",
+    tag: "border-[hsl(var(--sunset-magenta))]/45 bg-[hsl(var(--sunset-magenta))]/12 text-rose-200",
+    glow: "bg-[hsl(var(--sunset-magenta))]/25",
+    bar: "from-[hsl(var(--sunset-magenta))]/0 via-[hsl(var(--sunset-magenta))]/60 to-[hsl(var(--sunset-magenta))]/0",
   },
   amber: {
     tag: "border-amber-500/45 bg-amber-500/12 text-amber-200",
@@ -206,9 +206,9 @@ export default function GuideBuildPage() {
     <div className="relative min-h-screen text-slate-100">
       {/* Halos d'ambiance */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 left-1/2 h-[640px] w-[640px] -translate-x-1/2 rounded-full bg-[#9b2335]/15 blur-3xl" />
+        <div className="absolute -top-40 left-1/2 h-[640px] w-[640px] -translate-x-1/2 rounded-full bg-[hsl(var(--sunset-magenta))]/15 blur-3xl" />
         <div className="absolute top-[40%] right-[-15%] h-[500px] w-[500px] rounded-full bg-amber-500/8 blur-3xl" />
-        <div className="absolute bottom-0 left-[-10%] h-[500px] w-[500px] rounded-full bg-[#9b2335]/8 blur-3xl" />
+        <div className="absolute bottom-0 left-[-10%] h-[500px] w-[500px] rounded-full bg-[hsl(var(--sunset-magenta))]/8 blur-3xl" />
       </div>
 
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:py-16">
@@ -286,13 +286,13 @@ export default function GuideBuildPage() {
 
         {/* ── CONSEILS GÉNÉRAUX en bandeau ─────────────────────── */}
         <section className="mb-16">
-          <div className="relative overflow-hidden rounded-3xl border border-[#9b2335]/30 bg-gradient-to-br from-[#7a1f2b]/20 via-[#4a0f18]/10 to-transparent p-7 shadow-[0_24px_60px_-30px_rgba(155,35,53,0.55)] sm:p-9">
-            <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-[#9b2335]/30 blur-3xl" />
+          <div className="relative overflow-hidden rounded-3xl border border-[hsl(var(--sunset-magenta))]/30 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/20 via-[#4a0f18]/10 to-transparent p-7 shadow-[0_24px_60px_-30px_hsl(var(--sunset-magenta)/0.55)] sm:p-9">
+            <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-[hsl(var(--sunset-magenta))]/30 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-amber-500/15 blur-3xl" />
 
             <div className="relative">
               <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#9b2335]/45 bg-gradient-to-br from-[#7a1f2b]/45 to-[#4a0f18]/20 text-amber-300 shadow-[0_8px_22px_-6px_rgba(155,35,53,0.6)]">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[hsl(var(--sunset-magenta))]/45 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/45 to-[#4a0f18]/20 text-amber-300 shadow-[0_8px_22px_-6px_hsl(var(--sunset-magenta)/0.6)]">
                   <Info className="h-5 w-5" />
                 </div>
                 <div>
@@ -463,7 +463,7 @@ function RuleCard({ rule }: { rule: Rule }) {
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${sev.ring} from-white/[0.02] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-22px_rgba(0,0,0,0.7)]`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${sev.ring} from-white/[0.02] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-22px_hsl(var(--sunset-surface2)/0.7)]`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${sev.iconBg}`}>
@@ -505,7 +505,7 @@ function ExampleCard({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-3xl border bg-gradient-to-br ${ringClass} shadow-[0_24px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_-25px_rgba(0,0,0,0.85)]`}
+      className={`group relative overflow-hidden rounded-3xl border bg-gradient-to-br ${ringClass} shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.7)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_30px_70px_-25px_hsl(var(--sunset-surface2)/0.85)]`}
     >
       {imageSrc && (
         <div className="relative aspect-video w-full overflow-hidden border-b border-white/10 bg-black/50">

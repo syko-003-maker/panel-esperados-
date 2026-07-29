@@ -186,7 +186,7 @@ export function TrendChart({
 
       {hp && (
         <div
-          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/12 bg-[rgba(12,6,8,0.94)] px-2.5 py-1 text-center shadow-lg"
+          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/12 bg-[hsl(var(--sunset-surface)/0.94)] px-2.5 py-1 text-center shadow-lg"
           style={{ left: `${(sx(hp.t) / w) * 100}%` }}
         >
           <div className="text-xs font-semibold tabular-nums text-slate-100">{formatValue(hp.v)}</div>

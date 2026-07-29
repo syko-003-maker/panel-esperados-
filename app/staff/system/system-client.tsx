@@ -405,7 +405,7 @@ function Stat({ label, value, suffix, color = "default" }: { label: string; valu
     color === "rose" ? "text-rose-300" :
     "text-foreground";
   return (
-    <div className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.62)] px-4 py-3 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]">
+    <div className="rounded-2xl border border-white/8 bg-[hsl(var(--sunset-surface)/0.62)] px-4 py-3 shadow-[0_8px_24px_-8px_hsl(var(--sunset-surface2)/0.5)]">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${cls}`}>
         {value}

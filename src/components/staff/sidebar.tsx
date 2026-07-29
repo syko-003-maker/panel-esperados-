@@ -142,13 +142,13 @@ export function Sidebar({
           <div key={section.section}>
             {sectionIdx > 0 && (
               // Séparateur dégradé : transparent → bordeaux faible → transparent
-              <div className="mb-4 h-px bg-gradient-to-r from-transparent via-[#7a1f2b]/35 to-transparent" />
+              <div className="mb-4 h-px bg-gradient-to-r from-transparent via-[hsl(var(--sunset-deep))]/35 to-transparent" />
             )}
             <h3 className="flex items-center gap-2 px-3 pb-2 pt-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/55">
               {/* Mini point d'accent bordeaux devant chaque section */}
               <span
-                className="h-1 w-1 rounded-full bg-[#c42a43]/70"
-                style={{ boxShadow: "0 0 6px 0 rgba(196,42,67,0.55)" }}
+                className="h-1 w-1 rounded-full bg-[hsl(var(--sunset-coral))]/70"
+                style={{ boxShadow: "0 0 6px 0 hsl(var(--sunset-coral)/0.55)" }}
               />
               {section.section}
             </h3>
@@ -169,7 +169,7 @@ export function Sidebar({
                           "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-[background-color,color,transform,box-shadow] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                           active
                             // Actif : gradient bordeaux + barre gauche bordeaux→ambre + glow extérieur
-                            ? "bg-gradient-to-r from-[#7a1f2b]/55 via-[#7a1f2b]/22 to-transparent text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-6px_rgba(196,42,67,0.45)] border border-[#7a1f2b]/35"
+                            ? "bg-gradient-to-r from-[hsl(var(--sunset-deep))]/55 via-[hsl(var(--sunset-deep))]/22 to-transparent text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-6px_hsl(var(--sunset-coral)/0.45)] border border-[hsl(var(--sunset-deep))]/35"
                             // Inactif : hover gradient subtil + petit translateX
                             : "border border-transparent text-foreground/70 hover:bg-gradient-to-r hover:from-white/[0.06] hover:via-white/[0.025] hover:to-transparent hover:text-slate-100 hover:translate-x-0.5 hover:border-white/10",
                         ].join(" ")}
@@ -178,8 +178,8 @@ export function Sidebar({
                         {active && (
                           <span
                             aria-hidden
-                            className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-gradient-to-b from-[#c42a43] via-[#9b2335] to-amber-500"
-                            style={{ boxShadow: "0 0 10px 0 rgba(196,42,67,0.55)" }}
+                            className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-gradient-to-b from-[hsl(var(--sunset-coral))] via-[hsl(var(--sunset-magenta))] to-amber-500"
+                            style={{ boxShadow: "0 0 10px 0 hsl(var(--sunset-coral)/0.55)" }}
                           />
                         )}
                         <Icon

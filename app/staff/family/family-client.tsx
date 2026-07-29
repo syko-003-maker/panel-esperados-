@@ -309,7 +309,7 @@ export default function FamilyClient({
 
         {/* Banner diff si > 0 */}
         {pendingCount > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#9b2335]/35 bg-gradient-to-r from-[#7a1f2b]/20 via-[#7a1f2b]/12 to-transparent px-4 py-3">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--sunset-magenta))]/35 bg-gradient-to-r from-[hsl(var(--sunset-deep))]/20 via-[hsl(var(--sunset-deep))]/12 to-transparent px-4 py-3">
             <p className="text-sm text-amber-100">
               <strong>{pendingCount}</strong> changement{pendingCount > 1 ? "s" : ""} planifié{pendingCount > 1 ? "s" : ""} —
               à reporter sur <span className="font-mono text-amber-200">families.lyg.fr</span> pour synchroniser.
@@ -415,7 +415,7 @@ export default function FamilyClient({
                         className="h-10 w-10 rounded-full border border-white/10 object-cover"
                       />
                     ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#7a1f2b]/40 text-xs font-bold text-amber-200">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[hsl(var(--sunset-deep))]/40 text-xs font-bold text-amber-200">
                         {(row.rpName ?? "?").slice(0, 2).toUpperCase()}
                       </div>
                     )}
@@ -425,7 +425,7 @@ export default function FamilyClient({
                           {row.rpName ?? "Sans nom"}
                         </span>
                         {ownerIntent ? (
-                          <Crown className="h-3.5 w-3.5 text-amber-300 drop-shadow-[0_0_6px_rgba(212,175,55,0.55)]" />
+                          <Crown className="h-3.5 w-3.5 text-amber-300 drop-shadow-[0_0_6px_hsl(var(--sunset-gold)/0.55)]" />
                         ) : null}
                       </div>
                       <div className="text-[11px] text-slate-500">

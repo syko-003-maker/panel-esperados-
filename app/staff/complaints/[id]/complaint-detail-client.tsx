@@ -57,7 +57,7 @@ const STATUS_LABELS: Record<ComplaintStatus, string> = {
 
 const STATUS_COLORS: Record<ComplaintStatus, string> = {
   OPEN: "bg-red-500/20 text-red-300 border border-red-500/30",
-  IN_REVIEW: "bg-[#7a1f2b]/20 text-rose-200 border border-[#7a1f2b]/40",
+  IN_REVIEW: "bg-[hsl(var(--sunset-deep))]/20 text-rose-200 border border-[hsl(var(--sunset-deep))]/40",
   RESOLVED: "bg-amber-500/15 text-amber-200 border border-amber-500/25",
   REJECTED: "bg-orange-500/20 text-orange-300 border border-orange-500/30",
   CLOSED: "bg-slate-500/20 text-slate-300 border border-slate-500/30",
@@ -71,7 +71,7 @@ const CLOSE_REASON_LABELS: Record<string, string> = {
 
 const STATUS_SURFACES: Record<ComplaintStatus, string> = {
   OPEN: "from-red-500/12 via-red-500/5 to-transparent",
-  IN_REVIEW: "from-[#7a1f2b]/15 via-[#7a1f2b]/5 to-transparent",
+  IN_REVIEW: "from-[hsl(var(--sunset-deep))]/15 via-[hsl(var(--sunset-deep))]/5 to-transparent",
   RESOLVED: "from-amber-500/8 via-amber-500/3 to-transparent",
   REJECTED: "from-orange-500/12 via-orange-500/5 to-transparent",
   CLOSED: "from-slate-500/12 via-slate-500/5 to-transparent",
@@ -153,7 +153,7 @@ const TIME_FMT = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-
 
 function DataTile({ label, value, accent = "text-foreground" }: { label: string; value: ReactNode; accent?: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.30)]">
+    <div className="rounded-2xl border border-white/10 bg-card/60 px-4 py-3 shadow-[0_10px_30px_hsl(var(--sunset-surface2)/0.30)]">
       <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">{label}</div>
       <div className={`mt-2 text-sm leading-6 ${accent}`}>{value}</div>
     </div>
@@ -271,8 +271,8 @@ export default function ComplaintDetailClient({
       {complaint && (
         <>
           {/* Header */}
-          <div className={`relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br ${STATUS_SURFACES[complaint.status]} shadow-[0_20px_70px_rgba(2,6,23,0.45)]`}>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(122,31,43,0.18),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(10,3,5,0.65),transparent_36%)]" />
+          <div className={`relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br ${STATUS_SURFACES[complaint.status]} shadow-[0_20px_70px_hsl(var(--sunset-surface3)/0.45)]`}>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--sunset-deep)/0.18),transparent_28%),radial-gradient(circle_at_bottom_left,hsl(var(--sunset-surface2)/0.65),transparent_36%)]" />
             <div className="relative flex flex-col gap-6 px-6 py-6 sm:px-8 sm:py-7 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -334,7 +334,7 @@ export default function ComplaintDetailClient({
             <SectionCard
               title="Plaignant"
               description="Identité du déposant"
-              className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)] lg:col-span-2"
+              className="border-white/10 bg-card/60 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)] lg:col-span-2"
             >
               <div className="flex items-center gap-3">
                 <ChatAvatar
@@ -370,7 +370,7 @@ export default function ComplaintDetailClient({
             <SectionCard
               title="Motif & détails"
               description="Ce qui a été déclaré à l'ouverture"
-              className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)] lg:col-span-3"
+              className="border-white/10 bg-card/60 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)] lg:col-span-3"
             >
               <div className="space-y-4">
                 <div>
@@ -391,7 +391,7 @@ export default function ComplaintDetailClient({
 
           {/* Résumé / décision existante */}
           {isClosed && (
-            <SectionCard title="Décision staff" description="Synthèse de clôture et identité du traitement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+            <SectionCard title="Décision staff" description="Synthèse de clôture et identité du traitement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)]">
               <div className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-3">
                   <DataTile label="Décision" value={getCloseReasonLabel(complaint.closeReason)} accent="text-slate-50" />
@@ -428,9 +428,9 @@ export default function ComplaintDetailClient({
               <SectionCard
                 title="Conversation archivée"
                 description={`${messageCountLabel} — copie du thread Discord`}
-                className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
+                className="border-white/10 bg-card/60 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)]"
               >
-                <div className="max-h-[36rem] overflow-y-auto rounded-2xl border border-white/10 bg-[rgba(8,3,5,0.6)]">
+                <div className="max-h-[36rem] overflow-y-auto rounded-2xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.6)]">
                   <div className="px-3 py-3 sm:px-4">
                     {messages.map((msg, i) => {
                       const prev = i > 0 ? messages[i - 1] : null;
@@ -536,7 +536,7 @@ export default function ComplaintDetailClient({
 
           {/* Actions — bloc masqué pour Encadrant (lecture seule). */}
           {!isClosed && !confirmDecision && canWrite && (
-            <SectionCard title="Actions staff" description="Décision de traitement et escalade éventuelle" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+            <SectionCard title="Actions staff" description="Décision de traitement et escalade éventuelle" className="border-white/10 bg-card/60 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)]">
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">Choisissez une décision pour clôturer cette plainte.</p>
                 <div className="flex flex-wrap gap-3">
@@ -544,7 +544,7 @@ export default function ComplaintDetailClient({
                     <Link href={`/staff/sanctions/new?complaintId=${complaint.id}&targetMemberId=${complaint.targetId}`}>
                       <Button
                         variant="outline"
-                        className="border-[#9b2335]/40 text-rose-300 hover:bg-[#9b2335]/15"
+                        className="border-[hsl(var(--sunset-magenta))]/40 text-rose-300 hover:bg-[hsl(var(--sunset-magenta))]/15"
                       >
                         ⚖️ Créer une sanction
                       </Button>
@@ -559,7 +559,7 @@ export default function ComplaintDetailClient({
                   </Button>
                   <Button
                     onClick={() => setConfirmDecision("TRAITE")}
-                    className="bg-[#7a1f2b]/70 hover:bg-[#9b2335]/80 text-rose-100 border border-[#9b2335]/40"
+                    className="bg-[hsl(var(--sunset-deep))]/70 hover:bg-[hsl(var(--sunset-magenta))]/80 text-rose-100 border border-[hsl(var(--sunset-magenta))]/40"
                   >
                     Marquer Résolue
                   </Button>
@@ -582,7 +582,7 @@ export default function ComplaintDetailClient({
           )}
 
           {confirmDecision && !isClosed && (
-            <SectionCard title="Confirmer la décision" description="Validation finale avant enregistrement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+            <SectionCard title="Confirmer la décision" description="Validation finale avant enregistrement" className="border-white/10 bg-card/60 shadow-[0_18px_50px_hsl(var(--sunset-surface2)/0.35)]">
               <div className="space-y-4">
                 <p className="text-sm text-foreground">
                   Décision sélectionnée :{" "}
@@ -602,7 +602,7 @@ export default function ComplaintDetailClient({
                     onChange={(e) => setSummaryInput(e.target.value)}
                     placeholder="Explication de la décision..."
                     rows={3}
-                    className="w-full px-3 py-2 rounded-lg bg-[rgba(10,4,6,0.85)] border border-white/10 text-foreground placeholder-gray-500 text-sm focus:outline-none focus:border-amber-500/30 resize-none"
+                    className="w-full px-3 py-2 rounded-lg bg-[hsl(var(--sunset-surface)/0.85)] border border-white/10 text-foreground placeholder-gray-500 text-sm focus:outline-none focus:border-amber-500/30 resize-none"
                   />
                 </div>
                 <div className="flex gap-3">

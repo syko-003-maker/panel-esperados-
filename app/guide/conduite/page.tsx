@@ -263,9 +263,9 @@ const CATEGORY_ACCENT: Record<
   { tag: string; glow: string; bar: string }
 > = {
   bordeaux: {
-    tag: "border-[#9b2335]/45 bg-[#9b2335]/12 text-rose-200",
-    glow: "bg-[#9b2335]/25",
-    bar: "from-[#9b2335]/0 via-[#9b2335]/60 to-[#9b2335]/0",
+    tag: "border-[hsl(var(--sunset-magenta))]/45 bg-[hsl(var(--sunset-magenta))]/12 text-rose-200",
+    glow: "bg-[hsl(var(--sunset-magenta))]/25",
+    bar: "from-[hsl(var(--sunset-magenta))]/0 via-[hsl(var(--sunset-magenta))]/60 to-[hsl(var(--sunset-magenta))]/0",
   },
   amber: {
     tag: "border-amber-500/45 bg-amber-500/12 text-amber-200",
@@ -285,7 +285,7 @@ const POINT_TONE: Record<string, { icon: string; label: string }> = {
   amber:    { icon: "border-amber-500/40 bg-amber-500/12 text-amber-300",       label: "text-amber-200" },
   rose:     { icon: "border-rose-500/40 bg-rose-500/12 text-rose-300",          label: "text-rose-200" },
   indigo:   { icon: "border-indigo-500/40 bg-indigo-500/12 text-indigo-300",    label: "text-indigo-200" },
-  bordeaux: { icon: "border-[#9b2335]/45 bg-[#9b2335]/15 text-rose-300",        label: "text-rose-200" },
+  bordeaux: { icon: "border-[hsl(var(--sunset-magenta))]/45 bg-[hsl(var(--sunset-magenta))]/15 text-rose-300",        label: "text-rose-200" },
 };
 
 const LEVEL_BADGE: Record<Car["level"], string> = {
@@ -314,9 +314,9 @@ export default function GuideConduitePage() {
     <div className="relative min-h-screen text-slate-100">
       {/* Halos d'ambiance */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 left-1/2 h-[640px] w-[640px] -translate-x-1/2 rounded-full bg-[#9b2335]/15 blur-3xl" />
+        <div className="absolute -top-40 left-1/2 h-[640px] w-[640px] -translate-x-1/2 rounded-full bg-[hsl(var(--sunset-magenta))]/15 blur-3xl" />
         <div className="absolute top-[40%] right-[-15%] h-[500px] w-[500px] rounded-full bg-amber-500/8 blur-3xl" />
-        <div className="absolute bottom-0 left-[-10%] h-[500px] w-[500px] rounded-full bg-[#9b2335]/8 blur-3xl" />
+        <div className="absolute bottom-0 left-[-10%] h-[500px] w-[500px] rounded-full bg-[hsl(var(--sunset-magenta))]/8 blur-3xl" />
       </div>
 
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:py-16">
@@ -355,7 +355,7 @@ export default function GuideConduitePage() {
           {(cover1 || cover2) && (
             <div className="mt-12 grid gap-4 sm:grid-cols-2">
               {cover1 && (
-                <div className="group relative aspect-video overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.85)]">
+                <div className="group relative aspect-video overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.85)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={cover1}
@@ -367,7 +367,7 @@ export default function GuideConduitePage() {
                 </div>
               )}
               {cover2 && (
-                <div className="group relative aspect-video overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.85)]">
+                <div className="group relative aspect-video overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.85)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={cover2}
@@ -384,10 +384,10 @@ export default function GuideConduitePage() {
 
         {/* ── PRÉSENTATION ──────────────────────────────────────── */}
         <section className="mb-16">
-          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[rgba(14,5,7,0.72)] to-[rgba(10,3,5,0.84)] p-7 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.85)] sm:p-9">
-            <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-[#9b2335]/20 blur-3xl" />
+          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(var(--sunset-surface)/0.72)] to-[hsl(var(--sunset-surface2)/0.84)] p-7 shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.85)] sm:p-9">
+            <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-[hsl(var(--sunset-magenta))]/20 blur-3xl" />
             <div className="relative flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#7a1f2b]/45 bg-gradient-to-br from-[#7a1f2b]/40 to-[#4a0f18]/20 text-amber-300 shadow-[0_8px_22px_-6px_rgba(155,35,53,0.6)]">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--sunset-deep))]/45 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/40 to-[#4a0f18]/20 text-amber-300 shadow-[0_8px_22px_-6px_hsl(var(--sunset-magenta)/0.6)]">
                 <ScrollText className="h-6 w-6" />
               </div>
               <div className="space-y-3">
@@ -425,7 +425,7 @@ export default function GuideConduitePage() {
         {/* ── Squad divider ─────────────────────────────────────── */}
         {squad && (
           <section className="mb-16">
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.85)]">
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.85)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={squad}
@@ -457,7 +457,7 @@ export default function GuideConduitePage() {
           {/* 4.1 Braquage : carte + légende */}
           <div className="mb-10">
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#9b2335]/40 bg-[#9b2335]/12 text-rose-300">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[hsl(var(--sunset-magenta))]/40 bg-[hsl(var(--sunset-magenta))]/12 text-rose-300">
                 <MapPin className="h-5 w-5" />
               </div>
               <div>
@@ -472,7 +472,7 @@ export default function GuideConduitePage() {
 
             <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr] lg:items-start">
               {mapBrk && (
-                <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/60 p-3 shadow-[0_18px_50px_-25px_rgba(0,0,0,0.85)]">
+                <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/60 p-3 shadow-[0_18px_50px_-25px_hsl(var(--sunset-surface2)/0.85)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={mapBrk}
@@ -557,11 +557,11 @@ export default function GuideConduitePage() {
 
         {/* ── RAPPEL FINAL ─────────────────────────────────────── */}
         <section className="mb-12">
-          <div className="relative overflow-hidden rounded-3xl border-2 border-[#9b2335]/45 bg-gradient-to-br from-[#3a0c14]/55 via-[#4a0f18]/30 to-transparent p-7 shadow-[0_24px_60px_-25px_rgba(155,35,53,0.55)] sm:p-9">
+          <div className="relative overflow-hidden rounded-3xl border-2 border-[hsl(var(--sunset-magenta))]/45 bg-gradient-to-br from-[#3a0c14]/55 via-[#4a0f18]/30 to-transparent p-7 shadow-[0_24px_60px_-25px_hsl(var(--sunset-magenta)/0.55)] sm:p-9">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(225,29,72,0.18),transparent_55%),radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.10),transparent_50%)]" />
 
             <div className="relative flex flex-col items-start gap-5 sm:flex-row sm:items-center">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-[#9b2335]/50 bg-[#9b2335]/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_8px_22px_-6px_rgba(155,35,53,0.55)]">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--sunset-magenta))]/50 bg-[hsl(var(--sunset-magenta))]/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_8px_22px_-6px_hsl(var(--sunset-magenta)/0.55)]">
                 <Trophy className="h-8 w-8 text-amber-300" />
               </div>
               <div>
@@ -696,7 +696,7 @@ function RuleCard({ rule }: { rule: Rule }) {
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${sev.ring} from-white/[0.02] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-22px_rgba(0,0,0,0.7)]`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${sev.ring} from-white/[0.02] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_-22px_hsl(var(--sunset-surface2)/0.7)]`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${sev.iconBg}`}>
@@ -720,7 +720,7 @@ function CarCard({ car }: { car: Car }) {
     : undefined;
 
   return (
-    <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[rgba(14,5,7,0.7)] to-[rgba(10,3,5,0.84)] shadow-[0_24px_60px_-30px_rgba(0,0,0,0.85)] transition-all duration-200 hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_30px_70px_-25px_rgba(155,35,53,0.45)]">
+    <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(var(--sunset-surface)/0.7)] to-[hsl(var(--sunset-surface2)/0.84)] shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.85)] transition-all duration-200 hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_30px_70px_-25px_hsl(var(--sunset-magenta)/0.45)]">
       {/* Photo de la voiture en garage */}
       {imgPath && (
         <div className="relative aspect-video w-full overflow-hidden border-b border-white/10 bg-black/60">
@@ -754,7 +754,7 @@ function CarCard({ car }: { car: Car }) {
         <div className="border-b border-white/8 p-6">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#9b2335]/40 bg-gradient-to-br from-[#7a1f2b]/30 to-[#4a0f18]/10 text-amber-300">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--sunset-magenta))]/40 bg-gradient-to-br from-[hsl(var(--sunset-deep))]/30 to-[#4a0f18]/10 text-amber-300">
                 <Car className="h-6 w-6" />
               </div>
               <div>

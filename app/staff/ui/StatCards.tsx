@@ -30,7 +30,7 @@ export function StatCards({ items }: StatCardsProps) {
         return (
           <MotionCard
             key={item.label}
-            className={`flex h-full flex-col gap-2 rounded-[22px] border p-5 shadow-[0_22px_58px_-36px_rgba(2,6,23,0.95)] ${styles.bg} ${styles.border}`}
+            className={`flex h-full flex-col gap-2 rounded-[22px] border p-5 shadow-[0_22px_58px_-36px_hsl(var(--sunset-surface3)/0.95)] ${styles.bg} ${styles.border}`}
           >
             <div className="flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               <span>{item.label}</span>

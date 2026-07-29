@@ -287,10 +287,10 @@ export function AuditLogsClient() {
           onClick={() => setSelectedLog(null)}
         >
           <div
-            className="premium-card premium-surface-elevated w-full max-w-2xl max-h-[85vh] overflow-auto rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(14,5,7,0.92),rgba(10,3,5,0.96))] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)]"
+            className="premium-card premium-surface-elevated w-full max-w-2xl max-h-[85vh] overflow-auto rounded-2xl border border-white/8 bg-[linear-gradient(180deg,hsl(var(--sunset-surface)/0.92),hsl(var(--sunset-surface2)/0.96))] shadow-[0_30px_80px_-30px_hsl(var(--sunset-surface2)/0.85)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#9b2335]/65 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-[hsl(var(--sunset-magenta))]/65 to-transparent" />
             <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
               <h2 className="text-base font-semibold text-slate-50">Détails du log</h2>
               <button
@@ -327,7 +327,7 @@ export function AuditLogsClient() {
               {selectedLog.meta && Object.keys(selectedLog.meta).length > 0 && (
                 <div>
                   <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Meta (JSON)</div>
-                  <pre className="overflow-x-auto rounded-xl border border-white/8 bg-[rgba(10,4,6,0.7)] p-3 text-[11px] leading-5 font-mono text-slate-300">
+                  <pre className="overflow-x-auto rounded-xl border border-white/8 bg-[hsl(var(--sunset-surface)/0.7)] p-3 text-[11px] leading-5 font-mono text-slate-300">
 {JSON.stringify(selectedLog.meta, null, 2)}
                   </pre>
                 </div>
@@ -377,7 +377,7 @@ function DateField({
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] px-3 py-1.5 text-sm text-slate-100 transition-colors focus:border-amber-500/40 focus:outline-none [color-scheme:dark]"
+        className="rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] px-3 py-1.5 text-sm text-slate-100 transition-colors focus:border-amber-500/40 focus:outline-none [color-scheme:dark]"
       />
     </div>
   );

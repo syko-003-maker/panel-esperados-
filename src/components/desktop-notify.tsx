@@ -107,11 +107,11 @@ export default function DesktopNotify() {
           padding: "6px 10px 6px 12px",
           borderRadius: 9999,
           border: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(6,4,6,0.82)",
+          background: "hsl(var(--sunset-surface2)/0.82)",
           backdropFilter: "blur(8px)",
           color: "#e2e8f0",
           font: "600 12px/1 system-ui, sans-serif",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+          boxShadow: "0 8px 24px hsl(var(--sunset-surface2)/0.5)",
         }}
       >
         <span style={{ width: 8, height: 8, borderRadius: 9999, background: dot }} />

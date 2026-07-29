@@ -151,9 +151,9 @@ export function MemberImportClient({ recentRuns }: { recentRuns: ImportRun[] }) 
             accept=".csv,.txt"
             onChange={handleFileSelect}
             className="block w-full text-sm text-slate-400
-              file:mr-4 file:rounded-xl file:border file:border-[#7a1f2b]/40 file:bg-[#7a1f2b]/20
+              file:mr-4 file:rounded-xl file:border file:border-[hsl(var(--sunset-deep))]/40 file:bg-[hsl(var(--sunset-deep))]/20
               file:px-4 file:py-2 file:text-sm file:font-semibold file:text-rose-100
-              file:transition-colors hover:file:bg-[#7a1f2b]/30 cursor-pointer"
+              file:transition-colors hover:file:bg-[hsl(var(--sunset-deep))]/30 cursor-pointer"
           />
 
           {fileName && (

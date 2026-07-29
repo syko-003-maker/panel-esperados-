@@ -102,8 +102,8 @@ export function DatePicker({ value, onChange, placeholder = "jj/mm/aaaa", requir
         onClick={() => setOpen(o => !o)}
         className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition-colors
           ${open
-            ? "border-amber-500/40 bg-[rgba(10,4,6,0.9)] text-slate-100"
-            : "border-white/10 bg-[rgba(10,4,6,0.85)] text-slate-100 hover:border-white/20"
+            ? "border-amber-500/40 bg-[hsl(var(--sunset-surface)/0.9)] text-slate-100"
+            : "border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] text-slate-100 hover:border-white/20"
           }
           ${!value ? "text-slate-500" : ""}
         `}
@@ -123,7 +123,7 @@ export function DatePicker({ value, onChange, placeholder = "jj/mm/aaaa", requir
 
       {/* Dropdown calendar */}
       {open && (
-        <div className="absolute left-0 z-50 mt-1.5 w-full min-w-[252px] max-w-[300px] rounded-2xl border border-white/10 bg-[rgba(14,5,8,0.97)] shadow-[0_24px_60px_-12px_rgba(0,0,0,0.8)] backdrop-blur-sm overflow-hidden">
+        <div className="absolute left-0 z-50 mt-1.5 w-full min-w-[252px] max-w-[300px] rounded-2xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.97)] shadow-[0_24px_60px_-12px_hsl(var(--sunset-surface2)/0.8)] backdrop-blur-sm overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/8">
             <button
@@ -173,7 +173,7 @@ export function DatePicker({ value, onChange, placeholder = "jj/mm/aaaa", requir
                   className={`
                     mx-auto flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-all
                     ${isSelected
-                      ? "bg-[#9b2335] text-white shadow-[0_0_10px_-2px_rgba(155,35,53,0.5)]"
+                      ? "bg-[hsl(var(--sunset-magenta))] text-white shadow-[0_0_10px_-2px_hsl(var(--sunset-magenta)/0.5)]"
                       : isToday
                         ? "border border-amber-500/40 bg-amber-500/10 text-amber-300"
                         : isPast

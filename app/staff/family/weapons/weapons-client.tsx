@@ -314,7 +314,7 @@ export default function WeaponsClient({ canManage, liveMode, cookieState }: Prop
           return (
             <div
               key={cls}
-              className={`group relative flex flex-col rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(20,11,13,0.66),rgba(9,4,6,0.78))] shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:-translate-y-0.5 hover:border-white/15 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:content-[''] ${CLASS_BADGE[cls].glow}`}
+              className={`group relative flex flex-col rounded-2xl border border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.66),hsl(var(--sunset-surface)/0.78))] shadow-[0_20px_50px_-28px_hsl(var(--sunset-surface2)/0.9),inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:-translate-y-0.5 hover:border-white/15 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:content-[''] ${CLASS_BADGE[cls].glow}`}
             >
               {/* Accent bar par classe */}
               <div className={`relative z-10 h-[3px] w-full rounded-t-2xl bg-gradient-to-r ${CLASS_BADGE[cls].bar}`} />
@@ -558,7 +558,7 @@ function WeaponPicker({
       </button>
 
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-white/12 bg-[#160c0e] shadow-[0_28px_70px_-12px_rgba(0,0,0,0.88)]">
+        <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-white/12 bg-[#160c0e] shadow-[0_28px_70px_-12px_hsl(var(--sunset-surface2)/0.88)]">
           {/* Recherche */}
           <div className="border-b border-white/8 p-2">
             <div className="relative">

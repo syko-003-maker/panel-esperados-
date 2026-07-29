@@ -103,7 +103,7 @@ export function BankPageClient() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6">
+      <div className="app-card p-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-300/70 mb-2">
           Espace Membre
         </p>
@@ -136,8 +136,8 @@ export function BankPageClient() {
 
       {/* Empty */}
       {!loading && !error && logs.length === 0 && (
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm p-12 flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
+        <div className="app-card p-12 flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center app-card">
             <Banknote className="h-5 w-5 text-slate-500" />
           </div>
           <p className="text-sm font-medium text-slate-400">Aucune transaction</p>
@@ -148,7 +148,7 @@ export function BankPageClient() {
       {/* Table */}
       {!loading && !error && logs.length > 0 && (
         <>
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] backdrop-blur-sm overflow-hidden">
+          <div className="app-card overflow-hidden">
             {/* Mobile cards */}
             <div className="md:hidden divide-y divide-white/[0.04]">
               {logs.map((log, idx) => (

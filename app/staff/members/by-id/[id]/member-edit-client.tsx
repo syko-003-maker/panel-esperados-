@@ -142,7 +142,7 @@ export function MemberEditClient({ member }: { member: Member }) {
         title="Informations"
         description="Nom RP, liaison Discord et exception de playtime en réunion."
         icon={Pencil}
-        className="border-white/8 bg-[linear-gradient(180deg,rgba(18,5,8,0.92),rgba(14,4,6,0.72))] shadow-[0_18px_60px_-28px_rgba(0,0,0,0.75)]"
+        className="border-white/8 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.92),hsl(var(--sunset-surface)/0.72))] shadow-[0_18px_60px_-28px_hsl(var(--sunset-surface2)/0.75)]"
       >
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid gap-5 sm:grid-cols-2">
@@ -215,7 +215,7 @@ export function MemberEditClient({ member }: { member: Member }) {
             <Button
               type="submit"
               disabled={loading}
-              className="h-11 rounded-xl bg-gradient-to-r from-[#7a1f2b] via-[#9a2535] to-amber-700 px-6 text-sm font-semibold text-white shadow-[0_14px_30px_-14px_rgba(122,31,43,0.8)] transition-transform hover:translate-y-[-1px] hover:from-[#8a2535] hover:via-[#aa2d40] hover:to-amber-600"
+              className="h-11 rounded-xl bg-gradient-to-r from-[hsl(var(--sunset-deep))] via-[#9a2535] to-amber-700 px-6 text-sm font-semibold text-white shadow-[0_14px_30px_-14px_hsl(var(--sunset-deep)/0.8)] transition-transform hover:translate-y-[-1px] hover:from-[#8a2535] hover:via-[#aa2d40] hover:to-amber-600"
             >
               {loading ? "Enregistrement…" : "Enregistrer"}
             </Button>

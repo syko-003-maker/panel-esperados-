@@ -298,7 +298,7 @@ export default function MembersListClient() {
 
       {/* ── Header card ── */}
       <motion.div
-        className="rounded-2xl border border-white/8 bg-[rgba(14,5,7,0.70)] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur-sm overflow-hidden"
+        className="rounded-2xl border border-white/8 bg-[hsl(var(--sunset-surface)/0.70)] shadow-[0_24px_60px_-20px_hsl(var(--sunset-surface2)/0.6)] backdrop-blur-sm overflow-hidden"
         variants={sectionFadeVariants}
         initial="hidden"
         animate="visible"
@@ -308,7 +308,7 @@ export default function MembersListClient() {
         {/* Top bar: title + refresh + count */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-white/6">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#9b2335]/20 border border-[#9b2335]/30">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[hsl(var(--sunset-magenta))]/20 border border-[hsl(var(--sunset-magenta))]/30">
               <span className="text-sm">👥</span>
             </div>
             <div>
@@ -345,7 +345,7 @@ export default function MembersListClient() {
                 className={[
                   "rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
                   selected
-                    ? "bg-[#9b2335]/25 text-rose-200 border border-[#9b2335]/40 shadow-[0_0_12px_-4px_rgba(155,35,53,0.4)]"
+                    ? "bg-[hsl(var(--sunset-magenta))]/25 text-rose-200 border border-[hsl(var(--sunset-magenta))]/40 shadow-[0_0_12px_-4px_hsl(var(--sunset-magenta)/0.4)]"
                     : "text-slate-500 border border-transparent hover:border-white/10 hover:bg-white/[0.05] hover:text-slate-300",
                 ].join(" ")}
               >
@@ -368,7 +368,7 @@ export default function MembersListClient() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="RP name, SteamID, Discord ID…"
-              className="w-full rounded-xl border border-white/10 bg-[rgba(10,4,6,0.85)] pl-9 pr-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
+              className="w-full rounded-xl border border-white/10 bg-[hsl(var(--sunset-surface)/0.85)] pl-9 pr-3 py-2 text-base sm:text-sm text-slate-100 placeholder:text-slate-500 transition-colors focus:border-amber-500/40 focus:outline-none"
             />
           </div>
 
@@ -429,43 +429,43 @@ export default function MembersListClient() {
 
           const styles = {
             default:  {
-              card: selected ? "border-white/20 bg-white/[0.08] shadow-[0_4px_20px_-4px_rgba(255,255,255,0.06)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-white/12 hover:bg-white/[0.04]",
+              card: selected ? "border-white/20 bg-white/[0.08] shadow-[0_4px_20px_-4px_rgba(255,255,255,0.06)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-white/12 hover:bg-white/[0.04]",
               count: selected ? "text-white" : "text-foreground/40",
               label: selected ? "text-foreground/80" : "text-foreground/35",
               bar: "bg-white/30",
             },
             green:    {
-              card: selected ? "border-emerald-500/40 bg-emerald-500/[0.08] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.2)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-emerald-500/20 hover:bg-emerald-500/[0.04]",
+              card: selected ? "border-emerald-500/40 bg-emerald-500/[0.08] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.2)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-emerald-500/20 hover:bg-emerald-500/[0.04]",
               count: selected ? "text-emerald-300" : "text-foreground/40",
               label: selected ? "text-emerald-200/70" : "text-foreground/35",
               bar: "bg-emerald-400/60",
             },
             emerald:  {
-              card: selected ? "border-emerald-600/35 bg-emerald-600/[0.07] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.15)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-emerald-600/18 hover:bg-emerald-600/[0.04]",
+              card: selected ? "border-emerald-600/35 bg-emerald-600/[0.07] shadow-[0_4px_20px_-4px_rgba(52,211,153,0.15)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-emerald-600/18 hover:bg-emerald-600/[0.04]",
               count: selected ? "text-emerald-300" : "text-foreground/40",
               label: selected ? "text-emerald-200/70" : "text-foreground/35",
               bar: "bg-emerald-500/50",
             },
             rose:     {
-              card: selected ? "border-rose-500/40 bg-rose-500/[0.08] shadow-[0_4px_20px_-4px_rgba(244,63,94,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-rose-500/20 hover:bg-rose-500/[0.04]",
+              card: selected ? "border-rose-500/40 bg-rose-500/[0.08] shadow-[0_4px_20px_-4px_rgba(244,63,94,0.18)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-rose-500/20 hover:bg-rose-500/[0.04]",
               count: selected ? "text-rose-300" : "text-foreground/40",
               label: selected ? "text-rose-200/70" : "text-foreground/35",
               bar: "bg-rose-400/60",
             },
             amber:    {
-              card: selected ? "border-amber-500/40 bg-amber-500/[0.07] shadow-[0_4px_20px_-4px_rgba(245,158,11,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-amber-500/20 hover:bg-amber-500/[0.04]",
+              card: selected ? "border-amber-500/40 bg-amber-500/[0.07] shadow-[0_4px_20px_-4px_rgba(245,158,11,0.18)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-amber-500/20 hover:bg-amber-500/[0.04]",
               count: selected ? "text-amber-300" : "text-foreground/40",
               label: selected ? "text-amber-200/70" : "text-foreground/35",
               bar: "bg-amber-400/55",
             },
             cyan:     {
-              card: selected ? "border-cyan-500/40 bg-cyan-500/[0.07] shadow-[0_4px_20px_-4px_rgba(6,182,212,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-cyan-500/20 hover:bg-cyan-500/[0.04]",
+              card: selected ? "border-cyan-500/40 bg-cyan-500/[0.07] shadow-[0_4px_20px_-4px_rgba(6,182,212,0.18)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-cyan-500/20 hover:bg-cyan-500/[0.04]",
               count: selected ? "text-cyan-300" : "text-foreground/40",
               label: selected ? "text-cyan-200/70" : "text-foreground/35",
               bar: "bg-cyan-400/55",
             },
             orange:   {
-              card: selected ? "border-orange-500/40 bg-orange-500/[0.07] shadow-[0_4px_20px_-4px_rgba(249,115,22,0.18)]" : "border-white/10 bg-[rgba(14,5,7,0.65)] hover:border-orange-500/20 hover:bg-orange-500/[0.04]",
+              card: selected ? "border-orange-500/40 bg-orange-500/[0.07] shadow-[0_4px_20px_-4px_rgba(249,115,22,0.18)]" : "border-white/10 bg-[hsl(var(--sunset-surface)/0.65)] hover:border-orange-500/20 hover:bg-orange-500/[0.04]",
               count: selected ? "text-orange-300" : "text-foreground/40",
               label: selected ? "text-orange-200/70" : "text-foreground/35",
               bar: "bg-orange-400/55",
@@ -556,7 +556,7 @@ export default function MembersListClient() {
                 className={[
                   // Hover (translate + scale + glow + border) géré par .premium-card-* en CSS
                   // pour éviter le conflit transform Tailwind/CSS et garder l'animation fluide.
-                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[rgba(14,5,7,0.62)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)] backdrop-blur-sm min-h-[200px] sm:min-h-[220px] w-full",
+                  "premium-card group relative flex flex-col overflow-hidden rounded-2xl border bg-[hsl(var(--sunset-surface)/0.62)] shadow-[0_8px_32px_-8px_hsl(var(--sunset-surface2)/0.55)] backdrop-blur-sm min-h-[200px] sm:min-h-[220px] w-full",
                   isTopGrade
                     ? "premium-card-amber border-amber-500/30"
                     : "premium-card-bordeaux border-white/8",
@@ -569,7 +569,7 @@ export default function MembersListClient() {
                   : isConnected ? "bg-emerald-500/70"
                   : isZeroPlaytime && !exemptActivity ? "bg-rose-500/60"
                   : activity.key === "low" && !exemptActivity ? "bg-amber-500/50"
-                  : "bg-gradient-to-r from-[#7a1f2b]/80 via-rose-700/40 to-transparent"
+                  : "bg-gradient-to-r from-[hsl(var(--sunset-deep))]/80 via-rose-700/40 to-transparent"
                 }`} />
 
                 <div className="flex flex-col gap-0 flex-1 p-4">

@@ -83,7 +83,7 @@ export default function PrinterCalculator() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-2">
       {/* ── En-tête ─────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(20,11,13,0.7),rgba(9,4,6,0.82))] p-5 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.9)]">
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.7),hsl(var(--sunset-surface)/0.82))] p-5 shadow-[0_24px_60px_-30px_hsl(var(--sunset-surface2)/0.9)]">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500/70 to-transparent" />
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-amber-400/30 bg-gradient-to-br from-amber-400/20 to-amber-600/10 text-amber-200">
@@ -177,7 +177,7 @@ export default function PrinterCalculator() {
           </div>
 
           {/* Totaux */}
-          <div className="overflow-hidden rounded-2xl border border-amber-500/25 bg-[linear-gradient(180deg,rgba(40,28,8,0.45),rgba(20,12,4,0.5))] p-5">
+          <div className="overflow-hidden rounded-2xl border border-amber-500/25 bg-[linear-gradient(180deg,rgba(40,28,8,0.45),hsl(var(--sunset-surface3)/0.5))] p-5">
             <div className="mb-3 flex items-center gap-2">
               <Sigma className="h-4 w-4 text-amber-300" />
               <h2 className="text-sm font-bold uppercase tracking-wider text-amber-100">
@@ -218,8 +218,8 @@ function PrinterCard({ printer }: { printer: Printer }) {
   const complete = isPrinterComplete(printer);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(20,11,13,0.66),rgba(9,4,6,0.78))] p-5 shadow-[0_18px_48px_-30px_rgba(0,0,0,0.9)]">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-[#9b2335]/80 via-amber-500/50 to-transparent" />
+    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,hsl(var(--sunset-surface3)/0.66),hsl(var(--sunset-surface)/0.78))] p-5 shadow-[0_18px_48px_-30px_hsl(var(--sunset-surface2)/0.9)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-[hsl(var(--sunset-magenta))]/80 via-amber-500/50 to-transparent" />
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-base font-bold text-slate-50">{printer.name}</h3>
         {!complete ? (
