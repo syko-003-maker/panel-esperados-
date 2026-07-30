@@ -384,6 +384,12 @@ export async function enqueueRecruitmentDecision(params: {
   totalOn20?: number | null;
   totalPoints?: number | null;
   claimedByUserId: string;
+  /**
+   * Qui a decide, sous une forme utilisable par Discord. `claimedByUserId` est
+   * un cuid du panel : le worker ne peut ni le mentionner ni l'afficher.
+   */
+  closedByDiscordId?: string | null;
+  closedByName?: string | null;
   discordThreadId?: string | null;
   /**
    * Résultat de l'auto-add WL via proxy LYG côté panel.
@@ -410,6 +416,8 @@ export async function enqueueRecruitmentDecision(params: {
     totalOn20: params.totalOn20 ?? null,
     totalPoints: params.totalPoints ?? null,
     claimedByUserId: params.claimedByUserId,
+    closedByDiscordId: params.closedByDiscordId ?? null,
+    closedByName: params.closedByName ?? null,
     discordThreadId: params.discordThreadId ?? null,
     lygAutoAdd: params.lygAutoAdd ?? null,
     lygAutoAddError: params.lygAutoAddError ?? null,

@@ -13,6 +13,7 @@ import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
 import { lygFamilyAdd } from "@/lib/lyg/family-admin";
 import { BLOCKING_SANCTION_TYPES } from "@/lib/sanctions";
 import { createAuditLog } from "@/lib/audit";
+import { getDiscordIdForSession } from "@/server/auth/discord";
 
 const DECISIONS = ["ACCEPT", "REJECT"] as const;
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
@@ -65,6 +66,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!userId) {
     return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
   }
+
+  // Identite du decideur, pour la fiche et pour l'annonce Discord. Le compte
+  // panel porte un cuid : sans le SteamID Discord on ne peut ni mentionner la
+  // personne ni la nommer dans le salon de logs.
+  const actorDiscordId = await getDiscordIdForSession(session);
+  const actorName = session?.user?.name ?? null;
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
@@ -154,6 +161,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           status: nextStatus,
           // Persiste le steamId trouvé via fallback Member si absent sur la fiche
           ...(steamId && !recruitment.steamId ? { steamId } : {}),
+          // Qui a ferme, et quand. Cette route ne l'ecrivait pas : les fiches
+          // decidees depuis le site avaient closedAt et closedByDiscordId vides,
+          // et retrouver l'auteur exigeait de fouiller le journal systemd —
+          // qui tourne, donc l'information finissait par disparaitre.
+          closedAt: new Date(),
+          closedByDiscordId: actorDiscordId,
+          closeReason: decisionRaw === "ACCEPT" ? "Accepté depuis le panel" : "Refusé depuis le panel",
         },
         select: {
           id: true,
@@ -247,6 +261,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       totalOn20: totals.totalOn20,
       totalPoints: totals.totalPoints,
       claimedByUserId: recruiterId,
+      closedByDiscordId: actorDiscordId,
+      closedByName: actorName,
       discordThreadId: updated.discordThreadId ?? null,
       lygAutoAdd,
       lygAutoAddError,

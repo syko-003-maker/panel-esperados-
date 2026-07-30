@@ -731,6 +731,16 @@ async function handleRecruitmentDecision(
 ): Promise<void> {
   const { decision, candidateRpName, totalOn20, totalPoints, discordThreadId } = job.meta;
 
+  // Qui a decide. L'embed ne le disait pas : on voyait qu'un ticket avait ete
+  // tranche, jamais par qui, et il fallait fouiller le journal systemd pour le
+  // savoir. La mention est preferee au simple nom — elle reste juste meme si la
+  // personne change de pseudo.
+  const closedByDiscordId = job.meta.closedByDiscordId as string | null | undefined;
+  const closedByName = job.meta.closedByName as string | null | undefined;
+  const decidedBy = closedByDiscordId
+    ? `<@${closedByDiscordId}>${closedByName ? ` (${closedByName})` : ""}`
+    : closedByName || null;
+
   // 1. Log dans le salon de logs staff
   const embed = new EmbedBuilder()
     .setTitle(`📋 Décision Recrutement`)
@@ -738,7 +748,8 @@ async function handleRecruitmentDecision(
     .addFields(
       { name: "Candidat", value: candidateRpName || "Unknown", inline: true },
       { name: "Décision", value: decision === "ACCEPT" ? "✅ ACCEPTÉ" : "❌ REFUSÉ", inline: true },
-      { name: "Score", value: `${totalOn20 ?? "-"}/20 (${totalPoints ?? "-"} pts)`, inline: true }
+      { name: "Score", value: `${totalOn20 ?? "-"}/20 (${totalPoints ?? "-"} pts)`, inline: true },
+      { name: "Traitée par", value: decidedBy ?? "— (origine inconnue)", inline: false }
     )
     .setTimestamp();
 

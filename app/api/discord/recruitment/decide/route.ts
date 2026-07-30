@@ -261,6 +261,10 @@ export async function POST(req: Request) {
         candidateDiscordId: updated.discordId ?? undefined,
         candidateSteamId: updated.steamId ?? undefined,
         claimedByUserId,
+        // Deja connu ici, mais jamais transmis : l'embed ne pouvait donc pas
+        // nommer le decideur, meme depuis les boutons du ticket.
+        closedByDiscordId: staffDiscordId,
+        closedByName: staffUsername ?? null,
         discordThreadId: liveChannelId || updated.discordThreadId || null,
         lygAutoAdd,
         lygAutoAddError,
