@@ -3,6 +3,9 @@ import type { Client as DiscordClient, TextChannel } from "discord.js";
 import { ChannelType, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { safeFetchMember, validateDiscordId } from "./utils/validateDiscordId.js";
 import { sendMemberDm } from "./lib/send-member-dm.js";
+import { archiveRecruitmentMessages, type ArchivedMessage } from "./features/recruitment/archive-messages.js";
+import { buildRejectionExplanation } from "./features/recruitment/reject-summary.js";
+
 
 const SANCTION_NOTIFICATION_CHANNEL_ID = process.env.SANCTION_NOTIFICATION_CHANNEL_ID ?? "1409028569203740792";
 const OUTBOX_JOB_TIMEOUT_MS = 20_000;
@@ -755,12 +758,42 @@ async function handleRecruitmentDecision(
 
   await channel.send({ embeds: [embed] });
 
-  // 1bis. MP au candidat REFUSÉ (l'accepté est déjà notifié côté panel). Placé
+  // 1bis. Copie du ticket en base, AVANT que le fil ne soit verrouillé puis
+  //       archivé. C'est aussi la matière de l'explication au candidat et de
+  //       l'affichage sur le site.
+  const threadIdForArchive = typeof discordThreadId === "string" ? discordThreadId : null;
+  let archived: ArchivedMessage[] = [];
+  if (threadIdForArchive) {
+    const ticket = await prisma.recruitment
+      .findUnique({ where: { id: String(job.meta.ticketId) }, select: { ticketKey: true } })
+      .catch(() => null);
+    if (ticket?.ticketKey) {
+      const res = await archiveRecruitmentMessages({
+        client: discordClient,
+        threadId: threadIdForArchive,
+        ticketKey: ticket.ticketKey,
+      });
+      archived = res.messages;
+      log("recruitment_archive_done", {
+        jobId: job.id, ticketKey: ticket.ticketKey, stored: res.ok, count: res.messageCount,
+      });
+    }
+  }
+
+  // 1ter. MP au candidat REFUSÉ (l'accepté est déjà notifié côté panel). Placé
   //       ici car les DEUX voies de refus (panel + boutons Discord) passent par
   //       ce job → un seul point à maintenir.
   const candidateDiscordId =
     typeof job.meta.candidateDiscordId === "string" ? job.meta.candidateDiscordId : null;
   if (decision === "REJECT" && candidateDiscordId) {
+    // Explication tirée du ticket. Le candidat repartait sans savoir pourquoi ;
+    // reste generique si l'IA n'est pas configurée ou ne répond pas.
+    const explanation = await buildRejectionExplanation({
+      messages: archived,
+      candidateName: String(candidateRpName || "le candidat"),
+      staffNotes: typeof job.meta.staffNotes === "string" ? job.meta.staffNotes : null,
+    }).catch(() => null);
+
     let dmOk = false;
     try {
       const user = await discordClient.users.fetch(candidateDiscordId);
@@ -773,14 +806,36 @@ async function handleRecruitmentDecision(
         )
         .setFooter({ text: "Los Esperados • Recrutement" })
         .setTimestamp();
+      if (explanation) {
+        rejectEmbed.addFields({ name: "Ce qui a motivé la décision", value: explanation });
+      }
       await user.send({ embeds: [rejectEmbed] });
       dmOk = true;
     } catch {
       // DM fermés / utilisateur introuvable — non bloquant.
     }
+
+    // Le staff doit voir ce que le candidat a reçu : une explication generee
+    // part sans relecture, autant qu'elle soit visible dans le salon de logs.
+    if (explanation) {
+      await channel
+        .send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x64748b)
+              .setTitle("✉️ Explication envoyée au candidat")
+              .setDescription(explanation)
+              .setFooter({ text: dmOk ? "MP délivré" : "MP NON délivré (DM fermés)" })
+              .setTimestamp(),
+          ],
+        })
+        .catch(() => {});
+    }
+
     log(dmOk ? "recruitment_reject_dm_sent" : "recruitment_reject_dm_failed", {
       jobId: job.id,
       candidateDiscordId,
+      withExplanation: Boolean(explanation),
     });
   }
 
