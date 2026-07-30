@@ -1,27 +1,33 @@
-// Service worker Los Esperados — installabilité PWA + résilience réseau.
-// Stratégie simple : network-first, avec repli sur le cache pour la dernière
-// navigation réussie (ne casse jamais l'auth/dynamique — pas de cache agressif).
-const CACHE = "los-esperados-shell-v1";
+// Service worker Los Esperados — installabilité PWA + notifications push.
+//
+// ⚠️ PAS DE CACHE DE NAVIGATION. La version précédente mettait en cache chaque
+// navigation réussie et servait ce HTML en repli au moindre incident réseau.
+// Or le HTML de Next.js référence des chunks JS dont le nom change à chaque
+// build : un HTML de la veille pointe vers des fichiers supprimés, React
+// n'hydrate jamais, et la page s'affiche sans qu'aucun clic ne réponde.
+// L'application installée gardant son cache entre les lancements, elle restait
+// bloquée dans cet état alors que le site fonctionnait.
+//
+// Ce repli n'apportait rien : le panel exige une session et des données
+// serveur, il est inutilisable hors ligne. On le retire donc plutôt que de
+// tenter de le faire expirer — moins de code, plus rien à invalider.
+
+const CACHE_PREFIX = "los-esperados-";
 
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
-
-  // Navigations : réseau d'abord, repli cache si hors-ligne.
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match(req).then((r) => r || caches.match("/")))
-    );
-  }
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      // Purge des caches laissés par les versions precedentes. C'est ce qui
+      // debloque tout seul un client déjà coincé sur un HTML obsolète.
+      const names = await caches.keys();
+      await Promise.all(
+        names.filter((n) => n.startsWith(CACHE_PREFIX)).map((n) => caches.delete(n)),
+      );
+      await self.clients.claim();
+    })(),
+  );
 });
 
 // ── Notifications push (Web Push) ────────────────────────────────────────────
