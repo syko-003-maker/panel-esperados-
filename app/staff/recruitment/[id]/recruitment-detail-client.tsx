@@ -8,6 +8,7 @@ import { MIN_ON20, TOTAL_MAX_POINTS } from "@/lib/recruitment/questionBank";
 import { DataTile } from "@/components/staff/ui/DataTile";
 import { MotionButtonFrame, MotionSection } from "@/components/staff/ui/motion";
 import { SectionCard } from "@/components/staff/ui/SectionCard";
+import { RecruitmentConversation } from "@/components/staff/recruitment-conversation";
 import { StatusBadge } from "@/components/staff/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 
@@ -375,18 +376,6 @@ export default function RecruitmentDetailClient({
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {ticket.discordThreadId && (
-                <MotionButtonFrame>
-                  <a
-                    href={`https://discord.com/channels/${GUILD_ID}/${ticket.discordThreadId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-2xl border border-indigo-500/30 bg-indigo-500/12 px-3 py-2 text-xs font-medium text-indigo-200 transition-colors hover:bg-indigo-500/20"
-                  >
-                    Thread Discord →
-                  </a>
-                </MotionButtonFrame>
-              )}
               {!ticket.claimedById && !isClosed && (
                 <MotionButtonFrame>
                   <Button variant="outline" onClick={claim} size="sm" className="rounded-2xl border-white/10 bg-white/[0.04] text-sm">
@@ -648,6 +637,11 @@ export default function RecruitmentDetailClient({
               className="w-full px-3 py-2 rounded-lg bg-card/70 border border-white/8 text-foreground placeholder-gray-500 text-sm focus:outline-none focus:border-white/20 resize-none disabled:opacity-50"
             />
           </SectionCard>
+
+          {/* Echanges du ticket, archives a la decision. Le fil Discord finit
+              verrouille puis archive, et peut etre supprime : cette copie est
+              parfois la seule trace de ce qui a motive la decision. */}
+          <RecruitmentConversation ticketId={ticketId} />
 
           {/* Decision closed */}
           {isClosed && (
