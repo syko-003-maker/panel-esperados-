@@ -403,12 +403,45 @@ model Recruitment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  messages RecruitmentMessage[]
+
   @@index([familyId, status, createdAt])
   @@index([discordId])
   @@index([rpName])
   @@index([ticketKey])
   @@index([threadId])
   @@index([createdById])
+}
+
+/// Messages archivés d'un ticket de recrutement.
+///
+/// Le fil Discord est verrouillé puis archivé à la décision, et peut être
+/// supprimé : sans copie, la conversation qui justifie la décision disparaît.
+/// On la garde donc en base, ce qui la rend consultable depuis le site et
+/// permet de rédiger l'explication envoyée au candidat refusé.
+///
+/// Calqué sur ComplaintMessage, pour que les deux types de tickets se lisent
+/// de la même façon.
+model RecruitmentMessage {
+  id            String      @id @default(cuid())
+  recruitmentId String
+  recruitment   Recruitment @relation(fields: [recruitmentId], references: [id], onDelete: Cascade)
+
+  discordMessageId   String    @unique
+  authorDiscordId    String    @default("unknown")
+  authorNameSnapshot String    @default("Unknown")
+  /// Vrai si l'auteur est le bot : la candidature elle-même est postée par lui.
+  authorIsBot        Boolean   @default(false)
+  content            String    @default("")
+  /// Contenu des embeds aplati en texte, sans quoi la candidature serait vide.
+  embedsText         String?
+  attachmentsJson    Json?
+  createdAtDiscord   DateTime  @default(now())
+  editedAtDiscord    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([recruitmentId, createdAtDiscord])
 }
 
 model RecruitmentTicket {

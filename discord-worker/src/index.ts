@@ -181,6 +181,7 @@ import { PrismaClient } from "@prisma/client";
 import { initSentry, captureException } from "./sentry.js";
 import { startHeartbeat, acquireSingleInstanceLock, releaseSingleInstanceLock } from "./heartbeat.js";
 import { sendDiscordAlert } from "./alerts.js";
+import { archiveSingleMessage } from "./features/recruitment/archive-messages.js";
 
 // Init Sentry au plus tôt (no-op si SENTRY_DSN absent — n'affecte pas le boot)
 void initSentry();
@@ -563,6 +564,11 @@ client.once("ready", async () => {
 
   // ─── Mini-cache messages + anti-spam ─────────────────────────────────────
   client.on("messageCreate", (msg) => {
+    // Archivage au fil de l'eau des tickets de recrutement, bot inclus : la
+    // candidature elle-meme est postee par le bot. Le salon etant supprime des
+    // la decision, archiver plus tard revient a perdre la conversation.
+    void archiveSingleMessage(msg).catch(() => {});
+
     if (!msg.author.bot) {
       cacheMessage(msg);
       handleAntispam(msg);
