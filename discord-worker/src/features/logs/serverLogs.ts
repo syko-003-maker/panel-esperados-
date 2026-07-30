@@ -990,6 +990,155 @@ export async function preCacheGuildMessages(guild: Guild): Promise<void> {
   }
 }
 
+// ─── Suppression / fermeture manuelle d'un ticket ─────────────────────────────
+//
+// Le bot journalise ses propres fermetures (boutons du ticket). Mais quand un
+// staff supprime le salon a la main, ou archive le fil sans passer par les
+// boutons, rien n'etait ecrit : le ticket disparaissait sans laisser de trace,
+// et personne ne savait qui l'avait ferme.
+
+const TICKETS_PARENT_CHANNEL_ID = process.env.TICKETS_PARENT_CHANNEL_ID ?? "";
+const TICKETS_LOGS_CHANNEL_ID   = process.env.TICKETS_LOGS_CHANNEL_ID ?? "";
+
+/** Un ticket est reconnu par son parent, ou a defaut par son prefixe de nom. */
+function looksLikeTicket(channel: any): boolean {
+  if (TICKETS_PARENT_CHANNEL_ID && channel?.parentId === TICKETS_PARENT_CHANNEL_ID) return true;
+  const name = String(channel?.name ?? "").toLowerCase();
+  return name.startsWith("recrutement-") || name.startsWith("plainte-");
+}
+
+/**
+ * Retrouve le ticket correspondant au salon, pour nommer le candidat et la
+ * cle plutot que d'afficher un identifiant brut.
+ */
+async function findTicketByChannel(channelId: string): Promise<
+  { kind: "Recrutement" | "Plainte"; ticketKey: string | null; who: string | null; status: string } | null
+> {
+  try {
+    const r = await prisma.recruitment.findFirst({
+      where: { discordThreadId: channelId },
+      select: { ticketKey: true, rpName: true, authorTag: true, status: true },
+    });
+    if (r) return { kind: "Recrutement", ticketKey: r.ticketKey, who: r.rpName ?? r.authorTag, status: r.status };
+
+    const c = await prisma.complaint.findFirst({
+      where: { discordThreadId: channelId },
+      select: { ticketKey: true, authorRpName: true, authorTag: true, status: true },
+    });
+    if (c) return { kind: "Plainte", ticketKey: c.ticketKey, who: c.authorRpName ?? c.authorTag, status: c.status };
+  } catch (err) {
+    console.error("[Logs] lookup ticket échoué:", err);
+  }
+  return null;
+}
+
+/**
+ * Auteur de l'action, via l'audit log.
+ *
+ * Types Discord : 12 = CHANNEL_DELETE, 111 = THREAD_UPDATE, 112 = THREAD_DELETE.
+ * Le delai est indispensable — Discord ecrit l'audit de facon asynchrone, et
+ * sans lui l'entree n'existe pas encore au moment de la recherche.
+ */
+async function findChannelExecutor(
+  guild: Guild,
+  type: number,
+  targetId: string,
+  windowMs = 8000,
+): Promise<{ id: string; reason: string | null } | null> {
+  try {
+    await new Promise((r) => setTimeout(r, 900));
+    const logs = await guild.fetchAuditLogs({ type: type as any, limit: 8 });
+    const now = Date.now();
+    for (const entry of logs.entries.values()) {
+      const e = entry as any;
+      if (now - e.createdTimestamp > windowMs) continue;
+      if (e.target?.id && e.target.id !== targetId) continue;
+      return { id: e.executor?.id ?? "?", reason: e.reason ?? null };
+    }
+  } catch { /* pas la permission de lire l'audit, ou API indisponible */ }
+  return null;
+}
+
+async function sendTicketLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
+  if (!TICKETS_LOGS_CHANNEL_ID) return;
+  try {
+    const ch = await guild.channels.fetch(TICKETS_LOGS_CHANNEL_ID).catch(() => null);
+    if (ch && ch.isTextBased()) await (ch as TextChannel).send({ embeds: [embed] });
+  } catch (err) {
+    console.error("[Logs] envoi log ticket échoué:", err);
+  }
+}
+
+function ticketFields(info: Awaited<ReturnType<typeof findTicketByChannel>>, channelName: string) {
+  const fields = [{ name: "Salon", value: channelName || "inconnu", inline: true }];
+  if (info) {
+    fields.push({ name: "Type", value: info.kind, inline: true });
+    if (info.ticketKey) fields.push({ name: "Ticket", value: info.ticketKey, inline: true });
+    if (info.who) fields.push({ name: "Concerne", value: info.who, inline: true });
+    fields.push({ name: "Statut en base", value: info.status, inline: true });
+  } else {
+    // Un ticket absent de la base signale un autre probleme : l'ingestion a
+    // echoue a la creation. Autant le dire plutot que de laisser un blanc.
+    fields.push({ name: "Base", value: "aucune fiche liée à ce salon", inline: false });
+  }
+  return fields;
+}
+
+export async function onTicketChannelDelete(channel: any): Promise<void> {
+  if (!channel?.guild || !looksLikeTicket(channel)) return;
+
+  const info = await findTicketByChannel(channel.id);
+  const isThread = Boolean(channel.isThread?.());
+  const who = await findChannelExecutor(channel.guild, isThread ? 112 : 12, channel.id);
+
+  const embed = new EmbedBuilder()
+    .setTitle("🗑️ Ticket supprimé")
+    .setColor(0xdc2626)
+    .addFields(
+      ...ticketFields(info, channel.name),
+      { name: "Supprimé par", value: who ? `<@${who.id}>` : "— (audit indisponible)", inline: false },
+    )
+    .setTimestamp();
+
+  if (who?.reason) embed.addFields({ name: "Raison", value: who.reason, inline: false });
+  await sendTicketLog(channel.guild, embed);
+}
+
+export async function onTicketThreadUpdate(oldThread: any, newThread: any): Promise<void> {
+  const thread = newThread ?? oldThread;
+  if (!thread?.guild || !looksLikeTicket(thread)) return;
+
+  // Seules les transitions vers ferme nous interessent : une reouverture ou un
+  // renommage n'a pas a remplir le salon de logs.
+  const justArchived = !oldThread?.archived && newThread?.archived;
+  const justLocked   = !oldThread?.locked   && newThread?.locked;
+  if (!justArchived && !justLocked) return;
+
+  const who = await findChannelExecutor(thread.guild, 111, thread.id);
+
+  // Le bot verrouille et archive lui-meme quand le staff utilise les boutons,
+  // et postCloseLog a deja annonce la fermeture. Sans ce filtre, chaque
+  // fermeture normale produirait deux messages.
+  if (who && logsClient?.user && who.id === logsClient.user.id) return;
+
+  const info = await findTicketByChannel(thread.id);
+
+  const embed = new EmbedBuilder()
+    .setTitle("🔒 Ticket fermé à la main")
+    .setColor(0xf59e0b)
+    .setDescription(
+      "Fermeture hors des boutons du ticket : la fiche n'a donc **pas** été mise à jour côté panel."
+    )
+    .addFields(
+      ...ticketFields(info, thread.name),
+      { name: "Action", value: justLocked ? "Verrouillé" : "Archivé", inline: true },
+      { name: "Fermé par", value: who ? `<@${who.id}>` : "— (audit indisponible)", inline: false },
+    )
+    .setTimestamp();
+
+  await sendTicketLog(thread.guild, embed);
+}
+
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setupServerLogs(client: Client): void {
@@ -1007,6 +1156,11 @@ export function setupServerLogs(client: Client): void {
   client.on("guildBanRemove",    (ban)   => { onBanRemove(ban as any).catch((e) => console.error("[Logs] onBanRemove error:", e)); });
   client.on("voiceStateUpdate",  (o, n)  => { onVoiceStateUpdate(o, n).catch(() => {}); });
   client.on("roleUpdate",        (o, n)  => onRoleUpdate(o, n));
+
+  // Tickets supprimés ou fermés hors des boutons du bot.
+  client.on("channelDelete", (ch)    => { onTicketChannelDelete(ch).catch((e) => console.error("[Logs] channelDelete error:", e)); });
+  client.on("threadDelete",  (th)    => { onTicketChannelDelete(th).catch((e) => console.error("[Logs] threadDelete error:", e)); });
+  client.on("threadUpdate",  (o, n)  => { onTicketThreadUpdate(o, n).catch((e) => console.error("[Logs] threadUpdate error:", e)); });
 
   console.log("[Logs] Système de logs activé → salon", LOGS_CHANNEL_ID);
   console.log("[AutoRole] Auto-rôle screening activé → rôle", CITOYEN_ROLE_ID);
