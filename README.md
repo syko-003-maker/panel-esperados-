@@ -67,12 +67,12 @@ C'est un vrai produit full-stack en production — pas une démo — pensé pour
 
 | | |
 |---|---|
-| **~109 000** lignes de TypeScript | **2** services en production (web + worker) |
-| **242** routes API | **58** modèles de données (Prisma) |
-| **79** pages | **19** migrations versionnées |
+| **~112 000** lignes de TypeScript | **2** services en production (web + worker) |
+| **247** routes API | **60** modèles de données (Prisma) |
+| **79** pages | **22** migrations versionnées |
 | **21** commandes Discord (dont `/reglement` IA) | **11** boucles de fond (sync, pollers, réconciliateurs) |
-| **17** fichiers de tests (Vitest) | **12** notifications push automatiques |
-| **239** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
+| **225** tests unitaires (Vitest) | **12** notifications push automatiques |
+| **276** commits — **1** développeur | **0 €** d'API externes (IA incluse) |
 
 ---
 
@@ -175,10 +175,11 @@ flowchart LR
 - Sanctions (8 types, escalade, **rétrogradation**, sync rôles)
 - Absences & réunions (workflows)
 - Plaintes & **suggestions** : clôture **synchronisée Discord** (votes, fil de commentaires, thread archivé + DM/push)
-- Recrutement + **classement quota recruteurs**
+- Recrutement : **classement recruteurs cliquable** (note /20 par dossier), **conversation du ticket archivée**, motifs du refus envoyés au candidat
 - **Rappels de dettes intelligents** (escalade + alerte État-Major, auto)
 - Whitelists & armes in-game **en live**
 - **Autorisations** : accès panel gérés en un clic
+- **Journal des accès** : qui se connecte, qui se fait refuser, et pourquoi
 - Audit complet de chaque action
 
 </td><td valign="top" width="33%">
@@ -189,6 +190,7 @@ flowchart LR
 - Justifier une absence / sanction
 - **Assistant Règlement IA** (mini-chat intégré)
 - **App installable partout** : PWA (iPhone/Android) **+ appli Windows** (ferme en barre des tâches, notifs natives), diffusée via une page `/install` unique
+- **Identité visuelle propre à l'appli installée** : palette « coucher de soleil », relief et apparitions au défilement — le site garde la sienne, tout est porté par 8 tokens CSS basculés par `display-mode`
 - **12 notifications push** automatiques (sanctions panel & IG, absences, réunions, plaintes, recrutement, justifications) + doublure DM Discord
 - **Playtime de la semaine** (objectif perso, masqué le week-end)
 - **Courbes d'évolution** (argent & playtime, depuis l'entrée)
@@ -220,7 +222,10 @@ Les parties dont je suis le plus fier — celles qui montrent au-delà du CRUD :
 - **🪞 Mirror Discord temps réel.** Les rôles et pseudos Discord sont répliqués en base **à l'événement** (gateway) + resync horaire de rattrapage : poser un rôle à la main sur Discord met à jour les accès du panel en ~1 s, et l'UI ne peut jamais diverger des guards serveur (même source de vérité).
 - **🛡️ RBAC multi-tiers à levier central** (Chef / Sous-Chef / État-Major / Encadrant / Recruteur). Toutes les écritures **graves** (blacklist, démote, retrait famille, finalisation de réunion) passent par **un seul guard** (`isFullWriter`) — le durcissement se pilote donc en un point unique et auditable. L'**Encadrant** est positionné **proche de l'EM** (crée des avertissements, gère absences, réunions et recrutement) mais les actions « virer / blacklist » lui sont refusées **par type et par action** (403), y compris *à l'intérieur* d'une route mixte (ex. une décision de réunion démote/exclusion, ou la création d'une sanction bloquante). Guards par route serveur, **journalisation des accès refusés** (pas seulement des accès réussis), et **page d'administration des accès** (rôles appliqués sur Discord en un clic, audités).
 - **🚫 Anti-contournement de sanction au rejoint.** Un membre blacklist / démote / réserviste qui quitte le Discord perd ses rôles ; à son **retour**, le bot re-pose **automatiquement** le rôle de sa sanction encore active (event `guildMemberAdd` → vérification de la sanction ACTIVE → réapplication + statut mis à jour + log). Impossible d'effacer une sanction en quittant puis revenant.
-- **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord.
+- **🕵️ Enrichissement par Audit Log Discord** : pour un ban/kick/mute, une déconnexion vocale, une suppression de salon ou la fermeture manuelle d'un ticket, le bot remonte **qui** a fait l'action et **pourquoi** en croisant l'audit log de Discord. Deux détails font la différence : Discord écrit son audit de façon **asynchrone** (sans délai, l'entrée n'existe pas encore), et une entrée annonçant *n* déconnexions ne peut être consommée que *n* fois — sans ce compteur, un départ volontaire serait attribué à quelqu'un.
+- **🗃️ Archiver au fil de l'eau plutôt qu'à la fermeture.** Les salons de tickets sont supprimés dès la décision : archiver « à la clôture » perdait la course, et les cinq derniers tickets avaient tous un fil en 404. Chaque message est donc copié en base **à la seconde où il est écrit** (embeds aplatis en texte, sinon la candidature — postée par le bot — serait absente). Le moment de la suppression devient sans importance, et la conversation est consultable depuis le site pendant que le ticket est ouvert.
+- **🧾 Motifs de refus extraits, jamais inventés.** Le candidat refusé reçoit les raisons réellement énoncées dans son ticket. Le modèle ne **rédige pas** le message : il renvoie une **liste JSON de motifs**, le code met en forme, et une liste vide ⇒ aucun bloc. Une consigne textuelle (« réponds AUCUN_MOTIF si rien ») avait été essayée d'abord et **n'a pas tenu** — sur un refus sec, le modèle a fabriqué un motif d'âge absent du ticket. Déplacer la règle du prompt vers le code l'a rendue infaillible.
+- **📵 Deux pièges du mode application, trouvés à la dure.** Un service worker qui met en cache le HTML de Next.js finit par référencer des **chunks JS supprimés** au déploiement suivant : la page s'affiche, React n'hydrate jamais, plus **aucun clic ne répond** — et l'appli installée, qui garde son cache entre les lancements, reste bloquée là alors que le site va bien. Second piège : `perspective` (ou tout `transform` / `filter`) sur un **conteneur de layout** en fait le bloc de référence de ses descendants en `position: fixed` — toutes les fenêtres modales se retrouvaient décalées, et rognées par l'`overflow-hidden` du shell. La profondeur 3D est désormais portée par la fonction `perspective()` **dans le `transform` de l'élément**, jamais sur un parent.
 - **🖼️ Avatars increvables** : un proxy unique (`/api/avatar/:id`) résout le hash Discord **en direct** (cache 1 h) et retombe sur l'avatar par défaut — l'image n'est jamais cassée, même quand un membre change sa photo. Une seule fonction route tous les écrans.
 - **🪶 Mode léger** : une bascule (mémorisée par navigateur) coupe flous et animations pour les PC/GPU faibles, sans toucher à la mise en page — fluidité sur le matériel modeste.
 - **📲 PWA + Web Push (VAPID) sans app store.** Le panel s'installe comme une appli (manifeste + service worker) et notifie en natif — y compris sur iPhone via l'écran d'accueil. **12 événements métier** déclenchent des push automatiques (voir le schéma plus haut), en *fire-and-forget* pour ne jamais bloquer un flux, avec **purge automatique des abonnements morts** (404/410) et audience staff résolue via le mirror des rôles Discord. Le worker (qui ne porte pas les clés) délègue ses événements — warns IG — au panel via une **route interne à secret partagé**. Chaîne validée de bout en bout (chiffrement `aes128gcm` vérifié par déchiffrement). Une **doublure DM Discord** double chaque notif membre : filet de sécurité quand le push n'arrive pas (PC fermé).
@@ -284,10 +289,11 @@ npm run dev
 
 *(Parce qu'un bon projet sait aussi où il peut grandir.)*
 
-- **Couverture de tests à étendre** — la base existe (Vitest), à prioriser sur les libs critiques (proxy LYG, RBAC, outbox).
+- **Couverture de tests à étendre** — 225 tests couvrent les libs pures ; les routes et les guards restent vérifiés à la main, à prioriser sur le proxy LYG, le RBAC et l'outbox.
 - **Mono-locataire** — couplé à une communauté/serveur ; une refonte multi-tenant le rendrait réutilisable.
 - **CI/CD** — déploiement actuellement manuel (build + `systemctl restart`) ; un pipeline GitHub Actions serait la suite logique.
 - **Documentation d'API** — formaliser un contrat (OpenAPI) pour les routes internes.
+- **Conversations de tickets antérieures à juillet 2026** — irrécupérables : les salons Discord avaient déjà été supprimés avant la mise en place de l'archivage. Seuls les nouveaux tickets se remplissent.
 
 ---
 
