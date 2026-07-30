@@ -692,9 +692,20 @@ html.perf-lite * {
 }
 
 /* ─── Scène : perspective commune ────────────────────────────────────────── */
+/* PAS de `perspective` ici.
+ *
+ * .app-scene enveloppe tout le layout, staff comme membre. Or `perspective`
+ * sur un element en fait le bloc de reference de ses descendants en
+ * `position: fixed` : toutes les fenetres modales et menus se positionnaient
+ * alors par rapport a lui, plus par rapport a l'ecran. Sur le layout membre,
+ * en `overflow-hidden`, les boites de confirmation etaient carrement rognees —
+ * on cliquait sur un bouton et rien ne semblait se produire, uniquement dans
+ * l'application.
+ *
+ * La profondeur est desormais portee par la fonction `perspective()` dans le
+ * `transform` de .app-lift : meme rendu, sans bloc de reference global. */
 [data-display="app"] .app-scene {
-  perspective: 1400px;
-  perspective-origin: 50% 30%;
+  /* volontairement vide — voir le commentaire ci-dessus */
 }
 
 /* ─── Carte en relief ──────────────────────────────────────────────────────
@@ -736,11 +747,11 @@ html.perf-lite * {
 
 /* Élévation : au survol, titres et chiffres avancent vers le lecteur. */
 [data-display="app"] .app-lift {
-  transform: translateZ(0);
+  transform: perspective(1400px) translateZ(0);
   transition: transform 420ms var(--app-ease);
 }
 [data-display="app"] .app-card:hover .app-lift {
-  transform: translateZ(var(--app-depth));
+  transform: perspective(1400px) translateZ(var(--app-depth));
 }
 
 /* Apparition au défilement — `is-visible` est posé par le composant Reveal. */
@@ -774,6 +785,9 @@ html.perf-lite * {
   left: 0;
   height: 2px;
   z-index: 60;
+  /* Purement decoratif, et pose au-dessus de tout : sans ca, il interceptait
+     les clics sur les deux premiers pixels de la page. */
+  pointer-events: none;
   width: var(--app-progress, 0%);
   background: linear-gradient(90deg,
     hsl(var(--sunset-gold)), hsl(var(--sunset-coral)) 55%, hsl(var(--sunset-magenta)));
