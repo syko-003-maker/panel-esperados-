@@ -3,6 +3,34 @@ import { DEMOTE_ROLE_ID } from "@/lib/discord-rbac";
 import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
 import { EXTRA_MEMBER_ROLE_IDS } from "@/lib/grade-colors";
 
+/**
+ * Membres masqués de TOUT affichage (site, hiérarchie, listes, pickers).
+ *
+ * Ce n'est PAS une sanction ni une exclusion : la personne garde son grade,
+ * ses rôles Discord et sa propriété de la famille côté jeu. On ne retire
+ * strictement rien — on cesse simplement de l'afficher.
+ *
+ * À manier avec précaution : masquer quelqu'un le fait aussi disparaître des
+ * réunions, des sanctions et des statistiques, donc des décisions qui s'y
+ * prennent. Réservé aux personnes qui ne participent pas à la vie courante de
+ * la famille.
+ *
+ * Le masquage ne coupe PAS l'accès au site : la personne concernée continue de
+ * se connecter et de voir son propre espace (résolu par `server/member/scope`,
+ * qui n'utilise pas ces prédicats).
+ *
+ * Nelson Meledo — propriétaire de la famille, retiré des affichages sur
+ * demande de François (03/08/2026).
+ */
+export const HIDDEN_MEMBER_DISCORD_IDS: ReadonlySet<string> = new Set([
+  "802539543274323968", // Nelson Meledo
+]);
+
+export function isHiddenMember(member: { discordId?: string | null }): boolean {
+  const discordId = String(member.discordId ?? "").trim();
+  return discordId.length > 0 && HIDDEN_MEMBER_DISCORD_IDS.has(discordId);
+}
+
 type MemberScopeInput = {
   discordId?: string | null;
   isActive?: boolean | null;
@@ -97,6 +125,7 @@ export function getMemberScopeFlags(member: MemberScopeInput) {
     hasRoles,
     hasDiscordGrade,
     gradeInfo,
+    isHidden: isHiddenMember(member),
     isDemoted,
     isBlacklisted,
     isReservist,
@@ -116,6 +145,11 @@ export function isDisplayableStaffMember(member: MemberScopeInput): boolean {
   const isGhost = member.isGhost === true;
   const isMissingFromLyg = member.missingFromLygSince != null;
 
+  // Masqué : sort de tout affichage. Placé en tête — c'est la règle qui prime.
+  // `isDisplayableStaffMember` est la racine de isActiveMembersScopeMember,
+  // isStaffMeetingScopeMember et isNonLinkedDisplayableStaffMember : le filtre
+  // se propage donc à l'ensemble des listes.
+  if (isHiddenMember(member)) return false;
   if (!isActive) return false;
   if (isGhost) return false;
   if (isMissingFromLyg) return false;
@@ -170,6 +204,8 @@ export function isActiveMembersScopeMember(member: MemberScopeInput): boolean {
  * La logique d'escalade est gérée côté POST /api/staff/sanctions.
  */
 export function isSanctionableScopeMember(member: MemberScopeInput): boolean {
+  // Ce prédicat ne passe pas par isDisplayableStaffMember : filtre explicite.
+  if (isHiddenMember(member)) return false;
   if (!isLinkedStaffMember(member)) return false;
   const isActive = member.isActive === true;
   const isGhost = member.isGhost === true;

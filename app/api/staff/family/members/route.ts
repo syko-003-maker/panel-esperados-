@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireFullWriter } from "@/lib/guards";
 import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { getDiscordGrade } from "@/lib/discord-grade";
+import { HIDDEN_MEMBER_DISCORD_IDS } from "@/lib/staff/member-scope";
 
 /**
  * GET /api/staff/family/members
@@ -25,9 +26,25 @@ export async function GET() {
   const members = await prisma.member.findMany({
     where: {
       familyId: familyDbId,
-      OR: [
-        { wlClass: { not: null } },
-        { wlClassIntent: { not: null } },
+      AND: [
+        {
+          OR: [
+            { wlClass: { not: null } },
+            { wlClassIntent: { not: null } },
+          ],
+        },
+        // Masqués : hors de la vue Famille WL. Leur état WL réel côté jeu
+        // n'est pas modifié — on cesse seulement de l'afficher.
+        //
+        // Le `discordId: null` est INDISPENSABLE : en SQL, `col NOT IN (...)`
+        // vaut NULL quand `col` est NULL, donc la ligne est écartée. Sans lui,
+        // les membres sans Discord (Alber OG) disparaissaient eux aussi.
+        {
+          OR: [
+            { discordId: null },
+            { discordId: { notIn: [...HIDDEN_MEMBER_DISCORD_IDS] } },
+          ],
+        },
       ],
     },
     select: {

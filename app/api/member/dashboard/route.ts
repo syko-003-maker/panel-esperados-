@@ -6,6 +6,7 @@ import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { getMemberDebt } from "@/lib/bank-debts";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
 import { isMemberPlaytimeHidden } from "@/lib/member-playtime-visibility";
+import { HIDDEN_MEMBER_DISCORD_IDS } from "@/lib/staff/member-scope";
 
 /**
  * GET /api/member/dashboard
@@ -239,6 +240,13 @@ export async function GET(req: NextRequest) {
           isGhost: false,
           discordInGuild: true,
           discordRoleIds: { hasSome: LEADERSHIP_TIERS.map((t) => t.roleId) },
+          // Masqués : absents de la hiérarchie affichée aux membres. Le
+          // `discordId: null` évite d'écarter au passage les membres sans
+          // Discord — `NOT IN` vaut NULL sur une colonne nulle, donc exclut.
+          OR: [
+            { discordId: null },
+            { discordId: { notIn: [...HIDDEN_MEMBER_DISCORD_IDS] } },
+          ],
         },
         select: { rpName: true, discordId: true, discordAvatarHash: true, discordRoleIds: true },
       });

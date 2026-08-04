@@ -71,8 +71,14 @@ export function shouldIncludeForScope(
     isBlacklisted: boolean;
     isReservist: boolean;
     isNonLink: boolean;
+    isHidden?: boolean;
   }
 ): boolean {
+  // Un membre masqué ne ressort d'AUCUNE portée. Sans ça, les portées
+  // "démoté / blacklisté / réserviste" le feraient réapparaître : elles ne
+  // passent pas par isDisplayableStaffMember.
+  if (flags.isHidden) return false;
+
   if (scope === "everything") {
     // Inclure tout ce qui appartient à AU MOINS une catégorie utile
     return (
@@ -109,6 +115,7 @@ export function normalizeMember(member: any, scope: MembersScope): NormalizedMem
     isBlacklisted,
     isReservist,
     isOutOfDiscord,
+    isHidden,
   } = getMemberScopeFlags(member);
 
   const isDisplayable = isDisplayableStaffMember(member);
@@ -125,6 +132,7 @@ export function normalizeMember(member: any, scope: MembersScope): NormalizedMem
     isBlacklisted,
     isReservist,
     isNonLink,
+    isHidden,
   });
   if (!include) return null;
 

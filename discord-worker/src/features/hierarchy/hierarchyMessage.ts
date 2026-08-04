@@ -51,9 +51,19 @@ const HIDDEN_GRADE_ROLE_IDS = new Set<string>([
   "1312845999739375710", // Général (n'apparaît que comme annotation Sous-Chef)
 ]);
 
-const EL_PADRINO_DISCORD_IDS: ReadonlyArray<string> = [
-  "802539543274323968", // Nelson Meledo
-];
+/**
+ * Membres retirés de l'embed hiérarchie.
+ *
+ * Ils gardent leur grade, leurs rôles Discord et leur autorité réelle : on ne
+ * fait que ne plus les afficher. Miroir de `HIDDEN_MEMBER_DISCORD_IDS` côté
+ * panel (`src/lib/staff/member-scope.ts`) — les deux listes doivent rester
+ * alignées, le worker ne partageant pas le code du site.
+ */
+const HIDDEN_DISCORD_IDS: ReadonlySet<string> = new Set([
+  "802539543274323968", // Nelson Meledo — masqué sur demande (03/08/2026)
+]);
+
+const EL_PADRINO_DISCORD_IDS: ReadonlyArray<string> = [];
 const JEFE_DE_JEFES_DISCORD_IDS: ReadonlyArray<string> = [
   "408937062838829056", // Denis Brouillard
 ];
@@ -133,6 +143,9 @@ async function loadHierarchy(prisma: PrismaClient): Promise<{
 
   for (const m of members) {
     const did = m.discordId ?? "";
+
+    // Masqué : n'entre dans aucune section de l'embed.
+    if (HIDDEN_DISCORD_IDS.has(did)) continue;
 
     if (EL_PADRINO_DISCORD_IDS.includes(did)) {
       chefFamille.push({ ...m, title: "👑 El Padrino", sortKey: 0 });
