@@ -29,6 +29,8 @@ export default async function MemberEditPage({
       discordId: true,
       steamId: true,
       rpName: true,
+      rpNameOverride: true,
+      source: true,
       grade: true,
       gradeLevel: true,
       isActive: true,

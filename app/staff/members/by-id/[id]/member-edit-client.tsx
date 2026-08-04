@@ -19,6 +19,8 @@ type Member = {
   discordId: string | null;
   steamId: string | null;
   rpName: string | null;
+  rpNameOverride: string | null;
+  source: string;
   grade: string | null;
   gradeLevel: number | null;
   isActive: boolean;
@@ -44,6 +46,31 @@ export function MemberEditClient({ member }: { member: Member }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Un membre suivi par LYG voit son nom réécrit depuis le jeu à chaque sync.
+  // Le renommer depuis le panel pose un verrou ; on le dit, et on offre de le
+  // relâcher — sans ça le staff ne comprend pas pourquoi le nom ne bouge plus.
+  const syncedFromGame = member.source === "LYG";
+  const nameLocked = Boolean(member.rpNameOverride);
+
+  async function handleReleaseOverride() {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/staff/members/by-id/${member.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ releaseRpNameOverride: true }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Échec");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -159,6 +186,24 @@ export function MemberEditClient({ member }: { member: Member }) {
                 disabled={loading}
                 className={INPUT_CLASS}
               />
+              {nameLocked ? (
+                <p className="text-xs text-amber-300/90">
+                  Nom forcé depuis le panel : il ne suit plus le nom du jeu.{" "}
+                  <button
+                    type="button"
+                    onClick={handleReleaseOverride}
+                    disabled={loading}
+                    className="font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100 disabled:opacity-50"
+                  >
+                    Rétablir le nom du jeu
+                  </button>
+                </p>
+              ) : syncedFromGame ? (
+                <p className="text-xs text-muted-foreground">
+                  Actuellement synchronisé depuis le jeu. Le modifier ici le figera sur
+                  cette valeur.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">

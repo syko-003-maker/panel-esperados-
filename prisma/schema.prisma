@@ -136,7 +136,8 @@ model Member {
   steamId            String? // SteamID64
   discordId          String? @db.VarChar(32)
   debugPrevDiscordId String? @unique @db.VarChar(32)
-  rpName             String? // Nom RP issu du ticket recrutement
+  rpName             String? // Nom RP EFFECTIF (affiché partout) : nom du jeu, ou le forcé ci-dessous
+  rpNameOverride     String? // Nom forcé depuis le panel. Non nul = gagne sur LYG à chaque sync.
   discordUsername    String? // Discord username (ex: crakers76)
   discordDisplayName String? // Discord nickname ou globalName
   age                Int?

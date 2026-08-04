@@ -163,6 +163,7 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
           steamId: true,
           discordId: true,
           rpName: true,
+          rpNameOverride: true,
           grade: true,
           joinedAt: true,
           isActive: true,
@@ -183,7 +184,11 @@ export async function runLygMembersSync(source: SyncSource = "cron"): Promise<Me
         const existing = bySteam.get(incoming.steamId) ?? (incoming.discordId ? byDiscord.get(incoming.discordId) : null);
 
         const resolvedDiscordId = incoming.discordId ?? existing?.discordId ?? null;
-        const resolvedRpName = incoming.rpName ?? existing?.rpName ?? null;
+        // Un nom forcé depuis le panel gagne sur celui du jeu. Sans ça, un
+        // renommage fait sur le site était écrasé au sync suivant (45 s) et
+        // paraissait n'avoir jamais été enregistré.
+        const resolvedRpName =
+          existing?.rpNameOverride ?? incoming.rpName ?? existing?.rpName ?? null;
         const resolvedGrade = incoming.grade ?? existing?.grade ?? null;
 
         const payload = {

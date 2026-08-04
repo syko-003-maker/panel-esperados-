@@ -16,7 +16,7 @@ export async function PATCH(
 
   try {
     const body = await req.json();
-    const { discordId, steamId, playtimeRequiredMinutes } = body;
+    const { rpName, discordId, steamId, playtimeRequiredMinutes, releaseRpNameOverride } = body;
 
     // Verify member exists and belongs to family
     const current = await prisma.member.findUnique({
@@ -32,6 +32,38 @@ export async function PATCH(
 
     // Build update data
     const updateData: Record<string, unknown> = {};
+
+    // Nom RP. Le formulaire l'envoie depuis toujours, mais il n'était pas lu
+    // ici : l'API répondait « ok » sans rien écrire, donc l'écran affichait
+    // « Membre mis à jour » et le nom restait inchangé.
+    //
+    // Écrire `rpName` seul ne suffirait pas : le sync LYG le réécrit depuis le
+    // jeu toutes les 45 s. On pose donc aussi `rpNameOverride`, que le sync
+    // respecte — sinon le renommage disparaissait avant d'être vu.
+    if (releaseRpNameOverride === true) {
+      // Retour au nom du jeu : le prochain sync le restaure tout seul.
+      updateData.rpNameOverride = null;
+    } else if (rpName !== undefined) {
+      const trimmed = String(rpName ?? "").trim();
+      if (trimmed === "") {
+        return NextResponse.json(
+          { ok: false, error: "Le nom RP est obligatoire" },
+          { status: 400 }
+        );
+      }
+      if (trimmed.length > 100) {
+        return NextResponse.json(
+          { ok: false, error: "Nom RP trop long (100 caractères maximum)" },
+          { status: 400 }
+        );
+      }
+      updateData.rpName = trimmed;
+      // Un membre hors LYG n'est jamais réécrit par le sync : inutile de le
+      // verrouiller, ça masquerait juste un futur nom du jeu s'il en gagne un.
+      if (current.source === "LYG" && trimmed !== (current.rpName ?? "")) {
+        updateData.rpNameOverride = trimmed;
+      }
+    }
 
     // Validate and normalize discordId if provided
     if (discordId !== undefined) {
