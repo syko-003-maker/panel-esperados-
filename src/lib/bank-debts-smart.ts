@@ -14,7 +14,7 @@ import { prisma } from "@/lib/db";
 import { resolveFamilyId } from "@/lib/family";
 import { getOrCreateDiscordConfig, enqueueMessage, enqueueSanctionApply } from "@/lib/discord/discord";
 import { getDebtRows } from "@/lib/bank-debts";
-import { checkSanctionTargetEligibility, ETAT_MAJOR_ROLE_ID } from "@/lib/sanctions";
+import { checkSanctionTargetEligibility, getSanctionLabel, ETAT_MAJOR_ROLE_ID } from "@/lib/sanctions";
 import { getSystemActorId, SYSTEM_ACTOR_NAME } from "@/lib/staff/system-actor";
 
 // Démote / Blacklist / Réserviste → pas de rappel (comme le worker single-ping).
@@ -122,8 +122,16 @@ function staffAlertMessage(params: {
   trend: Trend;
   daysSinceFirst: number;
   staffRoleId: string | null;
+  /**
+   * Sanction posee automatiquement juste avant, s'il y en a une.
+   *
+   * Sans cette information, l'alerte reclamait « a traiter (sanction…) » alors
+   * que le bot venait d'appliquer un averto : le staff etait invite a
+   * sanctionner quelqu'un qui l'etait deja.
+   */
+  autoSanctionLabel?: string | null;
 }): string {
-  const { rpName, discordId, amount, firstAmount, count, trend, daysSinceFirst, staffRoleId } = params;
+  const { rpName, discordId, amount, firstAmount, count, trend, daysSinceFirst, staffRoleId, autoSanctionLabel } = params;
   const who = rpName ? `**${rpName}**${discordId ? ` (<@${discordId}>)` : ""}` : discordId ? `<@${discordId}>` : "Membre inconnu";
   const evol =
     trend === "increased"
@@ -131,9 +139,12 @@ function staffAlertMessage(params: {
       : "stagnante";
   const since = daysSinceFirst > 0 ? ` depuis ${daysSinceFirst} jour${daysSinceFirst > 1 ? "s" : ""}` : "";
   const rolePing = staffRoleId ? `<@&${staffRoleId}> ` : "";
+  const suite = autoSanctionLabel
+    ? `Le bot a appliqué **${autoSanctionLabel}** automatiquement — inutile d'en remettre un. À suivre (relance, arrangement…).`
+    : "À traiter (sanction, arrangement…).";
   return (
     `${rolePing}🚨 **Débiteur récurrent** — ${who} signalé **${count} fois**, dette **${fmt(amount)}** ` +
-    `(${evol})${since} sans remboursement. À traiter (sanction, arrangement…).`
+    `(${evol})${since} sans remboursement. ${suite}`
   );
 }
 
@@ -432,29 +443,15 @@ export async function runDebtReminderCycle(params: {
       state?.staffAlertedAt && now.getTime() - state.staffAlertedAt.getTime() < cooldownMs;
     let staffAlertedAt = state?.staffAlertedAt ?? null;
     if (count >= escalateAfter && noReduction && !alreadyAlertedRecently && staffChannelId) {
-      await enqueueMessage({
-        familyId: familySlug,
-        channelId: staffChannelId,
-        content: staffAlertMessage({
-          rpName: d.rpName,
-          discordId: d.discordId,
-          amount,
-          firstAmount: prevAmount || amount,
-          count,
-          trend,
-          daysSinceFirst,
-          staffRoleId: config.staffRoleId ?? null,
-        }),
-        entity: "BankDebtReminderStaff",
-        entityId: d.memberId,
-      });
-      staffAlertedAt = now;
-      result.escalatedToStaff += 1;
+      // ORDRE IMPORTANT : la sanction AVANT l'alerte.
+      //
+      // L'alerte partait en premier et ne pouvait donc pas savoir ce que le bot
+      // allait faire : elle reclamait « a traiter (sanction…) » alors qu'un
+      // averto venait d'etre applique juste apres. Le staff etait invite a
+      // sanctionner quelqu'un qui l'etait deja.
+      let autoSanctionLabel: string | null = null;
+      let cappedHighest: string | null = null;
 
-      // Escalade disciplinaire : un cran au-dessus de ce que le membre a déjà,
-      // et jamais au-delà de l'averto (le démote reste une décision humaine).
-      // Même condition que l'alerte EM, donc soumis au même cooldown : pas de
-      // sanction à chaque passage du cron.
       const member = eligById.get(d.memberId);
       if (member) {
         try {
@@ -467,31 +464,56 @@ export async function runDebtReminderCycle(params: {
           });
 
           if (outcome.kind === "applied") {
+            autoSanctionLabel = getSanctionLabel(outcome.type);
             result.autoSanctioned += 1;
           } else if (outcome.kind === "capped") {
-            // Plus rien à appliquer automatiquement : on alerte explicitement
-            // l'État-Major, seul habilité à décider d'un démote.
-            await enqueueMessage({
-              familyId: familySlug,
-              channelId: staffChannelId,
-              content: demoteDecisionMessage({
-                rpName: d.rpName,
-                discordId: d.discordId,
-                amount,
-                count,
-                highest: outcome.highest,
-                daysSinceFirst,
-              }),
-              entity: "BankDebtDemoteDecision",
-              entityId: d.memberId,
-            });
-            result.demoteDecisionRequested += 1;
+            cappedHighest = outcome.highest;
           }
         } catch (err) {
-          // Une sanction qui échoue ne doit pas interrompre les rappels des
-          // autres débiteurs.
+          // Une sanction qui echoue ne doit pas interrompre les rappels des
+          // autres debiteurs — ni empecher l'alerte de partir.
           console.error("[bank-debts] escalade sanction échouée", d.memberId, err);
         }
+      }
+
+      await enqueueMessage({
+        familyId: familySlug,
+        channelId: staffChannelId,
+        content: staffAlertMessage({
+          rpName: d.rpName,
+          discordId: d.discordId,
+          amount,
+          firstAmount: prevAmount || amount,
+          count,
+          trend,
+          daysSinceFirst,
+          staffRoleId: config.staffRoleId ?? null,
+          autoSanctionLabel,
+        }),
+        entity: "BankDebtReminderStaff",
+        entityId: d.memberId,
+      });
+      staffAlertedAt = now;
+      result.escalatedToStaff += 1;
+
+      // Plus rien a appliquer automatiquement : seul l'Etat-Major peut decider
+      // d'un demote, on le lui demande explicitement.
+      if (cappedHighest) {
+        await enqueueMessage({
+          familyId: familySlug,
+          channelId: staffChannelId,
+          content: demoteDecisionMessage({
+            rpName: d.rpName,
+            discordId: d.discordId,
+            amount,
+            count,
+            highest: cappedHighest,
+            daysSinceFirst,
+          }),
+          entity: "BankDebtDemoteDecision",
+          entityId: d.memberId,
+        });
+        result.demoteDecisionRequested += 1;
       }
     }
 
