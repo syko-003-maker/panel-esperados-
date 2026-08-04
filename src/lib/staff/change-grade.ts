@@ -91,6 +91,24 @@ export async function changeMemberGrade(opts: {
       ? "promote"
       : "derank";
 
+  const ALL_GRADE_ROLE_IDS = new Set(Object.keys(GRADE_LABEL_BY_ROLE_ID));
+
+  // Miroir local des rôles Discord : on applique tout de suite le swap qu'on
+  // s'apprête à demander au worker.
+  //
+  // `resolveStableRank` lit `discordRoleIds` EN PREMIER, et la resynchro qui le
+  // rafraîchit ne repasse qu'une fois par heure. Sans ça, le panel continuait
+  // d'afficher l'ANCIEN grade jusqu'à une heure après le changement, alors que
+  // la base était déjà à jour. La resynchro réécrira de toute façon ce champ
+  // avec la vérité Discord — on ne fait qu'anticiper le résultat attendu.
+  //
+  // Liste vide = membre hors guild : on n'invente pas de rôles, et l'affichage
+  // retombe alors sur `rankRoleId`, qui est correct puisqu'on l'écrit ici.
+  const mirroredRoleIds =
+    liveRoleIds.length > 0
+      ? [...liveRoleIds.filter((rid) => !ALL_GRADE_ROLE_IDS.has(rid)), targetRoleId]
+      : null;
+
   // ── 1. DB : grade + gradeLevel + rôles miroir ─────────────────────────────
   await prisma.member.update({
     where: { id: member.id },
@@ -100,6 +118,7 @@ export async function changeMemberGrade(opts: {
       roleDiscordId: targetRoleId,
       rankRoleId: targetRoleId,
       rankLabel: targetGrade,
+      ...(mirroredRoleIds ? { discordRoleIds: mirroredRoleIds } : {}),
     },
   });
 
@@ -134,14 +153,13 @@ export async function changeMemberGrade(opts: {
       },
     });
 
-    const ALL_RANK_ROLE_IDS = new Set(Object.keys(GRADE_LABEL_BY_ROLE_ID));
     const roleIdsToRemove = new Set<string>();
     const legacyOld = member.roleDiscordId ?? member.rankRoleId ?? null;
-    if (legacyOld && legacyOld !== targetRoleId && ALL_RANK_ROLE_IDS.has(legacyOld)) {
+    if (legacyOld && legacyOld !== targetRoleId && ALL_GRADE_ROLE_IDS.has(legacyOld)) {
       roleIdsToRemove.add(legacyOld);
     }
     for (const rid of liveRoleIds) {
-      if (rid !== targetRoleId && ALL_RANK_ROLE_IDS.has(rid)) roleIdsToRemove.add(rid);
+      if (rid !== targetRoleId && ALL_GRADE_ROLE_IDS.has(rid)) roleIdsToRemove.add(rid);
     }
     for (const rid of roleIdsToRemove) {
       await enqueueRemoveRole({

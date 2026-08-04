@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DataTile } from "@/components/staff/ui/DataTile";
 import { EmptyState } from "@/components/staff/ui/EmptyState";
 import { LoadingState } from "@/components/staff/ui/LoadingState";
@@ -160,6 +161,7 @@ export function MemberDetailClient({
 	const [warnsTotal, setWarnsTotal] = useState(0);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const router = useRouter();
 	const [gradeTarget, setGradeTarget] = useState("");
 	const [gradeSaving, setGradeSaving] = useState(false);
 	const [gradeMsg, setGradeMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -260,6 +262,9 @@ export function MemberDetailClient({
 					text: `✅ ${json.oldGrade ?? "?"} → ${json.newGrade}. Le rôle Discord se met à jour dans quelques secondes.`,
 				});
 				setGradeTarget("");
+				// Sans ça, le badge de rang restait sur l'ancien grade tant que la
+				// page n'était pas rechargée à la main.
+				router.refresh();
 			}
 		} catch (e: any) {
 			setGradeMsg({ ok: false, text: e?.message || "Erreur réseau." });
