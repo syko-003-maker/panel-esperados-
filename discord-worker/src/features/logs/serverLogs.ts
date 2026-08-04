@@ -15,6 +15,7 @@ import {
   type Role,
 } from "discord.js";
 import { PrismaClient } from "@prisma/client";
+import { buildTicketLog } from "./ticketLogEmbed.js";
 
 const LOGS_CHANNEL_ID    = "1312846003627622522";
 const WELCOME_CHANNEL_ID = "1336727638227685426"; // 🎉 Bienvenue publique
@@ -1069,19 +1070,19 @@ async function sendTicketLog(guild: Guild, embed: EmbedBuilder): Promise<void> {
   }
 }
 
-function ticketFields(info: Awaited<ReturnType<typeof findTicketByChannel>>, channelName: string) {
-  const fields = [{ name: "Salon", value: channelName || "inconnu", inline: true }];
+function ticketLines(info: Awaited<ReturnType<typeof findTicketByChannel>>, channelName: string) {
+  const lines = [{ label: "Salon", value: channelName || "inconnu" }];
   if (info) {
-    fields.push({ name: "Type", value: info.kind, inline: true });
-    if (info.ticketKey) fields.push({ name: "Ticket", value: info.ticketKey, inline: true });
-    if (info.who) fields.push({ name: "Concerne", value: info.who, inline: true });
-    fields.push({ name: "Statut en base", value: info.status, inline: true });
+    lines.push({ label: "Type", value: info.kind });
+    if (info.ticketKey) lines.push({ label: "Ticket", value: info.ticketKey });
+    if (info.who) lines.push({ label: "Concerne", value: info.who });
+    lines.push({ label: "Statut en base", value: info.status });
   } else {
     // Un ticket absent de la base signale un autre probleme : l'ingestion a
     // echoue a la creation. Autant le dire plutot que de laisser un blanc.
-    fields.push({ name: "Base", value: "aucune fiche liée à ce salon", inline: false });
+    lines.push({ label: "Base", value: "aucune fiche liée à ce salon" });
   }
-  return fields;
+  return lines;
 }
 
 export async function onTicketChannelDelete(channel: any): Promise<void> {
@@ -1091,16 +1092,17 @@ export async function onTicketChannelDelete(channel: any): Promise<void> {
   const isThread = Boolean(channel.isThread?.());
   const who = await findChannelExecutor(channel.guild, isThread ? 112 : 12, channel.id);
 
-  const embed = new EmbedBuilder()
-    .setTitle("🗑️ Ticket supprimé")
-    .setColor(0xdc2626)
-    .addFields(
-      ...ticketFields(info, channel.name),
-      { name: "Supprimé par", value: who ? `<@${who.id}>` : "— (audit indisponible)", inline: false },
-    )
-    .setTimestamp();
-
-  if (who?.reason) embed.addFields({ name: "Raison", value: who.reason, inline: false });
+  const embed = buildTicketLog({
+    tone: "danger",
+    title: "🗑️ Ticket supprimé",
+    subject: info?.who ? { name: info.who } : null,
+    lines: [
+      ...ticketLines(info, channel.name),
+      { label: "Supprimé par", value: who ? `<@${who.id}>` : "— audit indisponible" },
+    ],
+    noteLabel: who?.reason ? "Raison" : null,
+    note: who?.reason ?? null,
+  });
   await sendTicketLog(channel.guild, embed);
 }
 
@@ -1123,18 +1125,17 @@ export async function onTicketThreadUpdate(oldThread: any, newThread: any): Prom
 
   const info = await findTicketByChannel(thread.id);
 
-  const embed = new EmbedBuilder()
-    .setTitle("🔒 Ticket fermé à la main")
-    .setColor(0xf59e0b)
-    .setDescription(
-      "Fermeture hors des boutons du ticket : la fiche n'a donc **pas** été mise à jour côté panel."
-    )
-    .addFields(
-      ...ticketFields(info, thread.name),
-      { name: "Action", value: justLocked ? "Verrouillé" : "Archivé", inline: true },
-      { name: "Fermé par", value: who ? `<@${who.id}>` : "— (audit indisponible)", inline: false },
-    )
-    .setTimestamp();
+  const embed = buildTicketLog({
+    tone: "warning",
+    title: "🔒 Ticket fermé à la main",
+    subject: info?.who ? { name: info.who } : null,
+    lines: [
+      ...ticketLines(info, thread.name),
+      { label: "Action", value: justLocked ? "Verrouillé" : "Archivé" },
+      { label: "Fermé par", value: who ? `<@${who.id}>` : "— audit indisponible" },
+    ],
+    note: "Fermeture hors des boutons du ticket : la fiche n'a donc **pas** été mise à jour côté panel.",
+  });
 
   await sendTicketLog(thread.guild, embed);
 }

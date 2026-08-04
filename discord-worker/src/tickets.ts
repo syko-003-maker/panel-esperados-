@@ -16,6 +16,7 @@ import {
   type ThreadChannel,
 } from "discord.js";
 import { CUSTOM_ID, IDS, EVENT_VERSION, type ComplaintCloseStatus } from "./ids.js";
+import { buildTicketLog } from "./features/logs/ticketLogEmbed.js";
 import { ingest, getOpenCount } from "./ingest.js";
 import { safeRoleMention } from "./mentions.js";
 import { buildNickname } from "./features/rename/rules.js";
@@ -781,28 +782,27 @@ async function postCloseLog(opts: {
     const logs = await opts.guild.channels.fetch(IDS.TICKETS_LOGS_CHANNEL_ID);
     if (!logs || logs.type !== ChannelType.GuildText) return;
 
-    const color = opts.statusText.includes("TRAITE") || opts.statusText.includes("FIN") ? 0x16a34a : 0xf59e0b;
+    const done = opts.statusText.includes("TRAITE") || opts.statusText.includes("FIN");
+    // Une copie ratée en base est un incident : il doit sauter aux yeux, même
+    // si la fermeture du ticket, elle, s'est bien passée.
+    const tone = !opts.ingestOk ? "danger" : done ? "success" : "warning";
+    const typeLabel = opts.type === "recruitment" ? "Recrutement" : "Plainte";
 
-    const embed = new EmbedBuilder()
-      .setTitle("🧾 Ticket fermé")
-      .setColor(color)
-      .addFields(
-        { name: "Type", value: opts.type, inline: true },
-        { name: "Ticket", value: opts.ticketKey, inline: true },
-        { name: "Status", value: opts.statusText, inline: true },
-        { name: "Staff", value: opts.staffText, inline: false },
-        { name: "Thread", value: `<#${opts.threadId}>`, inline: true },
-        { name: "Panel", value: getPanelUrl(opts.type, opts.ticketKey), inline: true }
-      )
-      .setTimestamp();
-
-    if (opts.authorText) {
-      embed.addFields({ name: "Auteur ticket", value: opts.authorText, inline: false });
-    }
-
-    if (!opts.ingestOk) {
-      embed.addFields({ name: "⚠️ Ingest", value: opts.ingestError ?? "KO", inline: false });
-    }
+    const embed = buildTicketLog({
+      tone,
+      title: "🧾 Ticket fermé",
+      subject: opts.authorText ? { name: opts.authorText } : null,
+      lines: [
+        { label: "Type", value: typeLabel },
+        { label: "Ticket", value: opts.ticketKey },
+        { label: "Statut", value: opts.statusText },
+        { label: "Fermé par", value: opts.staffText },
+      ],
+      noteLabel: opts.ingestOk ? null : "⚠️ Enregistrement en base échoué",
+      note: opts.ingestOk ? null : (opts.ingestError ?? "raison inconnue"),
+      threadId: opts.threadId,
+      panelUrl: getPanelUrl(opts.type, opts.ticketKey),
+    });
 
     await logs.send({ embeds: [embed] });
   } catch (err) {

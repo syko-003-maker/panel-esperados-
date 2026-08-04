@@ -3,6 +3,7 @@ import type { Client as DiscordClient, TextChannel } from "discord.js";
 import { ChannelType, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { safeFetchMember, validateDiscordId } from "./utils/validateDiscordId.js";
 import { sendMemberDm } from "./lib/send-member-dm.js";
+import { buildTicketLog } from "./features/logs/ticketLogEmbed.js";
 import { archiveRecruitmentMessages, type ArchivedMessage } from "./features/recruitment/archive-messages.js";
 import { buildRejectionExplanation } from "./features/recruitment/reject-summary.js";
 
@@ -744,17 +745,26 @@ async function handleRecruitmentDecision(
     ? `<@${closedByDiscordId}>${closedByName ? ` (${closedByName})` : ""}`
     : closedByName || null;
 
+  // Clé du ticket : lue une seule fois, elle sert au log ET à l'archivage.
+  const ticketRow = await prisma.recruitment
+    .findUnique({ where: { id: String(job.meta.ticketId) }, select: { ticketKey: true } })
+    .catch(() => null);
+  const ticketKeyForLog = ticketRow?.ticketKey ?? null;
+
   // 1. Log dans le salon de logs staff
-  const embed = new EmbedBuilder()
-    .setTitle(`📋 Décision Recrutement`)
-    .setColor(decision === "ACCEPT" ? 0x10b981 : 0xef4444)
-    .addFields(
-      { name: "Candidat", value: candidateRpName || "Unknown", inline: true },
-      { name: "Décision", value: decision === "ACCEPT" ? "✅ ACCEPTÉ" : "❌ REFUSÉ", inline: true },
-      { name: "Score", value: `${totalOn20 ?? "-"}/20 (${totalPoints ?? "-"} pts)`, inline: true },
-      { name: "Traitée par", value: decidedBy ?? "— (origine inconnue)", inline: false }
-    )
-    .setTimestamp();
+  const accepted = decision === "ACCEPT";
+  const embed = buildTicketLog({
+    tone: accepted ? "success" : "danger",
+    title: accepted ? "✅ Candidature acceptée" : "❌ Candidature refusée",
+    subject: { name: candidateRpName || "Candidat inconnu" },
+    lines: [
+      // Le score n'a de sens que s'il a été calculé : un refus sec n'en a pas.
+      totalOn20 != null && { label: "Score", value: `${totalOn20}/20 · ${totalPoints ?? "?"} pts` },
+      { label: "Traitée par", value: decidedBy ?? "— origine inconnue" },
+      { label: "Ticket", value: ticketKeyForLog },
+    ],
+    threadId: typeof discordThreadId === "string" ? discordThreadId : null,
+  });
 
   await channel.send({ embeds: [embed] });
 
@@ -764,18 +774,15 @@ async function handleRecruitmentDecision(
   const threadIdForArchive = typeof discordThreadId === "string" ? discordThreadId : null;
   let archived: ArchivedMessage[] = [];
   if (threadIdForArchive) {
-    const ticket = await prisma.recruitment
-      .findUnique({ where: { id: String(job.meta.ticketId) }, select: { ticketKey: true } })
-      .catch(() => null);
-    if (ticket?.ticketKey) {
+    if (ticketKeyForLog) {
       const res = await archiveRecruitmentMessages({
         client: discordClient,
         threadId: threadIdForArchive,
-        ticketKey: ticket.ticketKey,
+        ticketKey: ticketKeyForLog,
       });
       archived = res.messages;
       log("recruitment_archive_done", {
-        jobId: job.id, ticketKey: ticket.ticketKey, stored: res.ok, count: res.messageCount,
+        jobId: job.id, ticketKey: ticketKeyForLog, stored: res.ok, count: res.messageCount,
       });
     }
   }
@@ -821,12 +828,21 @@ async function handleRecruitmentDecision(
       await channel
         .send({
           embeds: [
-            new EmbedBuilder()
-              .setColor(0x64748b)
-              .setTitle("✉️ Explication envoyée au candidat")
-              .setDescription(explanation)
-              .setFooter({ text: dmOk ? "MP délivré" : "MP NON délivré (DM fermés)" })
-              .setTimestamp(),
+            buildTicketLog({
+              // Un MP non délivré demande une action du staff : la couleur le dit.
+              tone: dmOk ? "info" : "warning",
+              title: dmOk ? "✉️ Explication envoyée au candidat" : "⚠️ Explication NON délivrée",
+              subject: { name: String(candidateRpName || "Candidat") },
+              lines: [
+                { label: "Ticket", value: ticketKeyForLog },
+                {
+                  label: "MP",
+                  value: dmOk ? "délivré" : "refusé par le candidat (messages privés fermés)",
+                },
+              ],
+              noteLabel: "Motifs communiqués",
+              note: explanation,
+            }),
           ],
         })
         .catch(() => {});

@@ -21,6 +21,7 @@ import {
   type User,
   PermissionFlagsBits,
 } from "discord.js";
+import { buildTicketLog } from "./features/logs/ticketLogEmbed.js";
 import { IDS } from "./ids.js";
 import { buildLinkPanelEmbed } from "./link-embed.js";
 import { renameMemberIfPossible } from "./features/rename/renameMember.js";
@@ -1463,12 +1464,13 @@ async function logToChannel(client: Client, message: string): Promise<void> {
     const channel = await client.channels.fetch(logsChannelId);
     if (!channel || !("send" in channel)) return;
 
-    const embed = new EmbedBuilder()
-      .setTitle("🔗 Liaison")
-      .setDescription(message)
-      .setColor(0x5865f2)
-      .setTimestamp()
-      .setFooter({ text: "Discord Worker" });
+    // Le pied de page disait « Discord Worker » — un détail d'implémentation
+    // qui ne dit rien au staff. Le rendu commun signe « Los Esperados ».
+    const embed = buildTicketLog({
+      tone: "info",
+      title: "🔗 Compte lié",
+      note: message,
+    });
 
     await (channel as any).send({ embeds: [embed] });
   } catch (e) {
