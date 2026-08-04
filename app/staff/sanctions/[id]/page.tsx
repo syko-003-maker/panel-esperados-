@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { resolveStaffName } from "@/lib/staff-display-name";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { getEntityAuditLogs } from "@/lib/audit";
 import SanctionDetailClient from "./sanction-detail-client";
@@ -15,12 +16,18 @@ export default async function SanctionDetailPage({ params }: { params: Promise<{
 
   const sanction = await prisma.sanction.findUnique({
     where: { id },
-    include: { member: { select: { rpName: true, discordId: true } } },
+    include: {
+      member: { select: { rpName: true, discordId: true } },
+    },
   });
 
   if (!sanction) {
     notFound();
   }
+
+  // Nom reconnaissable de l'auteur : le pseudo du compte panel (« crakers76 »)
+  // ne permet pas de savoir qu'il s'agit de Denis.
+  const createdByName = await resolveStaffName(sanction.createdById);
 
   const [audit, outbox] = await Promise.all([
     getEntityAuditLogs("Sanction", sanction.id, 50),
@@ -49,6 +56,10 @@ export default async function SanctionDetailPage({ params }: { params: Promise<{
         clearedStatus: sanction.clearedStatus ?? null,
         clearedError: sanction.clearedError ?? null,
         createdAt: sanction.createdAt.toISOString(),
+        source: sanction.source,
+        // Une sanction posee par un automatisme n'a pas d'auteur humain a
+        // afficher : on montre son origine a la place.
+        createdByName,
       }}
       audit={audit.map((log) => ({
         id: log.id,

@@ -47,6 +47,15 @@ const DERANK_LADDER: string[] = GRADE_ROLE_IDS_ORDERED.filter(
   (id) => id !== "1312845999366209682" && id !== "1465415073425133598",
 );
 
+/** Origines automatiques : pas d'auteur humain, on nomme la cause. */
+/** Contexte de la sanction, en complément du nom — pas à sa place. */
+const SOURCE_LABEL: Record<string, string> = {
+  ACTIVITY: "via inactivité",
+  MEETING: "via réunion",
+  SYSTEM: "automatique",
+  DISCORD_COMMAND: "via Discord",
+};
+
 type Sanction = {
   id: string;
   memberId: string | null;
@@ -67,6 +76,8 @@ type Sanction = {
   clearedError: string | null;
   closedAt: string | null;
   createdAt: string;
+  /** Staff qui a prononce la sanction ; null si posee par un automatisme. */
+  createdByName?: string | null;
   updatedAt: string;
   justificationsCount: number;
 };
@@ -823,7 +834,18 @@ export default function SanctionsClient({ canWrite = true, canGrave = true }: { 
                   )}
 
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>{fmtDate(item.startAt)}</span>
+                    <span>
+                      {fmtDate(item.startAt)}
+                      {" · "}
+                      {/* Qui a prononce la sanction : l'info manquait
+                          totalement, il fallait ouvrir la fiche. */}
+                      <span className="text-slate-400">
+                        {item.createdByName ?? "origine inconnue"}
+                        {item.source !== "MANUAL" && SOURCE_LABEL[item.source]
+                          ? ` (${SOURCE_LABEL[item.source]})`
+                          : ""}
+                      </span>
+                    </span>
                     <div className="flex flex-wrap items-center gap-2">
                       {(item.discordStatus === "FAILED" || item.discordStatus === "PENDING") ? (
                         <>

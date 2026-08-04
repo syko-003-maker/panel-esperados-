@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveStaffName } from "@/lib/staff-display-name";
 import { requireRecruiterOrAbove, requireEncadrantOrAbove } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { computeRecruitmentTotals } from "@/lib/recruitment/scoring";
@@ -89,7 +90,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     availabilities: (recruitment as any).availabilities ?? null,
     claimedById: notes.claimedById ?? null,
     claimedAt: notes.claimedAt ?? null,
-    claimedBy: notes.claimedById ? { id: notes.claimedById, name: null } : null,
+    claimedBy: notes.claimedById
+      ? { id: notes.claimedById, name: await resolveStaffName(notes.claimedById) }
+      : null,
     answersJson: Object.keys(evaluation.answersJson).length > 0 ? evaluation.answersJson : null,
     scoresJson: Object.keys(evaluation.scoresJson).length > 0 ? evaluation.scoresJson : null,
     totalPoints: totals.totalPoints,
@@ -241,7 +244,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       candidateDiscordId: updated.discordId ?? null,
       claimedById: notes.claimedById ?? null,
       claimedAt: notes.claimedAt ?? null,
-      claimedBy: notes.claimedById ? { id: notes.claimedById, name: null } : null,
+      claimedBy: notes.claimedById
+      ? { id: notes.claimedById, name: await resolveStaffName(notes.claimedById) }
+      : null,
       answersJson: Object.keys(evaluation.answersJson).length > 0 ? evaluation.answersJson : null,
       scoresJson: Object.keys(evaluation.scoresJson).length > 0 ? evaluation.scoresJson : null,
       totalPoints: totals.totalPoints,

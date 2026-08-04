@@ -26,6 +26,9 @@ type SanctionDetailProps = {
     clearedStatus: string | null;
     clearedError: string | null;
     createdAt: string;
+    source: string;
+    /** Nom du staff qui a prononce la sanction ; null si posee par un automatisme. */
+    createdByName: string | null;
   };
   audit: Array<{
     id: string;
@@ -49,6 +52,15 @@ function getDiscordStatusTone(status: string): StatusTone {
   if (status === "PENDING") return "yellow";
   return "gray";
 }
+
+/** Une sanction automatique n'a pas d'auteur : on nomme son origine. */
+/** Contexte de la sanction, en complément du nom — pas à sa place. */
+const SOURCE_LABEL: Record<string, string> = {
+  ACTIVITY: "via inactivité",
+  MEETING: "via décision de réunion",
+  SYSTEM: "automatique",
+  DISCORD_COMMAND: "via commande Discord",
+};
 
 function formatDateFr(iso: string): string {
   return new Date(iso).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
@@ -286,6 +298,14 @@ export default function SanctionDetailClient({ sanction: initialSanction, audit 
         <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <InfoCard label="Type">{getSanctionLabel(sanction.type)}</InfoCard>
           <InfoCard label="Créée le">{formatDateFr(sanction.createdAt)}</InfoCard>
+          <InfoCard label="À l'origine">
+            {sanction.createdByName ?? "Origine inconnue"}
+            {sanction.source !== "MANUAL" && SOURCE_LABEL[sanction.source] ? (
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                ({SOURCE_LABEL[sanction.source]})
+              </span>
+            ) : null}
+          </InfoCard>
           {sanction.expiresAt ? (
             <InfoCard label="Expire le">{formatDateFr(sanction.expiresAt)}</InfoCard>
           ) : null}

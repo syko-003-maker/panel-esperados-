@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveStaffNames } from "@/lib/staff-display-name";
 import { requireChefOrEtatMajor, requireFullWriter, requireEncadrantOrAbove, isSessionFullWriter } from "@/lib/guards";
 import { requireStaffAccess } from "@/lib/rbac";
 import { logInfo, logWarn, logError, makeRequestId } from "@/lib/obs";
@@ -267,6 +268,10 @@ export async function GET(req: Request) {
       : [];
     const outboxMap = new Map(outboxes.map((outbox) => [outbox.id, outbox.status]));
 
+    // Un seul aller-retour pour tous les auteurs de la page : le pseudo du
+    // compte panel (« crakers76 ») ne dit rien a personne, on affiche le nom RP.
+    const staffNames = await resolveStaffNames(data.map((r: any) => r.createdById));
+
     const items = data.map((item: any) => {
       const member = item.member ?? null;
       const effectiveDiscordStatus =
@@ -293,6 +298,10 @@ export async function GET(req: Request) {
         discordAppliedAt: toIso(item.discordAppliedAt),
         discordError: item.discordError ?? null,
         createdById: item.createdById,
+        // On resout TOUJOURS le nom : meme une sanction de reunion a ete
+        // declenchee par quelqu'un, et c'est justement cette personne qu'on
+        // cherche. La `source` vient completer, pas remplacer.
+        createdByName: staffNames.get(item.createdById) ?? null,
       };
     });
 

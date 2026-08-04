@@ -151,6 +151,29 @@ export default function RecruitmentDetailClient({
   const [pendingDelete, setPendingDelete] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  /**
+   * Le rappel se fermait tout seul au bout de deux minutes, avant que le
+   * recruteur ait fini de le lire au nouveau membre. La cause exacte du
+   * remontage n'a pas ete identifiee — on rend donc l'affichage insensible :
+   * l'etat vit dans sessionStorage, et il est restaure au montage. Seul le
+   * bouton Fermer le retire.
+   */
+  const acceptModalKey = `recruit-reminder:${ticketId}`;
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(acceptModalKey) === "1") setShowAcceptModal(true);
+    } catch {
+      /* stockage indisponible : on perd juste la persistance */
+    }
+  }, [acceptModalKey]);
+  useEffect(() => {
+    try {
+      if (showAcceptModal) sessionStorage.setItem(acceptModalKey, "1");
+      else sessionStorage.removeItem(acceptModalKey);
+    } catch {
+      /* sans effet */
+    }
+  }, [showAcceptModal, acceptModalKey]);
   const [copied, setCopied] = useState(false);
 
   const router = useRouter();
@@ -308,9 +331,14 @@ export default function RecruitmentDetailClient({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ticket) throw new Error(data?.error || "Décision échouée");
       setTicket(data.ticket);
-      if (pendingDecision === "ACCEPT") setShowAcceptModal(true);
+      const accepted = pendingDecision === "ACCEPT";
+      if (accepted) setShowAcceptModal(true);
       setPendingDecision(null);
-      router.refresh(); // invalide le cache de la liste pour que le statut soit à jour
+      // On ne rafraichit PAS tant que le rappel est ouvert : un refresh
+      // re-rend l'arbre serveur et peut remonter ce composant, ce qui
+      // effacerait le rappel sous les yeux du recruteur. Il partira a la
+      // fermeture.
+      if (!accepted) router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -654,6 +682,19 @@ export default function RecruitmentDetailClient({
                   <div><span className="text-muted-foreground">Clôturée le : </span><span className="text-foreground">{fmtDate(ticket.closedAt)}</span></div>
                 )}
               </div>
+
+              {/* Le rappel n'est plus reserve a l'instant de l'acceptation :
+                  le recruteur peut le rouvrir quand il veut, sans pression de
+                  temps pendant qu'il le lit au nouveau membre. */}
+              {ticket.status === "CLOSED_ACCEPTED" && (
+                <button
+                  type="button"
+                  onClick={() => setShowAcceptModal(true)}
+                  className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.08]"
+                >
+                  📌 Revoir le rappel à communiquer
+                </button>
+              )}
             </SectionCard>
           )}
 
@@ -797,7 +838,13 @@ export default function RecruitmentDetailClient({
                 {copied ? "✅ Copié !" : "📋 Copier le rappel"}
               </button>
               <button
-                onClick={() => { setShowAcceptModal(false); setCopied(false); }}
+                onClick={() => {
+                  setShowAcceptModal(false);
+                  setCopied(false);
+                  // Le statut de la liste se met a jour maintenant que le
+                  // recruteur a fini.
+                  router.refresh();
+                }}
                 className="rounded-2xl bg-slate-700 hover:bg-slate-600 px-4 py-2 text-sm font-semibold text-white transition-colors"
               >
                 Fermer
