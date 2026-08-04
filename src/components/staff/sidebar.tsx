@@ -20,6 +20,7 @@ import {
   BarChart3,
   TriangleAlert,
   Hammer,
+  Megaphone,
   Handshake,
   Car,
   Crown,
@@ -69,9 +70,10 @@ const SIDEBAR_ITEMS = [
     // pratique pour les chefs qui veulent vérifier ou partager les règles.
     section: "Spécialisations",
     items: [
-      { icon: Hammer,    label: "Construction", href: "/guide/build" },
-      { icon: Handshake, label: "Négociation",  href: "/guide/negociation" },
-      { icon: Car,       label: "Conduite",     href: "/guide/conduite" },
+      { icon: Hammer,    label: "Construction",    href: "/guide/build" },
+      { icon: Handshake, label: "Négociation",     href: "/guide/negociation" },
+      { icon: Car,       label: "Conduite",        href: "/guide/conduite" },
+      { icon: Megaphone, label: "Leader de Scène", href: "/guide/leader-de-scene" },
     ],
   },
 ];

@@ -12,6 +12,7 @@ import {
   Briefcase,
   LogOut,
   Hammer,
+  Megaphone,
   Handshake,
   Car,
   GraduationCap,
@@ -57,6 +58,7 @@ function getSections(isLinked: boolean, isRecruiter: boolean): NavSection[] {
         { href: "/guide/build", label: "Construction", Icon: Hammer },
         { href: "/guide/negociation", label: "Négociation", Icon: Handshake },
         { href: "/guide/conduite", label: "Conduite", Icon: Car },
+        { href: "/guide/leader-de-scene", label: "Leader de Scène", Icon: Megaphone },
       ],
     },
     {
