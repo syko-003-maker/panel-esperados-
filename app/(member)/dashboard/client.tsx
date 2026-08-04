@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Component, type ReactNode } from "react";
+import { useRefreshOnVisible } from "@/hooks/use-refresh-on-visible";
 import { Reveal, TiltCard } from "@/components/app-motion";
 import Link from "next/link";
 import ReglementQuickChat from "@/components/reglement/reglement-quick-chat";
@@ -146,6 +147,14 @@ export default function DashboardClient() {
   const [error, setError] = useState<string | null>(null);
   const [httpStatus, setHttpStatus] = useState<number | null>(null);
 
+  // Recharge au retour d'arrière-plan. En mode application la page n'est
+  // jamais rechargée : sans ça le playtime restait figé à l'ouverture de
+  // l'appli, alors qu'il se rafraîchissait sur le site à chaque navigation.
+  // On n'active PAS `loading` au rechargement : la valeur affichée reste en
+  // place jusqu'à l'arrivée de la nouvelle, sans écran de chargement.
+  const [reloadKey, setReloadKey] = useState(0);
+  useRefreshOnVisible(() => setReloadKey((k) => k + 1));
+
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
@@ -192,7 +201,7 @@ export default function DashboardClient() {
       mounted = false;
       controller.abort();
     };
-  }, []);
+  }, [reloadKey]);
 
   if (loading) {
     return (
