@@ -1,41 +1,16 @@
-import { prisma } from "@/lib/db";
-import { extractDiscordAvatarHash } from "@/lib/discord/getDiscordAvatarUrl";
+/**
+ * Façade historique — l'implémentation vit désormais dans `avatars.ts`.
+ *
+ * Cette version ne lisait QUE `Account.user.image`, figé au dernier login
+ * OAuth : elle renvoyait donc un hash mort pour tout membre ne s'étant pas
+ * reconnecté depuis son changement de photo. Le moteur unique consulte
+ * `Member.discordAvatarHash` en priorité et ne retombe sur `Account` qu'ensuite.
+ */
 
-export async function resolveAvatarHashByDiscordId(discordIds: string[]): Promise<Map<string, string | null>> {
-  const out = new Map<string, string | null>();
-  const ids = Array.from(
-    new Set(
-      (Array.isArray(discordIds) ? discordIds : [])
-        .map((id) => String(id ?? "").trim())
-        .filter(Boolean)
-    )
-  );
+import { getKnownHashes } from "./avatars";
 
-  if (ids.length === 0) return out;
-
-  for (const id of ids) out.set(id, null);
-
-  const accounts = await prisma.account.findMany({
-    where: {
-      provider: "discord",
-      providerAccountId: { in: ids },
-    },
-    select: {
-      providerAccountId: true,
-      user: {
-        select: {
-          image: true,
-        },
-      },
-    },
-  });
-
-  for (const account of accounts) {
-    const discordId = String(account.providerAccountId ?? "").trim();
-    if (!discordId) continue;
-    const hash = extractDiscordAvatarHash(account.user?.image ?? null);
-    out.set(discordId, hash);
-  }
-
-  return out;
+export async function resolveAvatarHashByDiscordId(
+  discordIds: string[],
+): Promise<Map<string, string | null>> {
+  return getKnownHashes(Array.isArray(discordIds) ? discordIds : []);
 }
