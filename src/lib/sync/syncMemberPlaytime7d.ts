@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resolveFamilyId } from "@/lib/family";
-import { fetchFamilyPlaytimes7d } from "@/lib/lyg/fetchFamilyPlaytimes7d";
+import { fetchFamilyPlaytimes7d, getMinutesSinceWeekStart } from "@/lib/lyg/fetchFamilyPlaytimes7d";
 
 export type SyncPlaytime7dResult = {
   fetched: number;
@@ -10,6 +10,10 @@ export type SyncPlaytime7dResult = {
   skippedWithoutSteamId: number;
   unchanged: number;
   missingFromSnapshot: number;
+  /** Valeurs de la semaine préservées malgré leur absence du snapshot. */
+  protectedFromReset: number;
+  /** Valeurs préservées parce que LYG renvoyait MOINS que ce qu'on avait déjà. */
+  protectedFromDecrease: number;
 };
 
 export async function syncMemberPlaytime7d(input: {
@@ -23,7 +27,7 @@ export async function syncMemberPlaytime7d(input: {
     fetchFamilyPlaytimes7d(input.token, { timeoutMs: 30_000 }),
     prisma.member.findMany({
       where: { familyId: familyDbId },
-      select: { id: true, steamId: true, playtime7d: true },
+      select: { id: true, steamId: true, playtime7d: true, playtime7dUpdatedAt: true },
     }),
   ]);
   const snapshotEntries = Array.isArray(rows)
@@ -57,6 +61,8 @@ export async function syncMemberPlaytime7d(input: {
       skippedWithoutSteamId: 0,
       unchanged: 0,
       missingFromSnapshot: 0,
+      protectedFromReset: 0,
+      protectedFromDecrease: 0,
     };
   }
 
@@ -69,11 +75,37 @@ export async function syncMemberPlaytime7d(input: {
   const bySteam = new Map(snapshotEntries);
   const now = new Date();
 
+  // ⚠️ GARDE-FOU N°2 : snapshot PARTIEL
+  //
+  // Le garde ci-dessus ne couvre que le snapshot totalement vide. Un incident
+  // LYG partiel (1 entrée sur 231) le franchit sans problème, et tous les
+  // absents seraient alors remis à 0 — le playtime de la semaine effacé, juste
+  // avant la réunion qui s'appuie dessus.
+  //
+  // On s'appuie sur une propriété du compteur : il est CUMULÉ depuis lundi
+  // 00:00 Bruxelles. Sur une même semaine il ne peut donc que MONTER. Toute
+  // baisse intra-semaine est nécessairement un artefact, jamais une donnée.
+  //
+  // D'où la règle : la valeur déjà enregistrée CETTE semaine fait plancher.
+  // Un membre absent du snapshot, ou renvoyé plus bas, conserve son acquis.
+  // Au passage du lundi le plancher tombe de lui-même (la valeur stockée date
+  // de la semaine précédente), donc la remise à zéro légitime fonctionne
+  // toujours — sans avoir à distinguer « panne » et « nouvelle semaine ».
+  const weekStartUtc = new Date(now.getTime() - getMinutesSinceWeekStart(now).minutes * 60_000);
+
+  /** Acquis de la semaine en cours ; 0 si la valeur date d'avant lundi. */
+  const weekFloor = (m: { playtime7d: number | null; playtime7dUpdatedAt: Date | null }): number => {
+    if (!m.playtime7dUpdatedAt || m.playtime7dUpdatedAt < weekStartUtc) return 0;
+    return typeof m.playtime7d === "number" && m.playtime7d > 0 ? m.playtime7d : 0;
+  };
+
   let updated = 0;
   let resetToZero = 0;
   let skippedWithoutSteamId = 0;
   let unchanged = 0;
   let missingFromSnapshot = 0;
+  let protectedFromReset = 0;
+  let protectedFromDecrease = 0;
 
   for (const member of members) {
     if (!member.steamId) {
@@ -84,6 +116,19 @@ export async function syncMemberPlaytime7d(input: {
     if (!bySteam.has(member.steamId)) {
       missingFromSnapshot += 1;
       const currentPlaytime = typeof member.playtime7d === "number" ? member.playtime7d : 0;
+      const floor = weekFloor(member);
+
+      // Acquis de la semaine : on ne l'efface pas sur une simple absence du
+      // snapshot. Avant, cette branche remettait à 0 sans condition.
+      if (floor > 0) {
+        await prisma.member.update({
+          where: { id: member.id },
+          data: { playtime7dUpdatedAt: now },
+        });
+        protectedFromReset += 1;
+        unchanged += 1;
+        continue;
+      }
 
       if (currentPlaytime === 0) {
         await prisma.member.update({
@@ -94,7 +139,8 @@ export async function syncMemberPlaytime7d(input: {
         continue;
       }
 
-      // Member absent from this week's LYG snapshot: reset weekly playtime to 0
+      // Valeur héritée de la semaine précédente : la remise à zéro est ici
+      // légitime, c'est le nouveau cycle hebdomadaire qui commence.
       await prisma.member.update({
         where: { id: member.id },
         data: { playtime7d: 0, playtime7dUpdatedAt: now },
@@ -104,7 +150,12 @@ export async function syncMemberPlaytime7d(input: {
       continue;
     }
 
-    const nextPlaytime = bySteam.get(member.steamId) ?? 0;
+    const reported = bySteam.get(member.steamId) ?? 0;
+    const floor = weekFloor(member);
+    // LYG sous ce qu'on a déjà enregistré cette semaine : impossible sur un
+    // compteur cumulé — on garde l'acquis.
+    const nextPlaytime = Math.max(reported, floor);
+    if (nextPlaytime > reported) protectedFromDecrease += 1;
 
     if (member.playtime7d === nextPlaytime) {
       await prisma.member.update({
@@ -130,12 +181,26 @@ export async function syncMemberPlaytime7d(input: {
     skippedWithoutSteamId,
     unchanged,
     missingFromSnapshot,
+    protectedFromReset,
+    protectedFromDecrease,
   };
 
   console.log("[playtime7d] sync complete", {
     elapsedMs: Date.now() - t0,
     ...result,
   });
+
+  // Signal d'alerte : si la protection joue pour beaucoup de monde, c'est que
+  // LYG a renvoyé un snapshot partiel. Les données sont saines (rien n'a été
+  // écrasé), mais elles ne progressent plus tant que LYG ne répond pas bien.
+  if (protectedFromReset + protectedFromDecrease > 0) {
+    console.warn("[playtime7d] snapshot partiel détecté — acquis de la semaine préservés", {
+      family: input.familyId,
+      snapshotSize: snapshotEntries.length,
+      protectedFromReset,
+      protectedFromDecrease,
+    });
+  }
 
   return result;
 }
