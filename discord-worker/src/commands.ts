@@ -26,6 +26,7 @@ import {
   handleBan, handleKick, handleMute,
   handleWarn, handleWarns, handleUnwarn, handleClear, handlePurgeUser,
 } from "./features/moderation/moderation.js";
+import { buildPurgeCommands, handlePurgeOld } from "./features/purge/purge-command.js";
 import {
   createLinkCommand,
   handleLinkCommand,
@@ -195,6 +196,9 @@ const commands = [
 
   // Commandes de modération
   ...buildModerationCommands(),
+
+  // /purge-old — Chef / Sous-Chef / État-Major uniquement
+  ...buildPurgeCommands(),
 
   // /reglement-post - Staff only - (Re)poster le message règlement avec bouton acceptation
   new SlashCommandBuilder()
@@ -492,6 +496,8 @@ export async function handleCommand(
       return handleClear(interaction);
     case "purge-user":
       return handlePurgeUser(interaction);
+    case "purge-old":
+      return handlePurgeOld(interaction);
     default:
       await interaction.reply({
         content: "❌ Commande inconnue.",

@@ -240,6 +240,7 @@ import {
 } from "./tickets.js";
 import { runRoleSync } from "./syncRoles.js";
 import { registerCommands, handleCommand } from "./commands.js";
+import { isPurgeButton, handlePurgeButton } from "./features/purge/purge-command.js";
 import {
   handleSuggestionModalSubmit,
   handleSuggestionVoteButton,
@@ -911,6 +912,11 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       // ─── Bouton vote suggestion ──────────────────────────────────────────
       if (interaction.customId.startsWith("sug:vote:")) {
         return handleSuggestionVoteButton(interaction);
+      }
+
+      // ─── Confirmation / annulation d'une purge ───────────────────────────
+      if (isPurgeButton(interaction.customId)) {
+        return handlePurgeButton(interaction);
       }
 
       if (
