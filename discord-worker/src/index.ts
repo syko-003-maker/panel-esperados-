@@ -16,8 +16,120 @@ const FIXED_CHANNELS = {
 const DEFAULT_INGEST_BASE_URL = "http://127.0.0.1:3000";
 const DEFAULT_PANEL_BASE_URL = "https://losesperados.fr";
 
+/**
+ * Clés attendues dans un .env.prod, avec la valeur à écrire quand elle manque.
+ *
+ * `secret: true` = valeur qu'on ne peut pas deviner. Dans ce cas on n'invente
+ * RIEN : on ajoute une ligne commentée, pour que le trou soit visible sans
+ * qu'une valeur bidon vienne satisfaire les contrôles de démarrage.
+ */
+type EnvKeySpec = { key: string; value?: string; secret?: boolean };
+
+function expectedEnvKeys(isRoot: boolean): EnvKeySpec[] {
+  const panelBaseUrl = (process.env.NEXTAUTH_URL || process.env.PANEL_BASE_URL || DEFAULT_PANEL_BASE_URL).replace(/\/+$/, "");
+  const ingestBaseUrl = (process.env.INGEST_BASE_URL || DEFAULT_INGEST_BASE_URL).replace(/\/+$/, "");
+
+  const worker: EnvKeySpec[] = [
+    { key: "DISCORD_TOKEN", secret: true },
+    { key: "GUILD_ID", value: "1312845998753710151" },
+    { key: "BOTS_FAMILLE_CHANNEL_ID", value: FIXED_CHANNELS.BOTS_FAMILLE_CHANNEL_ID },
+    { key: "CONTACT_CHANNEL_ID", value: FIXED_CHANNELS.CONTACT_CHANNEL_ID },
+    { key: "TICKETS_PARENT_CHANNEL_ID", value: FIXED_CHANNELS.TICKETS_PARENT_CHANNEL_ID },
+    { key: "TICKETS_LOGS_CHANNEL_ID", value: FIXED_CHANNELS.TICKETS_LOGS_CHANNEL_ID },
+    { key: "INGEST_BASE_URL", value: ingestBaseUrl },
+    { key: "INGEST_SECRET", secret: true },
+    // Absente pendant des mois : les liens « Voir sur le panel » postés dans
+    // Discord retombaient sur l'URL interne, donc inutilisables.
+    { key: "PANEL_BASE_URL", value: panelBaseUrl },
+    { key: "NODE_ENV", value: "production" },
+  ];
+
+  if (!isRoot) return worker;
+
+  return [
+    { key: "NEXTAUTH_URL", value: panelBaseUrl },
+    { key: "NEXTAUTH_SECRET", secret: true },
+    { key: "DISCORD_BOT_TOKEN", secret: true },
+    { key: "DISCORD_GUILD_ID", value: "1312845998753710151" },
+    ...worker,
+  ];
+}
+
+/** Clés déjà présentes dans le fichier, commentées ou non, valeur vide incluse. */
+export function readDeclaredKeys(envPath: string): Set<string> {
+  const declared = new Set<string>();
+  let raw = "";
+  try {
+    raw = readFileSync(envPath, "utf8");
+  } catch {
+    return declared;
+  }
+  for (const line of raw.split("\n")) {
+    // `# CLE=` compte comme déclarée : quelqu'un l'a volontairement neutralisée,
+    // on ne la ressuscite pas dans son dos.
+    const match = line.match(/^\s*#?\s*([A-Z0-9_]+)\s*=/);
+    if (match) declared.add(match[1]);
+  }
+  return declared;
+}
+
+/**
+ * Complète un .env.prod EXISTANT avec les clés absentes.
+ *
+ * Règles, dans l'ordre d'importance :
+ *   1. on n'écrase JAMAIS une ligne existante — même vide, même commentée ;
+ *   2. on n'invente aucun secret : ces clés-là sont ajoutées en commentaire ;
+ *   3. tout est ajouté en fin de fichier, dans un bloc daté et identifiable.
+ *
+ * Sans ça, une variable ajoutée au code n'atteignait jamais une installation
+ * déjà en place : c'est ce qui a laissé PANEL_BASE_URL manquant des mois.
+ */
+export function completeEnvFile(envPath: string, isRoot: boolean): void {
+  const declared = readDeclaredKeys(envPath);
+  const missing = expectedEnvKeys(isRoot).filter((spec) => !declared.has(spec.key));
+  if (missing.length === 0) return;
+
+  const lines: string[] = [
+    "",
+    `# ─── Clés ajoutées automatiquement le ${new Date().toISOString().split("T")[0]} ───`,
+    "# Complétées parce qu'elles manquaient. Aucune valeur existante n'a été touchée.",
+  ];
+  const added: string[] = [];
+  const toFill: string[] = [];
+
+  for (const spec of missing) {
+    if (spec.secret || !spec.value) {
+      // Pas de valeur inventée : la ligne reste commentée, à remplir à la main.
+      lines.push(`# ${spec.key}=  # à renseigner`);
+      toFill.push(spec.key);
+    } else {
+      lines.push(`${spec.key}=${spec.value}`);
+      added.push(spec.key);
+    }
+  }
+
+  try {
+    // Sauvegarde avant toute écriture : ce fichier porte des secrets de prod.
+    const backupPath = `${envPath}.bak-autocomplete-${Date.now()}`;
+    writeFileSync(backupPath, readFileSync(envPath, "utf8"), { encoding: "utf8", mode: 0o600 });
+    writeFileSync(envPath, `${readFileSync(envPath, "utf8").replace(/\n*$/, "\n")}${lines.join("\n")}\n`, "utf8");
+    console.log("[ENV COMPLETE]", envPath, {
+      ajoutees: added,
+      aRenseigner: toFill,
+      sauvegarde: backupPath,
+    });
+  } catch (err) {
+    console.error("[ENV COMPLETE] échec de complétion", envPath, err instanceof Error ? err.message : String(err));
+  }
+}
+
 function ensureEnvFile(envPath: string, isRoot: boolean = false): void {
-  if (!existsSync(envPath)) {
+  if (existsSync(envPath)) {
+    // Le fichier existe : on le complète sans jamais rien remplacer.
+    completeEnvFile(envPath, isRoot);
+    return;
+  }
+  {
     // Auto-create .env.prod with required variables
     const panelBaseUrl = (process.env.NEXTAUTH_URL || process.env.PANEL_BASE_URL || DEFAULT_PANEL_BASE_URL).replace(/\/+$/, "");
     const ingestBaseUrl = (process.env.INGEST_BASE_URL || DEFAULT_INGEST_BASE_URL).replace(/\/+$/, "");
@@ -51,6 +163,9 @@ TICKETS_PARENT_CHANNEL_ID=${FIXED_CHANNELS.TICKETS_PARENT_CHANNEL_ID}
 TICKETS_LOGS_CHANNEL_ID=${FIXED_CHANNELS.TICKETS_LOGS_CHANNEL_ID}
 INGEST_BASE_URL=${ingestBaseUrl}
 INGEST_SECRET=${process.env.INGEST_SECRET || "CHANGE_ME_INGEST_SECRET"}
+# URL PUBLIQUE, pour les liens cliqués depuis Discord (≠ INGEST_BASE_URL,
+# qui est l'adresse interne des appels worker → panel).
+PANEL_BASE_URL=${panelBaseUrl}
 
 NODE_ENV=production
 `;
@@ -155,6 +270,7 @@ import {
 import { runDebtRemindersJob, getDebtRemindersIntervalMs } from "./debt-reminders-auto.js";
 import { runDepartedSweepJob, getDepartedSweepIntervalMs } from "./departed-sweep-auto.js";
 import { runWlReconcileJob, getWlReconcileIntervalMs } from "./wl-reconcile-auto.js";
+import { runExpireSanctionsJob, getExpireSanctionsIntervalMs } from "./expire-sanctions-auto.js";
 import { runGradeReconcileJob, getGradeReconcileIntervalMs } from "./grade-reconcile-auto.js";
 import {
   runInfosAutoSyncJob,
@@ -182,6 +298,8 @@ import { initSentry, captureException } from "./sentry.js";
 import { startHeartbeat, acquireSingleInstanceLock, releaseSingleInstanceLock } from "./heartbeat.js";
 import { sendDiscordAlert } from "./alerts.js";
 import { archiveSingleMessage } from "./features/recruitment/archive-messages.js";
+import { reportFeatureConfig } from "./startup-checks.js";
+import { getInternalPanelUrl } from "./lib/urls.js";
 
 // Init Sentry au plus tôt (no-op si SENTRY_DSN absent — n'affecte pas le boot)
 void initSentry();
@@ -276,6 +394,11 @@ function validateEnv() {
     }));
     process.exit(1);
   }
+
+  // Au-dela des variables vitales : etat des fonctionnalites optionnelles.
+  // Une variable absente ici n'empeche pas le worker de tourner, elle eteint
+  // une fonctionnalite — on l'annonce au lieu de la laisser disparaitre.
+  reportFeatureConfig();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -305,7 +428,9 @@ function isLegacyIngestUrl(url: string | undefined): boolean {
 }
 
 function getPanelHealthBaseUrl(): string | undefined {
-  return process.env.PANEL_BASE_URL || process.env.INGEST_BASE_URL;
+  // Le health check est un appel interne : loopback, sans dependre de
+  // DNS/nginx/TLS. getPublicPanelUrl() est reserve aux liens humains.
+  return getInternalPanelUrl();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -652,6 +777,15 @@ client.once("ready", async () => {
     setTimeout(() => runWlReconcileJob(), 90_000);
     setInterval(() => runWlReconcileJob(), wlReconcileIntervalMs);
     console.log("[WL_RECONCILE] scheduled", { intervalMs: wlReconcileIntervalMs });
+
+    // Expiration des sanctions échues. Jusqu'ici elle n'avait lieu que quand un
+    // membre du staff ouvrait la page des sanctions (logique dupliquée dans le
+    // handler GET) : la route dédiée existait mais n'était planifiée nulle part.
+    // Décalage de 110 s au démarrage pour ne pas se superposer aux autres crons.
+    const expireSanctionsIntervalMs = getExpireSanctionsIntervalMs();
+    setTimeout(() => runExpireSanctionsJob(), 110_000);
+    setInterval(() => runExpireSanctionsJob(), expireSanctionsIntervalMs);
+    console.log("[EXPIRE_SANCTIONS] scheduled", { intervalMs: expireSanctionsIntervalMs });
 
     // Réconciliation des grades stockés vs rôle Discord réel (base uniquement,
     // aucune écriture Discord). Corrige les grades restés en retard.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireActiveMember, GRADE_LEVELS } from "@/lib/guards";
+import { toFamilyCuid } from "@/lib/family";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     // Créer job outbox pour créer le ticket Discord
     await prisma.discordOutbox.create({
       data: {
-        familyId: "esperados",
+        familyId: await toFamilyCuid("esperados"),
         type: "SANCTION_NOTIFY", // Réutilise type existant
         entityId: ticketId,
         status: "PENDING",

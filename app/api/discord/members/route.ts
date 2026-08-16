@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { resolveFamilyId } from "@/lib/family";
 import {
   getDiscordGradeLevel,
   getDiscordGradeRoleId,
@@ -44,7 +44,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  // Member.familyId stocke le cuid de Family, pas le slug : sans resolveFamilyId()
+  // la requete filtrait sur "esperados" et ne remontait aucun membre.
+  // On ne resout que le defaut : un familyId passe explicitement est deja un cuid.
+  const familyParam = req.nextUrl.searchParams.get("familyId");
+  const familyId = familyParam ?? (await resolveFamilyId());
   const activeOnly = req.nextUrl.searchParams.get("activeOnly") !== "false";
 
   try {

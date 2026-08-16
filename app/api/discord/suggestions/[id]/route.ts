@@ -22,6 +22,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (Object.keys(data).length === 0)
     return NextResponse.json({ ok: false, error: "RIEN_A_METTRE_A_JOUR" }, { status: 400 });
 
-  await prisma.suggestion.update({ where: { id }, data }).catch(() => {});
+  try {
+    await prisma.suggestion.update({ where: { id }, data });
+  } catch (err) {
+    // Sans cet enregistrement, le reconciler ne pourra plus editer l'embed :
+    // annoncer un succes serait mensonger.
+    const code = (err as { code?: string })?.code;
+    console.error("[discord/suggestions] mise a jour echouee", { id, code });
+    if (code === "P2025") {
+      return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: false, error: "UPDATE_FAILED" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,7 @@
 import type { ActivityFlag, SuggestedAction } from "@/lib/activity-rules";
 import type { LegacyActivityMemberState, LegacyActivityState } from "@/lib/activity-legacy";
 
-const VALID_FLAGS = new Set<ActivityFlag>(["INACTIVE_14D", "LOW_PLAYTIME"]);
+const VALID_FLAGS = new Set<ActivityFlag>(["INACTIVE", "LOW_PLAYTIME"]);
 const VALID_SUGGESTED = new Set<SuggestedAction>([
   "NONE",
   "WARN_ORAL",
@@ -51,7 +51,7 @@ function normalizeMemberState(raw: LegacyActivityMemberState): LegacyActivityMem
     lastAlerted:
       typeof raw.lastAlerted === "object" && raw.lastAlerted
         ? {
-            inactive14d: Boolean(raw.lastAlerted.inactive14d),
+            inactive: Boolean(raw.lastAlerted.inactive),
             lowPlaytime: Boolean(raw.lastAlerted.lowPlaytime),
             recommendKick: Boolean(raw.lastAlerted.recommendKick),
           }

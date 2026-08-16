@@ -1,3 +1,4 @@
+import { toFamilyCuid } from "@/lib/family";
 import { NextResponse } from "next/server";
 import { requireChef } from "@/lib/guards";
 import { prisma } from "@/lib/db";
@@ -144,7 +145,7 @@ export async function GET(req: Request) {
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? "esperados";
+  const familyId = await toFamilyCuid(searchParams.get("familyId"));
 
   await ensureDefaults(familyId);
 
@@ -166,7 +167,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
   }
 
-  const familyId = String(searchParams.get("familyId") ?? body.familyId ?? "esperados").trim() || "esperados";
+  const familyId = await toFamilyCuid(String(searchParams.get("familyId") ?? body.familyId ?? "").trim());
   const key = String(body.key ?? "").trim();
   const content = String(body.content ?? "").trim();
   const title = String(body.title ?? "").trim();

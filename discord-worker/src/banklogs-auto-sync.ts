@@ -1,9 +1,12 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
+import { readSyncOutcome } from "./lib/sync-outcome.js";
 const DEFAULT_INTERVAL_MS = 45_000;
 
 let lastBanklogsAutoSyncAt = 0;
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -52,7 +55,7 @@ async function runBanklogsAutoSyncJobInner(): Promise<void> {
   const endpoint = `${baseUrl}/api/cron/banklogs-auto-sync`;
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         "x-ingest-secret": secret,
@@ -69,9 +72,18 @@ async function runBanklogsAutoSyncJobInner(): Promise<void> {
       return;
     }
 
+    // Voir playtime-auto-sync.ts : l'horodatage suit l'aller-retour, pas la
+    // synchronisation. Ici c'est indispensable — la garde d'1 min et la cadence
+    // d'1 min se croisent, environ un tir sur trois est ignoré, et le seuil de
+    // stall est à 2 min. Ne l'avancer que sur un vrai SYNC ferait crier le
+    // détecteur alors que tout va bien.
     lastBanklogsAutoSyncAt = Date.now();
-    console.log("[BANKLOGS_AUTO_SYNC] ok", {
+
+    const outcome = readSyncOutcome(bodyText);
+    console.log(`[BANKLOGS_AUTO_SYNC] ${outcome.label}`, {
       status: response.status,
+      ...(outcome.reason ? { skippedBecause: outcome.reason } : {}),
+      ...(outcome.durationMs !== undefined ? { durationMs: outcome.durationMs } : {}),
       ranAt: new Date(lastBanklogsAutoSyncAt).toISOString(),
     });
   } catch (error) {

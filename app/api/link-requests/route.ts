@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 import { prisma } from "@/lib/db";
+import { getInternalWorkerUrl } from "@/lib/urls";
+import { toFamilyCuid } from "@/lib/family";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appel interne panel -> worker : 15 s. */
+const WORKER_TIMEOUT_MS = 15_000;
 
 const FAMILY_ID = "esperados";
 
@@ -36,7 +42,7 @@ export async function POST(req: NextRequest) {
     // Check if already has a pending request
     const existingRequest = await prisma.linkRequest.findFirst({
       where: {
-        familyId: FAMILY_ID,
+        familyId: await toFamilyCuid(FAMILY_ID),
         requesterDiscordId: discordId,
         status: { in: ["PENDING", "OPENED"] },
       },
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
     // Create LinkRequest
     const linkRequest = await prisma.linkRequest.create({
       data: {
-        familyId: FAMILY_ID,
+        familyId: await toFamilyCuid(FAMILY_ID),
         requesterDiscordId: discordId,
         requesterName: discordUsername,
         status: "PENDING",
@@ -69,9 +75,10 @@ export async function POST(req: NextRequest) {
 
     // Call worker to post Discord message
     try {
-      const workerUrl = `${process.env.INGEST_BASE_URL}/api/worker/link-request/post`;
-      const workerResponse = await fetch(workerUrl, {
+      const workerUrl = `${getInternalWorkerUrl()}/api/worker/link-request/post`;
+      const workerResponse = await fetchWithTimeout(workerUrl, {
         method: "POST",
+        timeoutMs: WORKER_TIMEOUT_MS,
         headers: {
           "Content-Type": "application/json",
           "x-ingest-secret": process.env.INGEST_SECRET || "",

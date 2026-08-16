@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { toFamilyCuid } from "@/lib/family";
 
 const INGEST_SECRET = process.env.DISCORD_INGEST_SECRET ?? process.env.INGEST_SECRET;
 
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     let openCount = 0;
 
     // Support familyId from query params (multi-family ready)
-    const familyId = searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+    const familyId = await toFamilyCuid(searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
 
     if (type === "recruitment") {
       // Count open recruitments for this user

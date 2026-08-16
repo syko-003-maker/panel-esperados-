@@ -395,7 +395,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         body: dmBody,
         url: "/dashboard",
         dedupeKey: "member_dm:absence:" + updated.id + ":" + value,
-      }).catch(() => {});
+      }).catch((err: unknown) => {
+        // Le DM est la doublure du push : sa perte laissait le membre sans aucune alerte.
+        console.warn("[member-dm] mise en file echouee", {
+          event: "absence_decision",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
 
     return NextResponse.json({ ok: true, requestId, data: toResponseAbsence(updated) });

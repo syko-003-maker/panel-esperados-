@@ -10,6 +10,7 @@ import { loadFamilyActivityState } from "@/lib/activity-legacy";
 import { activityConfigToRules, getActivityConfig } from "@/lib/activity-config";
 import { normalizeActivityState } from "@/lib/activity-backfill";
 import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
+import { toFamilyCuid } from "@/lib/family";
 
 const DEFAULT_FAMILY_ID = "esperados";
 
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  const familyId = await toFamilyCuid(searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
 
   const members = await prisma.member.findMany({
     where: { familyId },
@@ -103,7 +104,7 @@ export async function GET(req: Request) {
     (acc, item) => {
       acc.total += 1;
       if (item.isExempt) acc.exempt += 1;
-      if (item.flags.includes("INACTIVE_14D")) acc.inactive14d += 1;
+      if (item.flags.includes("INACTIVE")) acc.inactive14d += 1;
       if (item.flags.includes("LOW_PLAYTIME")) acc.lowPlaytime += 1;
       if (item.suggestedAction === "RECOMMEND_KICK") acc.recommendKick += 1;
       return acc;

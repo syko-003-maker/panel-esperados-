@@ -1,3 +1,5 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 // Déclencheur automatique des rappels de dettes : le worker ping la route cron
 // du panel toutes les X h. Le panel ne fait rien si `bankDebtAutoEnabled` est
 // off (toggle dans la config Discord). Le cooldown PAR MEMBRE (en jours) est
@@ -12,7 +14,7 @@
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -37,7 +39,7 @@ export async function runDebtRemindersJob(): Promise<void> {
       console.warn("[DEBT_REMINDERS] skipped: missing INGEST_BASE_URL or INGEST_SECRET");
       return;
     }
-    const res = await fetch(`${baseUrl}/api/cron/debt-reminders`, {
+    const res = await fetchWithTimeout(`${baseUrl}/api/cron/debt-reminders`, {
       method: "POST",
       headers: { "x-ingest-secret": secret },
     });

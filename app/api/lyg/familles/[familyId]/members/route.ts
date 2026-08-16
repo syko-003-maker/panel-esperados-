@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { FAMILY_SLUG } from "@/lib/family";
 import { requireChefOrEtatMajor } from "@/lib/guards";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appel LYG : 15 s, valeur deja utilisee ailleurs dans le projet. */
+const LYG_TIMEOUT_MS = 15_000;
 
 type Context = {
   params: Promise<{
@@ -44,10 +48,11 @@ export async function GET(req: Request, context: Context) {
     const auth = req.headers.get("authorization");
     if (auth) headers.Authorization = auth;
 
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "GET",
       headers,
       cache: "no-store",
+      timeoutMs: LYG_TIMEOUT_MS,
     });
 
     const text = await res.text();

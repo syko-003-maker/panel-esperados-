@@ -2,6 +2,15 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
 
+    // État de configuration : ce qui est éteint doit être annoncé comme éteint.
+    // Purement informatif, n'interrompt jamais le démarrage.
+    try {
+      const { reportFeatureConfig } = await import("@/lib/startup-checks");
+      reportFeatureConfig();
+    } catch (err) {
+      console.error("[instrumentation] rapport de configuration indisponible:", err);
+    }
+
     // Les boucles qui tapent LYG (in-family, keepalive) ne tournent QU'EN
     // PROD : le dev server (next dev, port 3002) a un token placeholder et
     // martèlerait l'API pour rien (401) — et surtout, si un jour il recevait

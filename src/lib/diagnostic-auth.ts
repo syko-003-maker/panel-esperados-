@@ -13,6 +13,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { toFamilyCuid } from "@/lib/family";
 
 const DEBUG = process.env.NODE_ENV !== "production";
 
@@ -41,7 +42,7 @@ export async function getAuthDiagnostic(userId: string) {
   const discordId = account?.providerAccountId || null;
 
   // 3. Vérifier Member avec ce discordId
-  const familyId = "esperados";
+  const familyId = await toFamilyCuid("esperados");
   const member = await prisma.member.findUnique({
     where: { familyId_discordId: { familyId, discordId: discordId || "" } },
     select: {

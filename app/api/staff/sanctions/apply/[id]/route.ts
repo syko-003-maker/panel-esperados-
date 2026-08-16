@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueSanctionApply } from "@/lib/discord/discord";
+import { toFamilyCuid } from "@/lib/family";
 
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 
@@ -30,7 +31,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const actorRpName = actorMemberId
     ? (
         await prisma.member.findFirst({
-          where: { id: actorMemberId, familyId: FAMILY_ID },
+          // `FAMILY_ID` est un slug ; les fiches portent le CUID de la famille.
+          // Le filtre brut ne remontait donc jamais rien et `actorRpName`
+          // restait null : la sanction s'appliquait bien, mais sans le nom RP
+          // du staff qui l'avait déclenchée.
+          where: { id: actorMemberId, familyId: await toFamilyCuid(FAMILY_ID) },
           select: { rpName: true },
         })
       )?.rpName ?? null

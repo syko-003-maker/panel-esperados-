@@ -1,3 +1,4 @@
+import { toFamilyCuid } from "@/lib/family";
 import { NextResponse } from "next/server";
 import { requireChef } from "@/lib/guards";
 import { prisma } from "@/lib/db";
@@ -95,7 +96,7 @@ export async function GET(req: Request) {
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? "esperados";
+  const familyId = await toFamilyCuid(searchParams.get("familyId"));
   const status = searchParams.get("status");
   const type = searchParams.get("type");
 

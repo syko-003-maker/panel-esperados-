@@ -5,8 +5,13 @@
 
 import type { ThreadChannel, Guild, Collection, Message, TextChannel } from "discord.js";
 import { logInfo, logWarn, logError } from "./lib/worker-obs.js";
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 
-const PANEL_URL = process.env.INGEST_BASE_URL || "http://localhost:3000";
+/** Appels internes worker -> panel : 15 s. */
+const INTERNAL_TIMEOUT_MS = 15_000;
+
+const PANEL_URL = getInternalPanelUrl();
 const INGEST_SECRET = process.env.INGEST_SECRET;
 
 export interface ArchivedMessage {
@@ -140,8 +145,9 @@ async function sendArchivedMessagesToPanel(
     }
 
     const url = `${PANEL_URL}/api/ingest/complaint/messages-archive`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
+      timeoutMs: INTERNAL_TIMEOUT_MS,
       headers: {
         "Content-Type": "application/json",
         "x-ingest-secret": INGEST_SECRET,

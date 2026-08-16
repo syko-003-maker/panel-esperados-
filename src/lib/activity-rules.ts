@@ -1,7 +1,7 @@
 import { DEFAULT_ACTIVITY_CONFIG } from "@/lib/activity-config";
 import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID } from "@/lib/discord-roles";
 
-export type ActivityFlag = "INACTIVE_14D" | "LOW_PLAYTIME";
+export type ActivityFlag = "INACTIVE" | "LOW_PLAYTIME";
 export type SuggestedAction = "NONE" | "WARN_ORAL" | "WARN_LIGHT" | "RECOMMEND_KICK";
 export type ActivityRules = {
   inactivityDays: number;
@@ -86,7 +86,7 @@ export function computeFlags(input: {
     const diffMs = input.now.getTime() - input.lastSeenAt.getTime();
     inactiveDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
     if (inactiveDays >= rules.inactivityDays) {
-      flags.push("INACTIVE_14D");
+      flags.push("INACTIVE");
       suggestedAction = "RECOMMEND_KICK";
       reasons.push(`Inactif ${inactiveDays} jours`);
     }

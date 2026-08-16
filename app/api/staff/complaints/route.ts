@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor, requirePrivileged } from "@/lib/guards";
+import { toFamilyCuid } from "@/lib/family";
 
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
       OR?: Array<Record<string, unknown>>;
     };
 
-    const where: WhereClause = { familyId: FAMILY_ID };
+    const where: WhereClause = { familyId: await toFamilyCuid(FAMILY_ID) };
     if (statusParam) where.status = statusParam as ComplaintStatus;
     if (q) {
       where.OR = [

@@ -1,3 +1,4 @@
+import { toFamilyCuid } from "@/lib/family";
 import { NextResponse } from "next/server";
 import { requireChef } from "@/lib/guards";
 import { prisma } from "@/lib/db";
@@ -8,7 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ key: str
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? "esperados";
+  const familyId = await toFamilyCuid(searchParams.get("familyId"));
   const item = await prisma.discordTemplate.findUnique({
     where: { familyId_key: { familyId, key } },
   });
@@ -25,7 +26,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ key: s
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? "esperados";
+  const familyId = await toFamilyCuid(searchParams.get("familyId"));
   const body = await req.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
@@ -66,7 +67,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ key: 
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? "esperados";
+  const familyId = await toFamilyCuid(searchParams.get("familyId"));
   const deleted = await prisma.discordTemplate.deleteMany({ where: { familyId, key } });
   return NextResponse.json({ ok: true, deleted: deleted.count });
 }

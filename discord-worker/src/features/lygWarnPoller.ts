@@ -14,6 +14,7 @@ import { IDS } from "../ids.js";
 import { parseLygWarnDate } from "../utils/parseLygWarnDate.js";
 import { pushNotify } from "../lib/push-notify.js";
 import { sendMemberDm } from "../lib/send-member-dm.js";
+import { getPublicPanelUrl } from "../lib/urls.js";
 
 const LYG_BASE_URL = process.env.LYG_BASE_URL ?? "https://api.lyg.fr/api";
 const LYG_TOKEN    = process.env.LYG_TOKEN ?? "";
@@ -149,7 +150,7 @@ async function pollLygWarnsInner(client: Client, prisma: PrismaClient): Promise<
     select: { id: true, steamId: true, rpName: true, discordId: true, grade: true, createdAt: true },
   });
 
-  const siteBase = process.env.NEXTAUTH_URL ?? "https://losesperados.fr";
+  const siteBase = getPublicPanelUrl();
 
   for (const member of members) {
     if (!member.steamId) continue;
@@ -366,10 +367,26 @@ async function pollLygWarnsInner(client: Client, prisma: PrismaClient): Promise<
         }
       } else if (existing.id) {
         // Warn existant : mettre à jour le statut expired si nécessaire
-        await prisma.lygWarn.update({
-          where: { id: existing.id },
-          data: { expired: w.expired },
-        }).catch(() => {});
+        // Si cette ecriture echoue en silence, le warn reste compte comme
+        // ACTIF alors que LYG l'a expire — c'est la racine du residu de warns
+        // deja corrige cote lecture. On ne fait pas planter le poller pour
+        // autant : un warn non rafraichi sera repris au cycle suivant.
+        await prisma.lygWarn
+          .update({
+            where: { id: existing.id },
+            data: { expired: w.expired },
+          })
+          .catch((err: unknown) => {
+            console.error(JSON.stringify({
+              timestamp: new Date().toISOString(),
+              level: "error",
+              event: "lyg_warn_expired_update_failed",
+              warnId: existing.id,
+              steamId: member.steamId,
+              expected: w.expired,
+              error: err instanceof Error ? err.message : String(err),
+            }));
+          });
       }
     }
 

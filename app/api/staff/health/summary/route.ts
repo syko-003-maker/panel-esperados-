@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { logInfo, logError, makeRequestId } from "@/lib/obs";
+import { toFamilyCuid } from "@/lib/family";
 
 /**
  * GET /api/staff/health/summary
@@ -20,7 +21,9 @@ export async function GET(req: Request) {
   const startTime = Date.now();
 
   try {
-    const familyId = "esperados";
+    // Ces compteurs portent sur des tables en convention CUID (Sanction,
+    // Recruitment, Meeting, Complaint) : le slug ne remonterait rien.
+    const familyId = await toFamilyCuid("esperados");
 
     // Parallel health checks
     const [

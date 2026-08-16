@@ -84,7 +84,17 @@ async function maybeRunDiscordSnapshotResync(familyDbId: string, source: SyncSou
     }
   })();
 
-  await discordSnapshotSyncInFlight;
+  // Volontairement NON attendu : le resync interroge Discord membre par membre
+  // et depasse regulierement 30 s. Comme le worker appelle /api/cron/members-auto-sync
+  // avec un timeout de 30 s (phase E1), l'attendre transformait un sync des
+  // membres REUSSI en `exception` cote worker — 14 fois par 24 h, toutes les
+  // 2 heures a la seconde pres.
+  //
+  // Rien n'est perdu : le travail se poursuit cote panel (verifie — 0 snapshot
+  // perime), la promesse porte deja son propre try/catch et son `finally` qui
+  // libere le verrou, et un resync deja en cours sort en tete de fonction.
+  // Elle ne peut donc jamais rejeter : `void` documente ce choix.
+  void discordSnapshotSyncInFlight;
 }
 
 export async function runLygMembersSync(source: SyncSource = "cron"): Promise<MembersSyncResult> {

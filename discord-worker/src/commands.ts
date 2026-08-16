@@ -36,6 +36,7 @@ import {
   handleUnlinkButtonInteraction,
   LINK_CUSTOM_IDS,
 } from "./link.js";
+import { getInternalPanelUrl } from "./lib/urls.js";
 
 // ─────────────────────────────────────────────────────────────
 // Prisma Setup
@@ -47,7 +48,7 @@ const prisma = new PrismaClient();
 // Panel API Helper
 // ─────────────────────────────────────────────────────────────
 
-const PANEL_BASE_URL = process.env.INGEST_BASE_URL ?? process.env.PANEL_BASE_URL ?? "http://localhost:3000";
+const PANEL_BASE_URL = getInternalPanelUrl();
 const WORKER_SECRET =
   process.env.INGEST_SECRET ?? process.env.DISCORD_WORKER_SECRET ?? "";
 const RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID = "1312846003358924874";

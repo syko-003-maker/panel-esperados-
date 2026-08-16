@@ -37,6 +37,18 @@ export async function deactivateDepartedLygMembers(params: { graceMinutes?: numb
     data: {
       isActive: false,
       missingFromLygSince: new Date(),
+      // Quitter la famille, c'est perdre le rang famille. `wlClass` est un
+      // miroir de LYG : le laisser figé faisait passer un ancien membre pour
+      // toujours whitelisté — constaté sur deux fiches, dont une partie le
+      // 26/07 qui affichait encore WL 1 mi-août.
+      //
+      // Sûr par construction : on hérite du garde-fou ci-dessus (comparaison au
+      // dernier sync, pas à `now()`), et l'effacement s'auto-corrige — la sync
+      // réécrit `wlClass` depuis le snapshot dès que le membre réapparaît.
+      wlClass: null,
+      wlOwner: false,
+      // `wlClassIntent` volontairement épargné : c'est une décision humaine que
+      // personne n'a annulée. On la retrouve si la personne revient.
     },
   });
 

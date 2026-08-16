@@ -13,8 +13,13 @@
 
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { toFamilyCuid } from "./lib/family-id.js";
 
-const FAMILY_ID = "esperados";
+// Valeur d'ENTREE. La cle reellement ecrite en base est le cuid resolu
+// ci-dessous : convention CUID du projet. Panel et worker DOIVENT utiliser la
+// meme cle, sinon le panel croit le worker mort et le verrou mono-instance
+// s'evalue sur deux lignes differentes.
+const FAMILY_SLUG = "esperados";
 const WORKER_NAME = "discord-worker";
 const INTERVAL_MS = 60_000;
 
@@ -34,6 +39,13 @@ function getPrisma(): PrismaClient {
   return prisma;
 }
 
+// Resolution unique par process : une famille ne change pas d'identifiant.
+let familyCuid: string | null = null;
+async function getFamilyId(): Promise<string> {
+  if (!familyCuid) familyCuid = await toFamilyCuid(getPrisma(), FAMILY_SLUG);
+  return familyCuid;
+}
+
 async function tick(): Promise<void> {
   try {
     const meta = {
@@ -45,10 +57,11 @@ async function tick(): Promise<void> {
     };
 
     const client = getPrisma();
+    const familyId = await getFamilyId();
     await client.workerHeartbeat.upsert({
-      where: { familyId: FAMILY_ID },
+      where: { familyId },
       create: {
-        familyId: FAMILY_ID,
+        familyId,
         workerName: WORKER_NAME,
         lastSeenAt: new Date(),
         meta,
@@ -85,8 +98,9 @@ async function tick(): Promise<void> {
 export async function acquireSingleInstanceLock(): Promise<boolean> {
   const client = getPrisma();
   try {
+    const familyId = await getFamilyId();
     return await client.$transaction(async (tx) => {
-      const existing = await tx.workerHeartbeat.findUnique({ where: { familyId: FAMILY_ID } });
+      const existing = await tx.workerHeartbeat.findUnique({ where: { familyId } });
       const now = Date.now();
       if (existing) {
         const lastBeat = existing.lastSeenAt ? existing.lastSeenAt.getTime() : 0;
@@ -96,7 +110,7 @@ export async function acquireSingleInstanceLock(): Promise<boolean> {
           return false; // une autre instance vivante détient le verrou
         }
         await tx.workerHeartbeat.update({
-          where: { familyId: FAMILY_ID },
+          where: { familyId },
           data: {
             workerName: WORKER_NAME,
             lastSeenAt: new Date(),
@@ -106,7 +120,7 @@ export async function acquireSingleInstanceLock(): Promise<boolean> {
       } else {
         await tx.workerHeartbeat.create({
           data: {
-            familyId: FAMILY_ID,
+            familyId,
             workerName: WORKER_NAME,
             lastSeenAt: new Date(),
             meta: { instanceId: INSTANCE_ID, pid: process.pid, claimedAt: new Date().toISOString() },
@@ -142,11 +156,12 @@ export async function releaseSingleInstanceLock(): Promise<void> {
   }
   try {
     const client = getPrisma();
+    const familyId = await getFamilyId();
     await client.$transaction(async (tx) => {
-      const existing = await tx.workerHeartbeat.findUnique({ where: { familyId: FAMILY_ID } });
+      const existing = await tx.workerHeartbeat.findUnique({ where: { familyId } });
       const owner = (existing?.meta as { instanceId?: string } | null)?.instanceId;
       if (existing && owner === INSTANCE_ID) {
-        await tx.workerHeartbeat.delete({ where: { familyId: FAMILY_ID } });
+        await tx.workerHeartbeat.delete({ where: { familyId } });
       }
     });
   } catch (err) {

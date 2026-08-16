@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { GRADE_LEVELS } from "@/lib/guards";
 import { makeRequestId, logInfo, logWarn, logError } from "@/lib/obs";
 import { verifyKey } from "discord-interactions";
+import { toFamilyCuid } from "@/lib/family";
 
 // Types d'interaction Discord
 type InteractionType = 1 | 2 | 3 | 4 | 5;
@@ -311,7 +312,7 @@ async function handleSanctionDecision(
   try {
     // 1. Vérifier que le staff est autorisé (isActive + gradeLevel >= STAFF)
     const staffMember = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: "esperados", discordId: staffDiscordId } },
+      where: { familyId_discordId: { familyId: await toFamilyCuid("esperados"), discordId: staffDiscordId } },
       select: { id: true, isActive: true, gradeLevel: true, rpName: true },
     });
 

@@ -23,9 +23,14 @@
 import { EmbedBuilder, type ChatInputCommandInteraction } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 import { sendLog } from "../features/logs/serverLogs.js";
+import { toFamilyCuid } from "./family-id.js";
 
 const prisma = new PrismaClient();
-const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
+
+// Valeur d'ENTREE (slug). AuditLog.familyId doit recevoir le cuid : on resout
+// juste avant l'ecriture. Cette ligne etait le dernier ecrivain slug connu de
+// AuditLog, cote worker — invisible des audits menes cote panel.
+const FAMILY_SLUG = process.env.FAMILY_ID ?? "esperados";
 
 export type AdminCommandLogOptions = {
   interaction: ChatInputCommandInteraction;
@@ -93,7 +98,7 @@ export async function logAdminCommand(opts: AdminCommandLogOptions): Promise<voi
   try {
     await prisma.auditLog.create({
       data: {
-        familyId: FAMILY_ID,
+        familyId: await toFamilyCuid(prisma, FAMILY_SLUG),
         actorType: "staff",
         actorId: userId,
         actorName: userTag,

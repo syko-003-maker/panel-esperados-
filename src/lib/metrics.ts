@@ -5,6 +5,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { toFamilyCuid } from "@/lib/family";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -68,7 +69,8 @@ export async function recordMetric(input: MetricEventInput): Promise<string> {
   try {
     const event = await prisma.metricEvent.create({
       data: {
-        familyId: input.familyId ?? DEFAULT_FAMILY_ID,
+        // Convention CUID : le slug est accepte en entree, jamais ecrit.
+        familyId: await toFamilyCuid(input.familyId ?? DEFAULT_FAMILY_ID),
         source: input.source,
         type: input.type,
         ref: input.ref ?? null,
@@ -87,14 +89,16 @@ export async function recordMetric(input: MetricEventInput): Promise<string> {
  */
 export async function recordMetrics(inputs: MetricEventInput[]): Promise<number> {
   try {
+    // Une seule resolution pour tout le lot : les entrees partagent la famille.
+    const defaultFamilyCuid = await toFamilyCuid(DEFAULT_FAMILY_ID);
     const result = await prisma.metricEvent.createMany({
-      data: inputs.map((input) => ({
-        familyId: input.familyId ?? DEFAULT_FAMILY_ID,
+      data: await Promise.all(inputs.map(async (input) => ({
+        familyId: input.familyId ? await toFamilyCuid(input.familyId) : defaultFamilyCuid,
         source: input.source,
         type: input.type,
         ref: input.ref ?? null,
         meta: input.meta === null ? Prisma.JsonNull : (input.meta as Prisma.InputJsonValue),
-      })),
+      }))),
     });
     return result.count;
   } catch (error) {
@@ -157,7 +161,8 @@ export async function getMetricCounts(options: {
   types?: string[];
   days?: number;
 }): Promise<MetricCountResult[]> {
-  const { familyId = DEFAULT_FAMILY_ID, types, days = 7 } = options;
+  const { familyId: familyIdOrSlug = DEFAULT_FAMILY_ID, types, days = 7 } = options;
+  const familyId = await toFamilyCuid(familyIdOrSlug);
 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
@@ -207,7 +212,8 @@ export async function getRecentMetrics(options: {
   types?: string[];
   limit?: number;
 }) {
-  const { familyId = DEFAULT_FAMILY_ID, types, limit = 50 } = options;
+  const { familyId: familyIdOrSlug = DEFAULT_FAMILY_ID, types, limit = 50 } = options;
+  const familyId = await toFamilyCuid(familyIdOrSlug);
 
   const where: any = { familyId };
   if (types && types.length > 0) {
@@ -229,7 +235,8 @@ export async function countMetricsInWindow(options: {
   type: string;
   windowMinutes: number;
 }): Promise<number> {
-  const { familyId = DEFAULT_FAMILY_ID, type, windowMinutes } = options;
+  const { familyId: familyIdOrSlug = DEFAULT_FAMILY_ID, type, windowMinutes } = options;
+  const familyId = await toFamilyCuid(familyIdOrSlug);
 
   const startDate = new Date();
   startDate.setMinutes(startDate.getMinutes() - windowMinutes);
@@ -251,10 +258,11 @@ export async function countMetricsInWindow(options: {
  * Update worker heartbeat
  */
 export async function updateWorkerHeartbeat(
-  familyId: string = DEFAULT_FAMILY_ID,
+  familyIdOrSlug: string = DEFAULT_FAMILY_ID,
   workerName?: string,
   meta?: Record<string, unknown>
 ) {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.workerHeartbeat.upsert({
     where: { familyId },
     create: {
@@ -274,7 +282,8 @@ export async function updateWorkerHeartbeat(
 /**
  * Get worker heartbeat status
  */
-export async function getWorkerHeartbeat(familyId: string = DEFAULT_FAMILY_ID) {
+export async function getWorkerHeartbeat(familyIdOrSlug: string = DEFAULT_FAMILY_ID) {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.workerHeartbeat.findUnique({
     where: { familyId },
   });
@@ -312,7 +321,8 @@ export async function createAlert(options: {
   message: string;
   meta?: Record<string, unknown>;
 }) {
-  const { familyId = DEFAULT_FAMILY_ID, type, severity = "warning", message, meta } = options;
+  const { familyId: familyIdOrSlug = DEFAULT_FAMILY_ID, type, severity = "warning", message, meta } = options;
+  const familyId = await toFamilyCuid(familyIdOrSlug);
 
   return prisma.alertEvent.create({
     data: {
@@ -338,7 +348,8 @@ export async function resolveAlert(alertId: string) {
 /**
  * Get active (unresolved) alerts
  */
-export async function getActiveAlerts(familyId: string = DEFAULT_FAMILY_ID) {
+export async function getActiveAlerts(familyIdOrSlug: string = DEFAULT_FAMILY_ID) {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.alertEvent.findMany({
     where: {
       familyId,
@@ -356,7 +367,8 @@ export async function getRecentAlerts(options: {
   limit?: number;
   includeResolved?: boolean;
 }) {
-  const { familyId = DEFAULT_FAMILY_ID, limit = 50, includeResolved = true } = options;
+  const { familyId: familyIdOrSlug = DEFAULT_FAMILY_ID, limit = 50, includeResolved = true } = options;
+  const familyId = await toFamilyCuid(familyIdOrSlug);
 
   const where: any = { familyId };
   if (!includeResolved) {

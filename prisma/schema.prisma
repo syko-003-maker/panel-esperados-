@@ -100,6 +100,12 @@ model Family {
   staffUsers     StaffUser[]
   bankLogs       BankLog[]
   lygCredential  LygCredential?
+  complaints     Complaint[]
+  sanctions      Sanction[]
+  recruitments   Recruitment[]
+  absences       Absence[]
+  meetings       Meeting[]
+  bankDebtStates BankDebtReminderState[]
 }
 
 model BankLog {
@@ -365,6 +371,7 @@ enum JustificationStatus {
 model Recruitment {
   id        String                  @id @default(cuid())
   familyId  String
+  family                Family   @relation(fields: [familyId], references: [id], onDelete: Restrict)
   discordId String
   steamId   String?
   rpName    String?
@@ -480,6 +487,10 @@ model RecruitmentTicket {
 model Complaint {
   id            String          @id @default(cuid())
   familyId      String
+  // FK ajoutée en SQL le 10/08/2026 (voir prisma/MIGRATIONS.md : `migrate` et
+  // `db push` sont interdits sur cette base). La relation est déclarée ici
+  // pour que le schéma et la base restent cohérents.
+  family        Family          @relation(fields: [familyId], references: [id], onDelete: Restrict)
   complainantId String?
   complainant   Member?         @relation("ComplaintFiled", fields: [complainantId], references: [id], onDelete: SetNull)
   targetId      String?
@@ -625,6 +636,7 @@ enum MeetingDecisionAction {
 model Meeting {
   id              String        @id @default(cuid())
   familyId        String
+  family                Family   @relation(fields: [familyId], references: [id], onDelete: Restrict)
   title           String?
   meetingDate     DateTime
   weekKey         String
@@ -813,6 +825,7 @@ model AlertEvent {
 model Absence {
   id        String        @id @default(cuid())
   familyId  String
+  family                Family   @relation(fields: [familyId], references: [id], onDelete: Restrict)
   discordId String
   memberId  String?
   member    Member?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
@@ -846,6 +859,7 @@ model Absence {
 model Sanction {
   id            String          @id @default(cuid())
   familyId      String
+  family                Family   @relation(fields: [familyId], references: [id], onDelete: Restrict)
   memberId      String?
   member        Member?         @relation("SanctionMember", fields: [memberId], references: [id], onDelete: SetNull)
   discordId     String
@@ -1016,6 +1030,7 @@ model AppConfig {
 model BankDebtReminderState {
   id              String    @id @default(cuid())
   familyId        String // Member.familyId (cuid)
+  family                Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   memberId        String    @unique
   discordId       String?
   reminderCount   Int       @default(0) // streak de rappels sans remboursement

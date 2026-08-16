@@ -21,6 +21,10 @@ import { getDiscordRolesForUserWithStatus, CHEF_FAMILLE_ROLE_ID } from "@/lib/di
 import { EXTRA_MEMBER_ROLE_IDS, GRADE_ROLE_IDS_ORDERED } from "@/lib/grade-colors";
 import { debug } from "@/lib/logger";
 import { requireChefOrEtatMajor } from "@/lib/guards";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appel Discord sur chemin utilisateur : 10 s. */
+const DISCORD_TIMEOUT_MS = 10_000;
 
 // Pas de log au boot (évite la fuite de configuration sur les logs PM2).
 const DISCORD_TOKEN = (process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_TOKEN ?? "").trim();
@@ -53,8 +57,9 @@ async function verifyMemberStatusViaRest(discordId: string): Promise<"active" | 
   try {
     // Call Discord API directly
     const url = `https://discord.com/api/v10/guilds/${GUILD_ID}/members/${discordId}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "GET",
+      timeoutMs: DISCORD_TIMEOUT_MS,
       headers: {
         Authorization: `Bot ${DISCORD_TOKEN}`,
         "Content-Type": "application/json",

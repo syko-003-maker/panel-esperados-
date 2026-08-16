@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import type { NextAuthOptions } from "next-auth";
 import Discord from "next-auth/providers/discord";
 import { prisma } from "@/lib/db";
+import { describeDatabaseUrl } from "@/lib/db-url";
 import { logAccess, shouldLogLogin } from "@/lib/access-log";
 import { logger } from "@/lib/logger";
 import { logStaffRolesConfig } from "@/lib/discord-rbac";
@@ -212,13 +213,8 @@ export const authOptions: NextAuthOptions = {
 
 // ✅ Log DATABASE configuration at startup (to detect multi-env issues)
 if (process.env.NODE_ENV !== "production") {
-  const dbUrl = process.env.DATABASE_URL || "";
-  const dbHostMatch = dbUrl.match(/@([^/]+)/);
-  const dbNameMatch = dbUrl.match(/\/([^?]+)(\?|$)/);
-  const dbHost = dbHostMatch ? dbHostMatch[1] : "unknown";
-  const dbName = dbNameMatch ? dbNameMatch[1] : "unknown";
-  const dbUrl_masked = dbUrl.replace(/:[^@]*@/, ":***@");
-  console.log("[auth:boot] DATABASE_URL", { host: dbHost, database: dbName, url: dbUrl_masked });
+  const { host, database, url } = describeDatabaseUrl(process.env.DATABASE_URL);
+  console.log("[auth:boot] DATABASE_URL", { host, database, url });
 }
 
 // ✅ Log RBAC staff roles configuration at startup

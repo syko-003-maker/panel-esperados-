@@ -5,6 +5,7 @@ import { computeFlags, isTemporarilyExempt, isWl1Exempt } from "@/lib/activity-r
 import { getMemberState, loadFamilyActivityState, saveFamilyActivityState } from "@/lib/activity-legacy";
 import { activityConfigToRules, getActivityConfig } from "@/lib/activity-config";
 import { normalizeActivityState } from "@/lib/activity-backfill";
+import { toFamilyCuid } from "@/lib/family";
 
 const DEFAULT_FAMILY_ID = "esperados";
 
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
   }
 
-  const familyId = String(body.familyId ?? DEFAULT_FAMILY_ID).trim() || DEFAULT_FAMILY_ID;
+  const familyId = await toFamilyCuid(String(body.familyId ?? DEFAULT_FAMILY_ID).trim());
   const discordId = String(body.discordId ?? "").trim();
   if (!discordId) {
     return NextResponse.json({ ok: false, error: "MISSING_DISCORD_ID" }, { status: 400 });

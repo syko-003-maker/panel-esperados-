@@ -6,6 +6,10 @@
  */
 
 import { logger } from "@/lib/logger";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appel interne panel -> worker : 15 s. */
+const WORKER_TIMEOUT_MS = 15_000;
 
 export type RenameResult = {
   success: boolean;
@@ -36,8 +40,9 @@ export async function triggerDiscordRename(
       return { success: false, reason: "worker_not_configured" };
     }
 
-    const response = await fetch(`${workerUrl}/internal/discord/rename`, {
+    const response = await fetchWithTimeout(`${workerUrl}/internal/discord/rename`, {
       method: "POST",
+      timeoutMs: WORKER_TIMEOUT_MS,
       headers: {
         "Content-Type": "application/json",
         "x-ingest-secret": process.env.INGEST_SECRET || "",

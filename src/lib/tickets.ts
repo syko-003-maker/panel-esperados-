@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, toFamilyCuid } from "@/lib/family";
 
-export async function getOpenRecruitmentsCount(familyId = DEFAULT_FAMILY_ID): Promise<number> {
+export async function getOpenRecruitmentsCount(familyIdOrSlug = DEFAULT_FAMILY_ID): Promise<number> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.recruitment.count({
     where: {
       familyId,
@@ -11,7 +12,8 @@ export async function getOpenRecruitmentsCount(familyId = DEFAULT_FAMILY_ID): Pr
   });
 }
 
-export async function getOpenComplaintsCount(familyId = DEFAULT_FAMILY_ID): Promise<number> {
+export async function getOpenComplaintsCount(familyIdOrSlug = DEFAULT_FAMILY_ID): Promise<number> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.complaint.count({
     where: {
       familyId,
@@ -34,7 +36,8 @@ type TicketItem = {
   closedAt: Date | null;
 };
 
-export async function getLatestTickets(familyId = DEFAULT_FAMILY_ID, limit = 10): Promise<TicketItem[]> {
+export async function getLatestTickets(familyIdOrSlug = DEFAULT_FAMILY_ID, limit = 10): Promise<TicketItem[]> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   const [recruitments, complaints] = await Promise.all([
     prisma.recruitment.findMany({
       where: {

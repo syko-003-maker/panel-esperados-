@@ -1,3 +1,5 @@
+import { getInternalWorkerUrl } from "@/lib/urls";
+
 type DiscordMessagePayload = {
   channelId: string;
   content?: string;
@@ -18,7 +20,7 @@ type PostDiscordRenameResult =
   | { ok: true; nickname: string | null }
   | { ok: false; error: string; skipped?: string };
 
-const WORKER_INTERNAL_URL = process.env.WORKER_INTERNAL_URL || "http://127.0.0.1:3001";
+const WORKER_INTERNAL_URL = getInternalWorkerUrl();
 const MESSAGE_ENDPOINT = "/internal/discord/postMessage";
 const RENAME_ENDPOINT = "/internal/discord/rename";
 const MESSAGE_FULL_URL = `${WORKER_INTERNAL_URL}${MESSAGE_ENDPOINT}`;

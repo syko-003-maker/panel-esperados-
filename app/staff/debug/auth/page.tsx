@@ -3,6 +3,7 @@ import { getSession } from "@/auth";
 import { prisma } from "@/lib/db";
 import { getDiscordIdFromSessionOrAccount } from "@/lib/me";
 import { notFound, redirect } from "next/navigation";
+import { toFamilyCuid } from "@/lib/family";
 
 /**
  * ✅ PATCH: /staff/debug/auth - Page debug staff-only
@@ -49,7 +50,8 @@ export default async function DebugAuthPage() {
   } else if (!discordId) {
     memberStatus = "no-discord-account";
   } else {
-    const familyId = "esperados";
+    // Convention CUID : le slug ne remontait aucun membre.
+    const familyId = await toFamilyCuid("esperados");
     member = await prisma.member.findUnique({
       where: { familyId_discordId: { familyId, discordId } },
       select: {

@@ -63,6 +63,36 @@ async function movementsSince(steamId: string | null, since: Date | null) {
 
 type Trend = "new" | "reduced" | "static" | "increased";
 
+/**
+ * Payload d'un message sortant : la mention reste dans `content` (hors embed),
+ * sinon Discord ne declenche pas de vraie notification, et le corps part en
+ * embed. Meme structure que le ping de dette manuel (BANK_DEBT_PING_SINGLE),
+ * pour que les deux se ressemblent dans le salon.
+ */
+type OutgoingMessage = {
+  content: string;
+  embed: {
+    title: string;
+    color: number;
+    description: string;
+    fields?: Array<{ name: string; value: string; inline?: boolean }>;
+    footer?: { text: string };
+    timestamp?: string;
+  };
+};
+
+/** Couleurs d'escalade : ambre (rappel simple) → orange (relance) → rouge (dernier avertissement). */
+const COLOR_SOFT = 0xf59e0b;
+const COLOR_FIRM = 0xf97316;
+const COLOR_FINAL = 0xef4444;
+
+const TREND_LABEL: Record<Trend, string> = {
+  new: "Première alerte",
+  reduced: "🟢 En baisse",
+  static: "🟠 Inchangée",
+  increased: "🔴 En hausse",
+};
+
 function memberMessage(params: {
   mention: string;
   amount: number;
@@ -74,43 +104,87 @@ function memberMessage(params: {
   trend: Trend;
   daysSinceFirst: number;
   escalateAfter: number;
-}): string {
+}): OutgoingMessage {
   const { mention, amount, prevAmount, moves, count, trend, daysSinceFirst, escalateAfter } = params;
   const amt = fmt(amount);
+  const isFinal = count >= escalateAfter;
+
+  // Champs communs : ce sont les chiffres que le membre vient verifier. Les
+  // sortir du texte les rend lisibles d'un coup d'oeil.
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+    { name: "Dette actuelle", value: `**${amt}**`, inline: true },
+    { name: "Évolution", value: TREND_LABEL[trend], inline: true },
+    { name: "Rappel", value: `n°${count}`, inline: true },
+  ];
+
+  // On cite le montant de reference. Sans lui, le membre compare mentalement a
+  // son pic historique — qu'il a peut-etre rembourse — et croit le bot en
+  // erreur alors qu'il ne compare qu'au dernier rappel.
+  if (trend === "increased" && prevAmount > 0) {
+    fields.push({ name: "Au rappel précédent", value: fmt(prevAmount), inline: true });
+  }
+  // Quand on connait les mouvements, on les cite : dire « tu as remis 7 M mais
+  // retire 9,6 M » est juste et verifiable, la ou « ta dette a augmente » passe
+  // pour une erreur aux yeux de quelqu'un qui a rembourse.
+  if (moves) {
+    fields.push({
+      name: "Mouvements depuis",
+      value: `Remis **${fmt(moves.remis)}** · Retiré **${fmt(moves.retire)}**`,
+      inline: true,
+    });
+  }
+  if (daysSinceFirst > 0) {
+    fields.push({
+      name: "Ouverte depuis",
+      value: `${daysSinceFirst} jour${daysSinceFirst > 1 ? "s" : ""}`,
+      inline: true,
+    });
+  }
+
+  let title: string;
+  let color: number;
+  let description: string;
 
   if (count <= 1) {
-    return `${mention} 📌 **Rappel banque** — tu es en déficit de **${amt}** sur le compte de la famille. Merci de régulariser dès que possible.`;
+    title = "📌 Rappel banque";
+    color = COLOR_SOFT;
+    description =
+      `${mention}, tu es en déficit sur le compte de la famille.\n` +
+      `Merci de régulariser dès que possible.`;
+  } else if (!isFinal) {
+    title = `⚠️ ${count}ᵉ rappel banque`;
+    color = COLOR_FIRM;
+    description =
+      trend === "reduced"
+        ? `${mention}, ta dette a baissé mais n'est pas soldée.\nContinue, merci de finir de régulariser.`
+        : trend === "increased"
+          ? `${mention}, ta dette a **augmenté** depuis le dernier rappel.\nMerci de régulariser rapidement.`
+          : `${mention}, ta dette n'a **pas bougé** depuis le dernier rappel.\nMerci de régulariser rapidement.`;
+  } else if (trend === "reduced") {
+    title = `⚠️ ${count}ᵉ rappel banque`;
+    color = COLOR_FIRM;
+    description =
+      `${mention}, ta dette baisse mais reste ouverte.\n` +
+      `Solde-la pour éviter une sanction.`;
+  } else {
+    title = `🚨 ${count}ᵉ rappel — dernier avertissement`;
+    color = COLOR_FINAL;
+    description =
+      `${mention}, ta dette n'a été ni remboursée ni réduite.\n` +
+      `**L'État-Major est informé et pourra sanctionner.**`;
   }
 
-  if (count < escalateAfter) {
-    if (trend === "reduced") {
-      return `${mention} 📌 **${count}ᵉ rappel** — ta dette a baissé (**${amt}** restants) mais n'est pas soldée. Continue, merci de finir de régulariser.`;
-    }
-    if (trend === "increased") {
-      // On cite le montant de reference. Sans lui, le membre compare
-      // mentalement a son pic historique — qu'il a peut-etre rembourse — et
-      // croit le bot en erreur alors qu'il ne compare qu'au dernier rappel.
-      const depuis = prevAmount > 0 ? ` (elle était de **${fmt(prevAmount)}**)` : "";
-      // Quand on connait les mouvements, on les cite : dire « tu as remis 7 M
-      // mais retire 9,6 M » est juste et verifiable, la ou « ta dette a
-      // augmente » passe pour une erreur aux yeux de quelqu'un qui a rembourse.
-      const detail = moves
-        ? ` Sur la période tu as remis **${fmt(moves.remis)}** et retiré **${fmt(moves.retire)}**.`
-        : "";
-      return `${mention} ⚠️ **${count}ᵉ rappel** — ta dette a augmenté depuis le dernier rappel${depuis} : elle est maintenant de **${amt}**.${detail} Merci de régulariser rapidement.`;
-    }
-    return `${mention} ⚠️ **${count}ᵉ rappel** — ta dette (**${amt}**) n'a pas bougé depuis le dernier rappel. Merci de régulariser rapidement.`;
-  }
-
-  // count >= escalateAfter → dernier avertissement
-  if (trend === "reduced") {
-    return `${mention} ⚠️ **${count}ᵉ rappel** — ta dette baisse (**${amt}** restants) mais reste ouverte. Solde-la pour éviter une sanction.`;
-  }
-  const since = daysSinceFirst > 0 ? ` depuis ${daysSinceFirst} jour${daysSinceFirst > 1 ? "s" : ""}` : "";
-  return (
-    `${mention} 🚨 **${count}ᵉ rappel — dernier avertissement** — ta dette (**${amt}**) n'a été ` +
-    `ni remboursée ni réduite${since}. L'État-Major est informé et pourra sanctionner.`
-  );
+  return {
+    content: mention,
+    embed: {
+      title,
+      color,
+      description,
+      fields,
+      footer: { text: "Banque de la famille · rappel automatique" },
+      timestamp: new Date().toISOString(),
+    },
+  };
 }
 
 function staffAlertMessage(params: {
@@ -130,22 +204,49 @@ function staffAlertMessage(params: {
    * sanctionner quelqu'un qui l'etait deja.
    */
   autoSanctionLabel?: string | null;
-}): string {
+}): OutgoingMessage {
   const { rpName, discordId, amount, firstAmount, count, trend, daysSinceFirst, staffRoleId, autoSanctionLabel } = params;
   const who = rpName ? `**${rpName}**${discordId ? ` (<@${discordId}>)` : ""}` : discordId ? `<@${discordId}>` : "Membre inconnu";
   const evol =
     trend === "increased"
-      ? `en hausse (+${fmt(Math.max(0, amount - firstAmount))} depuis le dernier rappel)`
-      : "stagnante";
-  const since = daysSinceFirst > 0 ? ` depuis ${daysSinceFirst} jour${daysSinceFirst > 1 ? "s" : ""}` : "";
-  const rolePing = staffRoleId ? `<@&${staffRoleId}> ` : "";
-  const suite = autoSanctionLabel
-    ? `Le bot a appliqué **${autoSanctionLabel}** automatiquement — inutile d'en remettre un. À suivre (relance, arrangement…).`
-    : "À traiter (sanction, arrangement…).";
-  return (
-    `${rolePing}🚨 **Débiteur récurrent** — ${who} signalé **${count} fois**, dette **${fmt(amount)}** ` +
-    `(${evol})${since} sans remboursement. ${suite}`
-  );
+      ? `🔴 En hausse (+${fmt(Math.max(0, amount - firstAmount))})`
+      : "🟠 Stagnante";
+
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+    { name: "Membre", value: who, inline: false },
+    { name: "Dette", value: `**${fmt(amount)}**`, inline: true },
+    { name: "Évolution", value: evol, inline: true },
+    { name: "Signalé", value: `${count} fois`, inline: true },
+  ];
+  if (daysSinceFirst > 0) {
+    fields.push({
+      name: "Sans remboursement depuis",
+      value: `${daysSinceFirst} jour${daysSinceFirst > 1 ? "s" : ""}`,
+      inline: true,
+    });
+  }
+  // Sans cette information, l'alerte reclamait « a traiter (sanction…) » alors
+  // que le bot venait d'appliquer un averto : le staff etait invite a
+  // sanctionner quelqu'un qui l'etait deja.
+  fields.push({
+    name: "Suite à donner",
+    value: autoSanctionLabel
+      ? `Le bot a appliqué **${autoSanctionLabel}** automatiquement — inutile d'en remettre un.\nÀ suivre : relance, arrangement…`
+      : "À traiter : sanction, arrangement…",
+    inline: false,
+  });
+
+  return {
+    content: staffRoleId ? `<@&${staffRoleId}>` : "",
+    embed: {
+      title: "🚨 Débiteur récurrent",
+      color: COLOR_FINAL,
+      description: "Un membre a dépassé le seuil de rappels sans rembourser.",
+      fields,
+      footer: { text: "Escalade automatique · rappels de dettes" },
+      timestamp: new Date().toISOString(),
+    },
+  };
 }
 
 /**
@@ -288,7 +389,7 @@ function demoteDecisionMessage(params: {
   count: number;
   highest: string | null;
   daysSinceFirst: number;
-}): string {
+}): OutgoingMessage {
   const who = params.rpName
     ? `**${params.rpName}**${params.discordId ? ` (<@${params.discordId}>)` : ""}`
     : params.discordId
@@ -297,18 +398,34 @@ function demoteDecisionMessage(params: {
   const current = params.highest
     ? SANCTION_LABELS[params.highest] ?? params.highest
     : "aucune sanction";
-  const since =
-    params.daysSinceFirst > 0
-      ? ` depuis ${params.daysSinceFirst} jour${params.daysSinceFirst > 1 ? "s" : ""}`
-      : "";
 
-  return (
-    `<@&${ETAT_MAJOR_ROLE_ID}> 🔴 **Décision requise — escalade épuisée**\n` +
-    `${who} est déjà sous **${current}** et sa dette de **${fmt(params.amount)}** ` +
-    `n'a toujours pas bougé après **${params.count} rappels**${since}.\n` +
-    `Le système ne peut pas aller plus loin : le cran suivant serait un **démote**, ` +
-    `qui relève de votre décision.`
-  );
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+    { name: "Membre", value: who, inline: false },
+    { name: "Dette", value: `**${fmt(params.amount)}**`, inline: true },
+    { name: "Rappels", value: `${params.count}`, inline: true },
+    { name: "Sanction en cours", value: current, inline: true },
+  ];
+  if (params.daysSinceFirst > 0) {
+    fields.push({
+      name: "Sans mouvement depuis",
+      value: `${params.daysSinceFirst} jour${params.daysSinceFirst > 1 ? "s" : ""}`,
+      inline: true,
+    });
+  }
+
+  return {
+    content: `<@&${ETAT_MAJOR_ROLE_ID}>`,
+    embed: {
+      title: "🔴 Décision requise — escalade épuisée",
+      color: COLOR_FINAL,
+      description:
+        "Le système ne peut pas aller plus loin : le cran suivant serait un " +
+        "**démote**, qui relève de votre décision.",
+      fields,
+      footer: { text: "Escalade automatique · rappels de dettes" },
+      timestamp: new Date().toISOString(),
+    },
+  };
 }
 
 export type DebtReminderCycleResult = {
@@ -383,10 +500,43 @@ export async function runDebtReminderCycle(params: {
       })
     : [];
   const eligById = new Map(eligMembers.map((m) => [m.id, m]));
+
+  // Membres couverts par une absence APPROUVÉE aujourd'hui.
+  //
+  // Ce contrôle n'existait pas : un membre en absence validée continuait de
+  // recevoir des rappels, et chacun incrémentait son compteur vers l'escalade
+  // État-Major. Constaté sur David Laps — rappel envoyé le 09/08 alors qu'il
+  // était en absence du 05/08 au 12/08, compteur monté à 3, escalade déclenchée
+  // le 14/08.
+  //
+  // Requête unique groupée, comme pour l'éligibilité : une par membre coûterait
+  // un aller-retour par débiteur à chaque cycle.
+  const absentMemberIds = new Set(
+    debtorMemberIds.length
+      ? (
+          await prisma.absence.findMany({
+            where: {
+              memberId: { in: debtorMemberIds },
+              status: "APPROVED",
+              startAt: { lte: now },
+              endAt: { gte: now },
+            },
+            select: { memberId: true },
+          })
+        ).map((a) => a.memberId)
+      : []
+  );
+
   const isEligible = (memberId: string | null) => {
     if (!memberId) return false;
     const m = eligById.get(memberId);
     if (!m || !m.isActive || m.discordInGuild === false) return false;
+    // Placé AVANT le calcul du compteur : `isEligible` est évalué en amont du
+    // `count = reminderCount + 1`, donc exclure ici suspend à la fois l'envoi
+    // ET l'incrément. La dette reste due, seul le décompte vers l'escalade
+    // s'arrête — un membre revenant d'un mois d'absence ne se retrouve pas
+    // d'emblée au 3e rappel.
+    if (absentMemberIds.has(memberId)) return false;
     const roles = Array.isArray(m.discordRoleIds) ? m.discordRoleIds : [];
     return !roles.some((r) => EXCLUDED_ROLE_IDS.includes(r));
   };
@@ -428,10 +578,12 @@ export async function runDebtReminderCycle(params: {
       // Ce qui s'est reellement passe depuis le dernier rappel.
       const moves = await movementsSince(d.steamId ?? null, state?.lastRemindedAt ?? null);
 
+    const reminder = memberMessage({ mention, amount, prevAmount, moves, count, trend, daysSinceFirst, escalateAfter });
     await enqueueMessage({
       familyId: familySlug,
       channelId,
-      content: memberMessage({ mention, amount, prevAmount, moves, count, trend, daysSinceFirst, escalateAfter }),
+      content: reminder.content,
+      meta: { embeds: [reminder.embed] },
       entity: "BankDebtReminder",
       entityId: d.memberId,
     });
@@ -476,20 +628,22 @@ export async function runDebtReminderCycle(params: {
         }
       }
 
+      const staffAlert = staffAlertMessage({
+        rpName: d.rpName,
+        discordId: d.discordId,
+        amount,
+        firstAmount: prevAmount || amount,
+        count,
+        trend,
+        daysSinceFirst,
+        staffRoleId: config.staffRoleId ?? null,
+        autoSanctionLabel,
+      });
       await enqueueMessage({
         familyId: familySlug,
         channelId: staffChannelId,
-        content: staffAlertMessage({
-          rpName: d.rpName,
-          discordId: d.discordId,
-          amount,
-          firstAmount: prevAmount || amount,
-          count,
-          trend,
-          daysSinceFirst,
-          staffRoleId: config.staffRoleId ?? null,
-          autoSanctionLabel,
-        }),
+        content: staffAlert.content,
+        meta: { embeds: [staffAlert.embed] },
         entity: "BankDebtReminderStaff",
         entityId: d.memberId,
       });
@@ -499,17 +653,19 @@ export async function runDebtReminderCycle(params: {
       // Plus rien a appliquer automatiquement : seul l'Etat-Major peut decider
       // d'un demote, on le lui demande explicitement.
       if (cappedHighest) {
+        const demoteDecision = demoteDecisionMessage({
+          rpName: d.rpName,
+          discordId: d.discordId,
+          amount,
+          count,
+          highest: cappedHighest,
+          daysSinceFirst,
+        });
         await enqueueMessage({
           familyId: familySlug,
           channelId: staffChannelId,
-          content: demoteDecisionMessage({
-            rpName: d.rpName,
-            discordId: d.discordId,
-            amount,
-            count,
-            highest: cappedHighest,
-            daysSinceFirst,
-          }),
+          content: demoteDecision.content,
+          meta: { embeds: [demoteDecision.embed] },
           entity: "BankDebtDemoteDecision",
           entityId: d.memberId,
         });

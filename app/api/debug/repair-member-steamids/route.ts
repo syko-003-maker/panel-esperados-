@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logInfo, logWarn } from "@/lib/obs";
 import { requireChefOrEtatMajor } from "@/lib/guards";
+import { toFamilyCuid } from "@/lib/family";
 
 /**
  * Diagnostic et réparation des Member.steamId manquants
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
   const mode = searchParams.get("mode") || "check";
-  const familyId = "esperados";
+  const familyId = await toFamilyCuid("esperados");
 
   logInfo("repair_member_steamids_start", { mode, familyId });
 

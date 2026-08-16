@@ -13,6 +13,7 @@ import {
   TextChannel,
   ChannelType,
 } from "discord.js";
+import { getInternalPanelUrl } from "../../lib/urls.js";
 
 /**
  * Suggestions côté Discord — commande /suggestion (modal) + embed avec bouton
@@ -22,7 +23,7 @@ import {
  * (1 vote/membre, site OU Discord).
  */
 
-const PANEL_BASE_URL = process.env.INGEST_BASE_URL ?? process.env.PANEL_BASE_URL ?? "http://localhost:3000";
+const PANEL_BASE_URL = getInternalPanelUrl();
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET ?? "";
 const SUGGESTIONS_CHANNEL_ID = process.env.SUGGESTIONS_CHANNEL_ID ?? "";
 const RECONCILE_INTERVAL_MS = 60_000;

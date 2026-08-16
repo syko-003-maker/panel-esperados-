@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireChefOrEtatMajor, requireFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { enqueueComplaintDecision } from "@/lib/discord/discord";
+import { toFamilyCuid } from "@/lib/family";
 
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 
@@ -79,7 +80,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (guard instanceof Response) return guard;
 
   const complaint = await prisma.complaint.findFirst({
-    where: { id, familyId: FAMILY_ID },
+    where: { id, familyId: await toFamilyCuid(FAMILY_ID) },
   });
   if (!complaint) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
@@ -126,7 +127,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const actorDiscordId = (session?.user as any)?.discordId ?? null;
 
   const complaint = await prisma.complaint.findFirst({
-    where: { id, familyId: FAMILY_ID },
+    where: { id, familyId: await toFamilyCuid(FAMILY_ID) },
     select: {
       id: true,
       status: true,

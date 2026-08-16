@@ -28,10 +28,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     where: { suggestionId_memberId: { suggestionId: id, memberId: member.id } },
     select: { id: true },
   });
-  if (existing) {
-    await prisma.suggestionVote.delete({ where: { id: existing.id } });
-  } else {
-    await prisma.suggestionVote.create({ data: { suggestionId: id, memberId: member.id } }).catch(() => {});
+  // Avant : le create etait avale et la route repondait quand meme "voted: true"
+  // — le vote etait perdu sans que personne ne le sache. Le delete, lui,
+  // n'etait pas protege du tout : traitement incoherent des deux branches.
+  try {
+    if (existing) {
+      await prisma.suggestionVote.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.suggestionVote.create({ data: { suggestionId: id, memberId: member.id } });
+    }
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    // Course entre deux clics : l'etat vise est deja atteint, ce n'est pas une erreur.
+    const dejaFait = code === "P2002" || code === "P2025";
+    if (!dejaFait) {
+      console.error("[discord/suggestions/vote] ecriture echouee", { id, code });
+      return NextResponse.json({ ok: false, error: "VOTE_FAILED" }, { status: 500 });
+    }
   }
 
   const votes = await prisma.suggestionVote.count({ where: { suggestionId: id } });

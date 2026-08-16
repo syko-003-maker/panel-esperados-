@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/auth";
 import { requireRecruiterOrAbove } from "@/lib/guards";
 import { prisma } from "@/lib/db";
+import { toFamilyCuid } from "@/lib/family";
 
 const FAMILY_ID = process.env.FAMILY_ID ?? "esperados";
 
@@ -137,7 +138,7 @@ async function handleRecruitmentDecision(
     }
 
     const staffMember = await prisma.member.findUnique({
-      where: { familyId_discordId: { familyId: "esperados", discordId: staffDiscordId } },
+      where: { familyId_discordId: { familyId: await toFamilyCuid("esperados"), discordId: staffDiscordId } },
       select: { rpName: true, discordId: true },
     });
 
@@ -168,7 +169,7 @@ async function handleRecruitmentDecision(
       data: {
         status: "PENDING",
         type: "SANCTION_NOTIFY",
-        familyId: "esperados",
+        familyId: await toFamilyCuid("esperados"),
         entityId: recruitment.id,
         attempt: 0,
         maxAttempts: 5,

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireStaffFull } from "@/lib/guards";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appels Discord sur chemin utilisateur : 10 s, au-dela la page attend pour rien. */
+const DISCORD_TIMEOUT_MS = 10_000;
 
 /**
  * Liste les salons / catégories / rôles du serveur Discord, par NOM.
@@ -22,8 +26,8 @@ async function fetchGuildMeta(): Promise<GuildMeta> {
 
   const headers = { Authorization: `Bot ${token}` };
   const [chRes, roleRes] = await Promise.all([
-    fetch(`https://discord.com/api/v10/guilds/${GUILD_ID}/channels`, { headers, cache: "no-store" }),
-    fetch(`https://discord.com/api/v10/guilds/${GUILD_ID}/roles`, { headers, cache: "no-store" }),
+    fetchWithTimeout(`https://discord.com/api/v10/guilds/${GUILD_ID}/channels`, { headers, cache: "no-store", timeoutMs: DISCORD_TIMEOUT_MS }),
+    fetchWithTimeout(`https://discord.com/api/v10/guilds/${GUILD_ID}/roles`, { headers, cache: "no-store", timeoutMs: DISCORD_TIMEOUT_MS }),
   ]);
   if (!chRes.ok) throw new Error(`DISCORD_CHANNELS_HTTP_${chRes.status}`);
   if (!roleRes.ok) throw new Error(`DISCORD_ROLES_HTTP_${roleRes.status}`);

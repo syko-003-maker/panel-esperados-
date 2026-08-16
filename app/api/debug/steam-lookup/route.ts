@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePrivileged } from "@/lib/guards";
+import { toFamilyCuid } from "@/lib/family";
 
 export async function GET(req: NextRequest) {
   const guard = await requirePrivileged();
@@ -34,10 +35,10 @@ export async function GET(req: NextRequest) {
     take: 5,
   });
 
-  // 2) Chercher dans Member avec familyId esperados
+  // 2) Chercher dans Member (convention CUID : le slug ne remontait rien)
   const membersEsperados = await prisma.member.findMany({
     where: {
-      familyId: "esperados",
+      familyId: await toFamilyCuid("esperados"),
       steamId: normalizedSteamId,
     },
     select: {

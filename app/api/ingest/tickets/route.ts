@@ -339,7 +339,13 @@ const handlers: Record<string, EventHandler> = {
       body: `${rpName || authorTag || "Un joueur"} a déposé une candidature.`,
       url: "/staff/recruitments",
       tag: "recruit-new-" + ticketKey,
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      // Notification perdue : degradation silencieuse d'un canal d'alerte.
+      console.warn("[push] notification non delivree", {
+        event: "recruitment_created",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     return { ok: true };
   },
 
@@ -414,7 +420,8 @@ const handlers: Record<string, EventHandler> = {
     const complaint = await ctx.prisma.complaint.upsert({
       where: { ticketKey },
       create: {
-        familyId: ctx.familyId,
+        // familyDbId (cuid) et non familyId (slug) : convention CUID du projet.
+        familyId: ctx.familyDbId,
         ticketKey,
         discordThreadId: threadId,
         authorDiscordId: authorId,
@@ -454,7 +461,8 @@ const handlers: Record<string, EventHandler> = {
         data: {
           status: "PENDING",
           type: "SANCTION_NOTIFY",
-          familyId: ctx.familyId,
+          // familyDbId (cuid), comme les autres ecritures de ce fichier.
+          familyId: ctx.familyDbId,
           entityId: complaint.id,
           channelId: discordConfig.complaintsChannelId,
           dedupeKey: `PLAINT_CREATED:${complaint.id}:${Date.now()}`,
@@ -479,7 +487,13 @@ const handlers: Record<string, EventHandler> = {
       body: `${authorDisplayName || "Un joueur"}${targetName ? " → " + targetName : ""} : ${reason}`.slice(0, 180),
       url: "/staff/complaints",
       tag: "complaint-new-" + ticketKey,
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      // Notification perdue : degradation silencieuse d'un canal d'alerte.
+      console.warn("[push] notification non delivree", {
+        event: "complaint_created",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     return { ok: true };
   },
 
@@ -519,7 +533,8 @@ const handlers: Record<string, EventHandler> = {
     await ctx.prisma.complaint.upsert({
       where: { ticketKey },
       create: {
-        familyId: ctx.familyId,
+        // familyDbId (cuid) et non familyId (slug) : convention CUID du projet.
+        familyId: ctx.familyDbId,
         ticketKey,
         discordThreadId: threadId,
         authorDiscordId: "unknown",

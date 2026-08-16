@@ -1,9 +1,12 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
+import { readSyncOutcome } from "./lib/sync-outcome.js";
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
 
 let lastInfosAutoSyncAt = 0;
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -51,7 +54,7 @@ async function runInfosAutoSyncJobInner(): Promise<void> {
   const endpoint = `${baseUrl}/api/cron/infos-auto-sync`;
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         "x-ingest-secret": secret,
@@ -69,8 +72,11 @@ async function runInfosAutoSyncJobInner(): Promise<void> {
     }
 
     lastInfosAutoSyncAt = Date.now();
-    console.log("[INFOS_AUTO_SYNC] ok", {
+    const outcome = readSyncOutcome(bodyText);
+    console.log(`[INFOS_AUTO_SYNC] ${outcome.label}`, {
       status: response.status,
+      ...(outcome.reason ? { skippedBecause: outcome.reason } : {}),
+      ...(outcome.durationMs !== undefined ? { durationMs: outcome.durationMs } : {}),
       ranAt: new Date(lastInfosAutoSyncAt).toISOString(),
     });
   } catch (error) {

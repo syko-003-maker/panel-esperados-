@@ -16,6 +16,11 @@
 
 import { Client, EmbedBuilder } from "discord.js";
 import { IDS } from "./ids.js";
+import { getPublicPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
+
+/** Appels internes worker -> panel : 15 s. */
+const INTERNAL_TIMEOUT_MS = 15_000;
 
 const ROLE_ID_REGEX = /^[0-9]{17,20}$/;
 
@@ -138,8 +143,9 @@ export async function handleLinkRequestAction(
 
     console.log("[linkreq:api_call]", { action, requestId, apiUrl });
 
-    const apiResponse = await fetch(apiUrl, {
+    const apiResponse = await fetchWithTimeout(apiUrl, {
       method: "POST",
+      timeoutMs: INTERNAL_TIMEOUT_MS,
       headers: {
         "Content-Type": "application/json",
         "x-ingest-secret": process.env.INGEST_SECRET || "",
@@ -424,7 +430,9 @@ export async function sendLinkAcceptedDM(
       return;
     }
 
-    const panelBaseUrl = (process.env.NEXTAUTH_URL ?? process.env.INGEST_BASE_URL ?? "https://losesperados.fr").replace(/\/+$/, "");
+    // Etait : NEXTAUTH_URL ?? INGEST_BASE_URL — le second repli pouvait
+    // produire une adresse loopback dans un message adresse a un membre.
+    const panelBaseUrl = getPublicPanelUrl();
     const embed = new EmbedBuilder()
       .setTitle("✅ Liaison Acceptée")
       .setColor(0x10b981)

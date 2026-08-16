@@ -3,9 +3,13 @@ import type { Client as DiscordClient, TextChannel } from "discord.js";
 import { ChannelType, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { safeFetchMember, validateDiscordId } from "./utils/validateDiscordId.js";
 import { sendMemberDm } from "./lib/send-member-dm.js";
+import { toFamilyCuid } from "./lib/family-id.js";
+import { classifyOutboxError, isRetryableJobType, computeBackoffMs } from "./outbox-retry.js";
+import { nonceOptions } from "./lib/outbox-nonce.js";
 import { buildTicketLog } from "./features/logs/ticketLogEmbed.js";
 import { archiveRecruitmentMessages, type ArchivedMessage } from "./features/recruitment/archive-messages.js";
 import { buildRejectionExplanation } from "./features/recruitment/reject-summary.js";
+import { getInternalPanelUrl } from "./lib/urls.js";
 
 
 const SANCTION_NOTIFICATION_CHANNEL_ID = process.env.SANCTION_NOTIFICATION_CHANNEL_ID ?? "1409028569203740792";
@@ -410,7 +414,14 @@ async function handleRoleMutation(
         if (!member.roles.cache.has(otherId)) continue;
         const otherRole =
           member.guild.roles.cache.get(otherId) ??
-          (await member.guild.roles.fetch(otherId).catch(() => null));
+          (await member.guild.roles.fetch(otherId).catch((err: unknown) => {
+            log("role_fetch_failed", {
+              roleId: otherId,
+              memberDiscordId: member.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return null;
+          }));
         if (otherRole && otherRole.editable) {
           await member.roles.remove(otherId, `Promotion : retrait ancien grade`).catch((err: unknown) => {
             log("promotion_strip_role_failed", {
@@ -531,12 +542,37 @@ export async function processOutboxQueue(
     // Recover jobs stuck in RUNNING after a worker crash or timeout.
     // OUTBOX_JOB_TIMEOUT_MS = 20s; 2 minutes is a safe stale threshold.
     const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
-    const recovered = await prisma.discordOutbox.updateMany({
+    const staleJobs = await prisma.discordOutbox.findMany({
       where: { status: "RUNNING", updatedAt: { lt: staleThreshold } },
-      data: { status: "PENDING", nextAttemptAt: new Date() },
+      select: { id: true, type: true, attempt: true, maxAttempts: true },
     });
-    if (recovered.count > 0) {
-      log("outbox_stale_recovered", { count: recovered.count });
+    for (const stale of staleJobs) {
+      // La reprise compte comme une TENTATIVE : sans ca, un job qui fait
+      // planter le worker repartirait toutes les 2 min indefiniment, sans
+      // jamais atteindre maxAttempts.
+      const attempts = stale.attempt + 1;
+      const maxAttempts = stale.maxAttempts ?? 10;
+      if (attempts >= maxAttempts || !isRetryableJobType(String(stale.type))) {
+        await prisma.discordOutbox.update({
+          where: { id: stale.id },
+          data: {
+            status: "FAILED",
+            attempt: attempts,
+            lastError: `Job interrompu (worker arrete ou timeout) — abandon apres ${attempts} tentative(s)`,
+          },
+        });
+        log("outbox_stale_abandoned", { jobId: stale.id, type: stale.type, attempt: attempts });
+      } else {
+        await prisma.discordOutbox.update({
+          where: { id: stale.id },
+          data: {
+            status: "PENDING",
+            attempt: attempts,
+            nextAttemptAt: new Date(Date.now() + computeBackoffMs(stale.attempt)),
+          },
+        });
+        log("outbox_stale_recovered", { jobId: stale.id, type: stale.type, attempt: attempts });
+      }
     }
 
     const jobs = await prisma.discordOutbox.findMany({
@@ -572,16 +608,62 @@ export async function processOutboxQueue(
           error: errorMessage,
         });
 
-        await markSanctionPipelineFailure(prisma, job as any, errorMessage);
+        // ── Retry ou echec definitif ────────────────────────────────────
+        // Avant : toute erreur = FAILED definitif. Un 429 ou une coupure
+        // reseau tuait donc le message. On distingue desormais l'erreur
+        // temporaire (on replanifie) de l'erreur permanente (on abandonne).
+        const attempts = job.attempt + 1;
+        const maxAttempts = job.maxAttempts ?? 10;
+        const kind = classifyOutboxError(error);
+        const canRetry =
+          kind === "temporary" &&
+          isRetryableJobType(String(job.type)) &&
+          attempts < maxAttempts;
 
-        await prisma.discordOutbox.update({
-          where: { id: job.id },
-          data: {
-            status: "FAILED",
-            attempt: job.attempt + 1,
-            lastError: errorMessage,
-          },
-        });
+        if (canRetry) {
+          const delayMs = computeBackoffMs(job.attempt);
+          const nextAttemptAt = new Date(Date.now() + delayMs);
+          await prisma.discordOutbox.update({
+            where: { id: job.id },
+            data: {
+              status: "PENDING",
+              attempt: attempts,
+              lastError: errorMessage,
+              nextAttemptAt,
+            },
+          });
+          log("outbox_job_retry_scheduled", {
+            jobId: job.id,
+            type: job.type,
+            attempt: attempts,
+            maxAttempts,
+            delayMs,
+            nextAttemptAt: nextAttemptAt.toISOString(),
+          });
+        } else {
+          // Le pipeline de sanction n'est marque en echec que si on abandonne
+          // vraiment : sur un retry planifie, la sanction reste "en cours".
+          await markSanctionPipelineFailure(prisma, job as any, errorMessage);
+
+          await prisma.discordOutbox.update({
+            where: { id: job.id },
+            data: {
+              status: "FAILED",
+              attempt: attempts,
+              lastError: errorMessage,
+            },
+          });
+          log("outbox_job_failed", {
+            jobId: job.id,
+            type: job.type,
+            attempt: attempts,
+            maxAttempts,
+            reason:
+              kind === "permanent" ? "permanent_error"
+              : !isRetryableJobType(String(job.type)) ? "type_not_retryable"
+              : "max_attempts_reached",
+          });
+        }
       }
     }
   } catch (error) {
@@ -676,7 +758,7 @@ async function handleMemberDm(job: OutboxJob, discordClient: DiscordClient): Pro
   if (!discordId || !title) {
     throw new Error("MEMBER_DM: discordId ou title manquant");
   }
-  const ok = await sendMemberDm(discordClient, discordId, { title, body, url });
+  const ok = await sendMemberDm(discordClient, discordId, { title, body, url }, job.id);
   log(ok ? "member_dm_sent" : "member_dm_failed", { jobId: job.id, discordId });
 }
 
@@ -725,7 +807,15 @@ async function markSanctionPipelineFailure(
   await updateSanctionApplyState(prisma, sanctionId, false, errorMessage);
 }
 
-const WHITELIST_CHANNEL_ID = "1312846001194799274";
+/**
+ * Salon des annonces de whitelist.
+ *
+ * Configurable par WHITELIST_CHANNEL_ID pour pouvoir rediriger les annonces
+ * (test, changement de salon) sans recompiler. Sans la variable, on garde
+ * exactement la valeur historique : comportement inchange par defaut.
+ */
+const WHITELIST_CHANNEL_ID =
+  String(process.env.WHITELIST_CHANNEL_ID ?? "").trim() || "1312846001194799274";
 
 async function handleRecruitmentDecision(
   job: OutboxJob,
@@ -748,7 +838,14 @@ async function handleRecruitmentDecision(
   // Clé du ticket : lue une seule fois, elle sert au log ET à l'archivage.
   const ticketRow = await prisma.recruitment
     .findUnique({ where: { id: String(job.meta.ticketId) }, select: { ticketKey: true } })
-    .catch(() => null);
+    .catch((err: unknown) => {
+      // Echec -> ticketKey null dans les logs, sans indiquer pourquoi.
+      log("recruitment_ticketkey_lookup_failed", {
+        ticketId: String(job.meta.ticketId),
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
   const ticketKeyForLog = ticketRow?.ticketKey ?? null;
 
   // 1. Log dans le salon de logs staff
@@ -766,7 +863,7 @@ async function handleRecruitmentDecision(
     threadId: typeof discordThreadId === "string" ? discordThreadId : null,
   });
 
-  await channel.send({ embeds: [embed] });
+  await channel.send({ embeds: [embed], ...nonceOptions(job.id, "logs") });
 
   // 1bis. Copie du ticket en base, AVANT que le fil ne soit verrouillé puis
   //       archivé. C'est aussi la matière de l'explication au candidat et de
@@ -816,7 +913,7 @@ async function handleRecruitmentDecision(
       if (explanation) {
         rejectEmbed.addFields({ name: "Ce qui a motivé la décision", value: explanation });
       }
-      await user.send({ embeds: [rejectEmbed] });
+      await user.send({ embeds: [rejectEmbed], ...nonceOptions(job.id, "dm") });
       dmOk = true;
     } catch {
       // DM fermés / utilisateur introuvable — non bloquant.
@@ -844,6 +941,7 @@ async function handleRecruitmentDecision(
               note: explanation,
             }),
           ],
+          ...nonceOptions(job.id, "explanation"),
         })
         .catch(() => {});
     }
@@ -943,7 +1041,7 @@ async function handleRecruitmentDecision(
             .setTimestamp();
         }
 
-        await (wlChannel as TextChannel).send({ embeds: [wlEmbed] });
+        await (wlChannel as TextChannel).send({ embeds: [wlEmbed], ...nonceOptions(job.id, "whitelist") });
         log("RECRUITMENT_WHITELIST_EMBED_SENT", {
           candidateRpName,
           recruiterLabel,
@@ -978,13 +1076,13 @@ async function handleRecruitmentDecision(
 
     if (ticketChannel.isThread()) {
       // Thread: send message, lock, archive
-      await ticketChannel.send(closingMessage).catch(() => null);
+      await ticketChannel.send({ content: closingMessage, ...nonceOptions(job.id, "closing") }).catch(() => null);
       if (!ticketChannel.locked) await ticketChannel.setLocked(true);
       if (!ticketChannel.archived) await ticketChannel.setArchived(true);
       log("RECRUITMENT_THREAD_ARCHIVED", { discordThreadId, type: "thread" });
     } else if (ticketChannel.type === ChannelType.GuildText) {
       // Text channel: send message then delete
-      await (ticketChannel as TextChannel).send(closingMessage).catch(() => null);
+      await (ticketChannel as TextChannel).send({ content: closingMessage, ...nonceOptions(job.id, "closing") }).catch(() => null);
       await (ticketChannel as TextChannel).delete(`Recrutement clôturé (${decision})`).catch((err) => {
         log("RECRUITMENT_TEXT_CHANNEL_DELETE_FAILED", { discordThreadId, error: err instanceof Error ? err.message : String(err) });
       });
@@ -1043,7 +1141,7 @@ async function handleComplaintDecision(job: OutboxJob, channel: TextChannel): Pr
     try {
       const thread = await channel.client.channels.fetch(String(threadId));
       if (thread && thread.isThread()) {
-        await thread.send({ embeds: [buildEmbed()] });
+        await thread.send({ embeds: [buildEmbed()], ...nonceOptions(job.id, "thread") });
         await thread.setArchived(true, "Plainte traitée via le panel");
         threadClosed = true;
       }
@@ -1059,6 +1157,7 @@ async function handleComplaintDecision(job: OutboxJob, channel: TextChannel): Pr
       await user.send({
         content: "📨 Ta plainte a été traitée par l'État-Major **Los Esperados** :",
         embeds: [buildEmbed()],
+        ...nonceOptions(job.id, "dm"),
       });
       authorNotified = true;
     } catch (err) {
@@ -1084,7 +1183,7 @@ async function handleComplaintDecision(job: OutboxJob, channel: TextChannel): Pr
       inline: true,
     }
   );
-  await channel.send({ embeds: [logEmbed] });
+  await channel.send({ embeds: [logEmbed], ...nonceOptions(job.id, "log") });
 }
 
 async function handleSanctionApply(
@@ -1309,7 +1408,7 @@ async function handleSanctionApply(
       const memberSteamId = sanction.member?.steamId?.trim() ?? "";
       if (/^\d{17}$/.test(memberSteamId)) {
         try {
-          const base = (process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+          const base = getInternalPanelUrl();
           const secret = process.env.INGEST_SECRET ?? "";
           if (base && secret) {
             const res = await fetch(`${base}/api/internal/lyg/family-remove`, {
@@ -1530,7 +1629,7 @@ async function handleSanctionApply(
     const memberSteamId = sanction.member?.steamId?.trim() ?? "";
     if (/^\d{17}$/.test(memberSteamId)) {
       try {
-        const base = (process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+        const base = getInternalPanelUrl();
         const secret = process.env.INGEST_SECRET ?? "";
         if (base && secret) {
           const res = await fetch(`${base}/api/internal/lyg/family-remove`, {
@@ -1653,7 +1752,7 @@ async function handleSanctionNotify(job: OutboxJob, channel: TextChannel): Promi
     )
     .setTimestamp(timestamp);
 
-  await channel.send({ embeds: [embed] });
+  await channel.send({ embeds: [embed], ...nonceOptions(job.id) });
 }
 
 async function handleBankDebtPingSingle(
@@ -1661,8 +1760,10 @@ async function handleBankDebtPingSingle(
   prisma: PrismaClient,
   discordClient: DiscordClient
 ): Promise<void> {
+  // job.familyId peut encore porter un slug pour les jobs historiques :
+  // on normalise avant de lire la configuration (convention CUID).
   const config = await (prisma as any).discordConfig.findFirst({
-    where: { familyId: job.familyId },
+    where: { familyId: await toFamilyCuid(prisma, job.familyId) },
     select: { bankAlertsChannelId: true },
   });
   const channelId = String(config?.bankAlertsChannelId ?? "").trim();
@@ -1715,6 +1816,7 @@ async function handleBankDebtPingSingle(
     content: pingContent,
     embeds: [embed],
     allowedMentions: { users: discordId ? [String(discordId)] : [] },
+    ...nonceOptions(job.id),
   });
   log("bank_debt_ping_single_sent", { jobId: job.id, discordId, rpName, deficitAmount: amount });
 }
@@ -1724,8 +1826,10 @@ async function handleBankDebtPingBatch(
   prisma: PrismaClient,
   discordClient: DiscordClient
 ): Promise<void> {
+  // job.familyId peut encore porter un slug pour les jobs historiques :
+  // on normalise avant de lire la configuration (convention CUID).
   const config = await (prisma as any).discordConfig.findFirst({
-    where: { familyId: job.familyId },
+    where: { familyId: await toFamilyCuid(prisma, job.familyId) },
     select: { bankAlertsChannelId: true, bankDebtPingThreshold: true },
   });
   const channelId = String(config?.bankAlertsChannelId ?? "").trim();
@@ -1819,6 +1923,7 @@ async function handleBankDebtPingBatch(
     content: pingContent,
     embeds: [embed],
     allowedMentions: { users: mentionIds },
+    ...nonceOptions(job.id),
   });
   log("bank_debt_ping_batch_sent", { jobId: job.id, threshold: effectiveThreshold, count: rows.length });
 }
@@ -1846,9 +1951,9 @@ async function handleGenericMessage(
   let sentMessage: { id: string } | null = null;
   if (rawEmbeds) {
     const builtEmbeds = rawEmbeds.map((embed) => buildEmbedFromPayload((embed ?? {}) as EmbedPayload));
-    sentMessage = await channel.send({ content: content || undefined, embeds: builtEmbeds });
+    sentMessage = await channel.send({ content: content || undefined, embeds: builtEmbeds, ...nonceOptions(job.id) });
   } else {
-    sentMessage = await channel.send(content);
+    sentMessage = await channel.send({ content, ...nonceOptions(job.id) });
   }
 
   // Sauvegarder le messageId Discord sur l'Absence si c'est un message d'absence

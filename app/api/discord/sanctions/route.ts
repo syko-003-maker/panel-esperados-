@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
+import { getPublicPanelUrl } from "@/lib/urls";
 
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
 
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Build panel URL
-    const panelBaseUrl = process.env.NEXTAUTH_URL ?? process.env.PANEL_BASE_URL ?? "";
+    const panelBaseUrl = getPublicPanelUrl();
     const panelUrl = panelBaseUrl ? `${panelBaseUrl}/staff/sanctions?id=${sanction.id}` : null;
 
     return NextResponse.json({

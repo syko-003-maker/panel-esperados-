@@ -168,7 +168,13 @@ export async function POST(req: Request) {
         body: `Ta plainte${updated.targetName ? ` contre ${updated.targetName}` : ""} a été ${label} par ${staffMember.rpName ?? "le staff"}.`,
         url: "/dashboard",
         tag: "complaint-decision-" + updated.id,
-      }).catch(() => {});
+      }).catch((err: unknown) => {
+        // Notification perdue : degradation silencieuse d'un canal d'alerte.
+        console.warn("[push] notification non delivree", {
+          event: "complaint_decision",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
     
     return NextResponse.json({

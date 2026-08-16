@@ -4,7 +4,7 @@
  */
 
 import { prisma } from "@/lib/db";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, toFamilyCuid } from "@/lib/family";
 import { debug, error as logError } from "@/lib/logger";
 
 // ─────────────────────────────────────────────────────────────
@@ -69,7 +69,9 @@ export async function createAuditLog(input: AuditLogInput): Promise<string | nul
   try {
     const log = await prisma.auditLog.create({
       data: {
-        familyId: input.familyId ?? DEFAULT_FAMILY_ID,
+        // Le slug est accepté en entrée (nombreux appelants historiques), mais
+        // la ligne écrite porte toujours le cuid — convention du projet.
+        familyId: await toFamilyCuid(input.familyId ?? DEFAULT_FAMILY_ID),
         actorType: input.actorType,
         actorId: input.actorId ?? null,
         actorMemberId: input.actorMemberId ?? null,

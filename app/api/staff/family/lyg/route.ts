@@ -12,6 +12,31 @@ import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { createAuditLog } from "@/lib/audit";
 import { isCurrentSessionChefFamille } from "@/lib/rbac";
 import { CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID, getDiscordRolesForUser } from "@/lib/discord-roles";
+import { logWarn } from "@/lib/obs";
+
+/**
+ * Refus tracé.
+ *
+ * Cette route rejetait sans rien écrire nulle part : l'audit `LYG_FAMILY_*`
+ * n'est produit qu'APRÈS toutes les gardes, donc une action bloquée en amont
+ * ne laissait aucune trace — ni audit, ni log. Une tentative de whitelist
+ * échouée était rigoureusement indiagnosticable après coup.
+ *
+ * La réponse renvoyée est inchangée (même corps, même statut) : seule une
+ * ligne de log est ajoutée, nommant la garde qui a bloqué.
+ *
+ * Aucun secret n'est journalisé : jamais le cookie LYG ni son chiffré, jamais
+ * le contenu de `LygCredential` au-delà de l'identité de son propriétaire.
+ */
+function refuse(
+  guard: string,
+  status: number,
+  body: Record<string, unknown>,
+  context: Record<string, unknown> = {}
+): NextResponse {
+  logWarn("lyg_family_action_refused", { guard, status, ...context });
+  return NextResponse.json(body, { status });
+}
 
 /**
  * POST /api/staff/family/lyg
@@ -41,17 +66,22 @@ export async function POST(req: Request) {
     session.discordId ?? session.user?.discordId ?? null;
   const callerName = session.user?.name ?? null;
   if (!callerDiscordId) {
-    return NextResponse.json({ ok: false, error: "MISSING_DISCORD_ID" }, { status: 401 });
+    return refuse("MISSING_DISCORD_ID", 401, { ok: false, error: "MISSING_DISCORD_ID" });
   }
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
-    return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
+    return refuse("INVALID_BODY", 400, { ok: false, error: "INVALID_BODY" }, { callerDiscordId });
   }
 
   const action = String((body as any).action ?? "").toLowerCase();
   if (!ALLOWED_ACTIONS.has(action)) {
-    return NextResponse.json({ ok: false, error: "INVALID_ACTION" }, { status: 400 });
+    return refuse(
+      "INVALID_ACTION",
+      400,
+      { ok: false, error: "INVALID_ACTION" },
+      { callerDiscordId, action }
+    );
   }
 
   // ── Permission par action ───────────────────────────────────────────────
@@ -84,20 +114,32 @@ export async function POST(req: Request) {
       if (mirror && !mirror.discordLastError && mirror.discordInGuild) {
         callerRoles = (mirror.discordRoleIds as string[]) ?? [];
       }
+      let mirrorRolesUsed = callerRoles.length > 0;
       if (callerRoles.length === 0) {
         callerRoles = await getDiscordRolesForUser(callerDiscordId);
+        mirrorRolesUsed = false;
       }
       const chefRoles = [CHEF_FAMILLE_ROLE_ID, SOUS_CHEF_FAMILLE_ROLE_ID].filter(Boolean);
       const isChef = callerRoles.some((r) => chefRoles.includes(r));
       if (!isChef) {
-        return NextResponse.json(
+        return refuse(
+          "CHEF_FAMILLE_REQUIRED",
+          403,
           {
             ok: false,
             error: "CHEF_FAMILLE_REQUIRED",
             message:
               "Seuls le Chef famille et le Sous-Chef famille peuvent reclasser les WL. L'EM peut consulter et utiliser Supprimer.",
           },
-          { status: 403 }
+          // `rolesFrom` distingue les deux causes possibles d'un refus ici :
+          // un vrai manque de rôle, ou un miroir Discord vide/en erreur qui a
+          // forcé le repli sur l'appel Discord live.
+          {
+            callerDiscordId,
+            action,
+            rolesFrom: mirrorRolesUsed ? "db_mirror" : "discord_live",
+            callerRoleCount: callerRoles.length,
+          }
         );
       }
     }
@@ -105,7 +147,15 @@ export async function POST(req: Request) {
 
   const steamId = String((body as any).steamId ?? "").trim();
   if (!/^\d{17}$/.test(steamId)) {
-    return NextResponse.json({ ok: false, error: "INVALID_STEAMID" }, { status: 400 });
+    // On journalise la longueur, pas la valeur brute : suffisant pour
+    // distinguer « champ vide » de « SteamID mal formé » sans recopier une
+    // donnée personnelle dans les logs.
+    return refuse(
+      "INVALID_STEAMID",
+      400,
+      { ok: false, error: "INVALID_STEAMID" },
+      { callerDiscordId, action, steamIdLength: steamId.length }
+    );
   }
 
   const currentClassRaw = (body as any).currentClass;
@@ -114,9 +164,13 @@ export async function POST(req: Request) {
   if (needsClass) {
     const n = Number(currentClassRaw);
     if (!Number.isInteger(n) || n < 1 || n > 5) {
-      return NextResponse.json(
+      return refuse(
+        "INVALID_CURRENT_CLASS",
+        400,
         { ok: false, error: "INVALID_CURRENT_CLASS", message: "currentClass 1..5 requis pour up/down" },
-        { status: 400 }
+        // Cause typique : la ligne cliquée avait `wlClass` à null, le client
+        // envoie alors `currentClass: null` et l'action est refusée.
+        { callerDiscordId, action, currentClassRaw: String(currentClassRaw ?? "") }
       );
     }
     currentClass = n;
@@ -129,15 +183,19 @@ export async function POST(req: Request) {
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
   const cred = await prisma.lygCredential.findUnique({ where: { familyId: familyDbId } });
   if (!cred) {
-    return NextResponse.json(
+    return refuse(
+      "LYG_COOKIE_NOT_CONFIGURED",
+      409,
       { ok: false, error: "LYG_COOKIE_NOT_CONFIGURED", message: "Aucun cookie LYG configuré. Va dans Paramètres → LYG." },
-      { status: 409 }
+      { callerDiscordId, action }
     );
   }
   if (cred.expired) {
-    return NextResponse.json(
+    return refuse(
+      "LYG_COOKIE_EXPIRED",
+      409,
       { ok: false, error: "LYG_COOKIE_EXPIRED", message: "Le cookie LYG est expiré. Redonne-en un nouveau." },
-      { status: 409 }
+      { callerDiscordId, action, cookieOwnerDiscordId: cred.ownerDiscordId }
     );
   }
   // Le cookie est utilisable par son propriétaire OU par la direction famille
@@ -145,13 +203,15 @@ export async function POST(req: Request) {
   // le cookie partagé du Chef.
   const isLeadership = await isCurrentSessionChefFamille();
   if (cred.ownerDiscordId !== callerDiscordId && !isLeadership) {
-    return NextResponse.json(
+    return refuse(
+      "NOT_COOKIE_OWNER",
+      403,
       {
         ok: false,
         error: "NOT_COOKIE_OWNER",
         message: `Le cookie LYG appartient à ${cred.ownerName ?? cred.ownerDiscordId}. Seuls lui, le Chef et le Sous-Chef famille peuvent l'utiliser.`,
       },
-      { status: 403 }
+      { callerDiscordId, action, cookieOwnerDiscordId: cred.ownerDiscordId, isLeadership }
     );
   }
 

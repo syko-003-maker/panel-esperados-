@@ -80,7 +80,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     body: `${scope.rpName || "Un membre"} a justifié son absence.`,
     url: "/staff/absences",
     tag: "justif-absence-" + justification.id,
-  }).catch(() => {});
+  }).catch((err: unknown) => {
+    // Notification perdue : degradation silencieuse d'un canal d'alerte.
+    console.warn("[push] notification non delivree", {
+      event: "absence_justified",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   return NextResponse.json({ ok: true, justification });
 }

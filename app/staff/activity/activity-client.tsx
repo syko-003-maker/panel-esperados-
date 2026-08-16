@@ -505,7 +505,7 @@ export default function ActivityClient() {
                   </td>
                   <td style={{ padding: 8 }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {member.flags.includes("INACTIVE_14D") ? (
+                      {member.flags.includes("INACTIVE") ? (
                         <span style={badgeStyle("#fee2e2", "#991b1b")}>INACTIVE</span>
                       ) : null}
                       {member.flags.includes("LOW_PLAYTIME") ? (

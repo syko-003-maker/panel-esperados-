@@ -1,6 +1,7 @@
 import { getTemplate, renderTemplate } from "@/lib/discord/discord";
+import { getPublicPanelUrl } from "@/lib/urls";
 
-const PANEL_BASE_URL = process.env.PANEL_BASE_URL ?? process.env.NEXTAUTH_URL ?? "";
+const PANEL_BASE_URL = getPublicPanelUrl();
 
 type MemberLike = {
   rpName: string | null;

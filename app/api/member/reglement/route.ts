@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getMemberScopeOrNull } from "@/server/member/scope";
+import { getInternalWorkerUrl } from "@/lib/urls";
 
 /**
  * POST /api/member/reglement — Assistant règlement (même moteur que la
@@ -9,7 +10,7 @@ import { getMemberScopeOrNull } from "@/server/member/scope";
  * PARTAGÉS entre Discord et le site, par discordId).
  */
 
-const WORKER_INTERNAL_URL = process.env.WORKER_INTERNAL_URL || "http://127.0.0.1:3001";
+const WORKER_INTERNAL_URL = getInternalWorkerUrl();
 
 export async function POST(req: NextRequest) {
   const session = await auth();

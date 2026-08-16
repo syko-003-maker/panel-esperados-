@@ -3,6 +3,7 @@
  * Anonymization and data purge functions
  */
 
+import { toFamilyCuid } from "@/lib/family";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { createHash } from "crypto";
@@ -231,7 +232,8 @@ export async function purgeGdprData(
       // ─────────────────────────────────────────────────────────────
       await tx.auditLog.create({
         data: {
-          familyId: "esperados",
+          // Convention CUID : le slug ne doit plus atteindre la base.
+          familyId: await toFamilyCuid("esperados"),
           actorType: "staff",
           actorId,
           actorName,

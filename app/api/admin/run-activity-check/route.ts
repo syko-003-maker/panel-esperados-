@@ -5,6 +5,7 @@ import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { enqueueSanctionApply } from "@/lib/discord/discord";
 import { evaluateSanctionRules } from "@/lib/sanction-rules";
 import { getSanctionExpirationDate } from "@/lib/sanctions";
+import { toFamilyCuid } from "@/lib/family";
 
 /**
  * POST /api/admin/run-activity-check
@@ -14,7 +15,10 @@ export async function POST(req: NextRequest) {
   const guard = await requireAdmin();
   if (guard instanceof Response) return guard;
 
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  // Chemin DORMANT (ENABLE_AUTO_SANCTION_RULES desactive) mais normalise :
+  // il alimente evaluateSanctionRules(), qui cree des Sanction et des jobs
+  // outbox. Une activation future ne doit pas reintroduire de slug.
+  const familyId = await toFamilyCuid(req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
 
   const results = {
     scanned: 0,

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireStaffAccess, canAccessStaffPanel, getStaffUser } from "@/lib/rbac";
 import { getUserDiscordIdFromSession } from "@/server/auth/discord";
 import { getDiscordRolesForUser } from "@/lib/discord-roles";
+import { toFamilyCuid } from "@/lib/family";
 
 /**
  * GET /api/debug/rbac
@@ -31,7 +32,7 @@ export async function GET() {
 
     // Get all staff roles with permissions
     const staffRoles = await prisma.staffRole.findMany({
-      where: { familyId: "esperados" },
+      where: { familyId: await toFamilyCuid("esperados") },
       include: {
         permissions: {
           include: {
@@ -52,7 +53,7 @@ export async function GET() {
 
     // Get all staff users
     const staffUsers = await prisma.staffUser.findMany({
-      where: { familyId: "esperados" },
+      where: { familyId: await toFamilyCuid("esperados") },
       include: {
         role: {
           select: {

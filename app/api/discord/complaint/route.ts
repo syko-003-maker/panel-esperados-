@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { randomUUID } from "crypto";
+import { toFamilyCuid } from "@/lib/family";
 
 const TICKET_PARENT_CHANNEL = process.env.DISCORD_TICKETS_CATEGORY_ID || null;
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
@@ -65,7 +66,10 @@ export async function POST(req: Request) {
         title: payload.title,
         description: payload.description,
         targetName: payload.targetDiscordId, // Store as targetName
-        familyId: "esperados",
+        // Depuis l'ajout de la FK Complaint→Family, Prisma n'accepte plus de
+        // melanger un scalaire (`familyId`) et une relation (`createdBy`)
+        // dans le meme create : on passe donc par `family: { connect }`.
+        family: { connect: { id: await toFamilyCuid("esperados") } },
         authorDiscordId: payload.authorDiscordId,
         ticketChannelId: payload.ticketChannelId,
 
@@ -89,7 +93,7 @@ export async function POST(req: Request) {
 
     await prisma.discordOutbox.create({
       data: {
-        familyId: "esperados",
+        familyId: await toFamilyCuid("esperados"),
         type: "SANCTION_NOTIFY",
         status: "PENDING",
         attempt: 0,

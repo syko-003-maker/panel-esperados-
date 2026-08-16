@@ -1,5 +1,9 @@
 import { debug, error, warn } from "@/lib/logger";
 import { getStaffRoleIds, isDemoted } from "@/lib/discord-rbac";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appels Discord sur chemin utilisateur : 10 s. */
+const DISCORD_TIMEOUT_MS = 10_000;
 
 const ROLE_ID_REGEX = /^[0-9]{17,20}$/;
 
@@ -168,10 +172,11 @@ async function fetchAllGuildMembers(guildId: string): Promise<Map<string, string
       pageCount++;
       const url = `https://discord.com/api/v10/guilds/${guildId}/members?limit=1000&after=${afterId}`;
       
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         headers: {
           Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
         },
+        timeoutMs: DISCORD_TIMEOUT_MS,
       });
 
       // Check rate limit
@@ -342,12 +347,13 @@ export async function getDiscordRolesForUserWithStatus(
   
   const fetchPromise: Promise<DiscordRoleResult> = (async (): Promise<DiscordRoleResult> => {
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://discord.com/api/v10/guilds/${guildId}/members/${discordId}`,
         {
           headers: {
             Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
           },
+          timeoutMs: DISCORD_TIMEOUT_MS,
         }
       );
 

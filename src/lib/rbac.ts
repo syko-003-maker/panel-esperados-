@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/db";
 import { getSession } from "@/auth";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
+import { toFamilyCuid } from "@/lib/family";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -645,8 +646,11 @@ export async function requireAnyPermission(
 export async function syncDiscordRoleToPanel(
   discordId: string,
   discordRoleIds: string[],
-  familyId: string = DEFAULT_FAMILY_ID
+  familyIdOrSlug: string = DEFAULT_FAMILY_ID
 ): Promise<StaffUserInfo | null> {
+  // StaffUser porte une FK vers Family.id : un slug serait rejete par la base.
+  const familyId = await toFamilyCuid(familyIdOrSlug);
+
   // Get all staff roles with Discord role mapping, ordered by priority
   const staffRoles = await prisma.staffRole.findMany({
     where: {
@@ -714,8 +718,9 @@ export async function syncDiscordRoleToPanel(
 export async function linkUserToStaffUser(
   userId: string,
   discordId: string,
-  familyId: string = DEFAULT_FAMILY_ID
+  familyIdOrSlug: string = DEFAULT_FAMILY_ID
 ): Promise<void> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   await prisma.staffUser.updateMany({
     where: { familyId, discordId },
     data: { userId },

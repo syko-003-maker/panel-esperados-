@@ -1,6 +1,11 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 
-const BASE_URL = process.env.INGEST_BASE_URL!;
+/** Appels internes worker -> panel : 15 s. */
+const INTERNAL_TIMEOUT_MS = 15_000;
+
+const BASE_URL = getInternalPanelUrl();
 const SECRET = process.env.INGEST_SECRET!;
 
 type IngestResponse = { ok: true } | { ok: false; error: string };
@@ -14,8 +19,9 @@ export async function ingest(event: unknown): Promise<IngestResponse> {
   // Simple retry (2 attempts max)
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await fetch(`${BASE_URL}/api/ingest/tickets`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/api/ingest/tickets`, {
         method: "POST",
+        timeoutMs: INTERNAL_TIMEOUT_MS,
         headers: {
           "content-type": "application/json",
           "x-ingest-secret": SECRET,
@@ -55,8 +61,9 @@ export async function getOpenCount(
     url.searchParams.set("type", type);
     url.searchParams.set("discordId", discordId);
 
-    const res = await fetch(url.toString(), {
+    const res = await fetchWithTimeout(url.toString(), {
       method: "GET",
+      timeoutMs: INTERNAL_TIMEOUT_MS,
       headers: {
         "x-ingest-secret": SECRET,
       },

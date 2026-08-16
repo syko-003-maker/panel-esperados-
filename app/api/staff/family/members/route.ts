@@ -26,13 +26,25 @@ export async function GET() {
   const members = await prisma.member.findMany({
     where: {
       familyId: familyDbId,
+      // La vue liste les membres ACTUELLEMENT dans la famille, whitelistés ou
+      // non. Deux conditions, et non plus un OR sur l'état WL :
+      //
+      //  - `isActive` fait entrer les membres sans aucune WL. Sans eux, la page
+      //    ne savait qu'ajuster la classe de gens DÉJÀ dans la famille : elle ne
+      //    pouvait pas y faire entrer quelqu'un, faute de ligne à cliquer. Un
+      //    recruté accepté passe `isActive: true` dès la transaction, donc avant
+      //    même d'apparaître au snapshot LYG — le cas à rattraper à la main.
+      //
+      //  - `missingFromLygSince: null` fait sortir les partis. Auparavant un
+      //    ancien membre restait listé avec son ancienne classe et paraissait
+      //    toujours whitelisté : deux fiches étaient dans ce cas, dont une
+      //    partie le 26/07 encore affichée WL 1 mi-août.
+      //
+      // Les 194 fiches d'anciens membres restent donc exclues, et leur
+      // `wlClassIntent` éventuel est conservé en base sans être présenté.
       AND: [
-        {
-          OR: [
-            { wlClass: { not: null } },
-            { wlClassIntent: { not: null } },
-          ],
-        },
+        { isActive: true },
+        { missingFromLygSince: null },
         // Masqués : hors de la vue Famille WL. Leur état WL réel côté jeu
         // n'est pas modifié — on cesse seulement de l'afficher.
         //

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendDiscordAlert } from "@/lib/alerts";
+import { toFamilyCuid } from "@/lib/family";
+import { openAlertIfNew, resolveAlertIfOpen, formatDuration } from "@/lib/alert-state";
 
 /**
  * GET /api/cron/worker-watchdog
@@ -18,9 +20,56 @@ import { sendDiscordAlert } from "@/lib/alerts";
  *   401 si secret manquant
  */
 
-const FAMILY_ID = "esperados";
+const FAMILY_SLUG = "esperados";
 const HEARTBEAT_MAX_AGE_MS = 180_000;
 const MEMORY_WATCH_MB = Number(process.env.MEMORY_WATCH_MB ?? 600);
+
+// ── Présentation des alertes de supervision ─────────────────────────────────
+//
+// Palette reprise de `ticketLogEmbed.ts` : la couleur porte le sens, jamais la
+// déco. Le retour à la normale était bleu (`severity: "info"`) alors que son
+// propre emoji annonçait du vert — on fixe la couleur explicitement.
+const TONE_DOWN = 0xed4245;
+const TONE_UP = 0x3ba55d;
+const SUPERVISION_FOOTER = "Los Esperados • Supervision";
+
+// Le staff lit « bot Discord », pas « worker » : le vocabulaire d'architecture
+// interne n'a pas à fuiter dans un salon. `discord-worker` reste réservé aux
+// logs et à l'AlertEvent, qui eux s'adressent à l'exploitant.
+const IMPACT_DOWN = "les messages automatisés peuvent rester en attente";
+
+/** Horodatage relatif Discord : « il y a 4 minutes », dans le fuseau du lecteur. */
+function discordRelative(date: Date) {
+  return `<t:${Math.floor(date.getTime() / 1000)}:R>`;
+}
+
+/**
+ * Prépare un message d'exception pour l'affichage dans un salon.
+ *
+ * Deux précautions, dans cet ordre :
+ *
+ * 1. Masquer les identifiants. Une erreur d'initialisation Prisma peut recracher
+ *    la chaîne de connexion, mot de passe compris — c'est précisément la classe
+ *    de fuite qu'on cherche à éviter ailleurs dans le projet. On ne fait pas
+ *    confiance au contenu d'un message d'erreur.
+ * 2. Neutraliser les accents graves. Prisma en met autour des identifiants
+ *    (« Can't reach database server at `127.0.0.1` ») ; à l'intérieur d'un code
+ *    inline Discord, ils referment le bloc en plein milieu et le reste de la
+ *    ligne part en texte brut.
+ * 3. Tronquer. Une stack Prisma dépasse largement ce qu'une ligne de description
+ *    peut porter.
+ */
+function safeErrorDetail(raw: string | null, max = 200) {
+  if (!raw) return null;
+  const masked = raw
+    // scheme://user:motdepasse@hote  →  scheme://user:***@hote
+    .replace(/(\w+:\/\/[^:/\s]+):[^@\s]*@/g, "$1:***@")
+    .replace(/`/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!masked) return null;
+  return masked.length <= max ? masked : `${masked.slice(0, max - 1)}…`;
+}
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,7 +94,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const hb = await (prisma as any).workerHeartbeat?.findUnique({
-      where: { familyId: FAMILY_ID },
+      where: { familyId: await toFamilyCuid(FAMILY_SLUG) },
       select: { lastSeenAt: true, workerName: true, meta: true },
     });
     if (hb?.lastSeenAt) {
@@ -60,11 +109,21 @@ export async function GET(req: NextRequest) {
   }
 
   if (!dbReachable) {
+    const detail = safeErrorDetail(dbError);
     await sendDiscordAlert({
       key: "watchdog_db_unreachable",
       severity: "critical",
-      title: "Watchdog : DB injoignable",
-      fields: { error: dbError },
+      title: "🔴 Base de données indisponible",
+      color: TONE_DOWN,
+      footer: SUPERVISION_FOOTER,
+      lines: [
+        { label: "Signal", value: "le panel ne parvient pas à joindre la base" },
+        { label: "Impact", value: "le site et les traitements automatisés sont interrompus" },
+        // Seule ligne technique, et la seule en code inline : c'est un message
+        // machine, pas de la prose. Absente si l'erreur est vide — `renderLines`
+        // n'affiche jamais un libellé sans valeur.
+        detail ? { label: "Détail", value: `\`${detail}\`` } : null,
+      ],
     });
     return NextResponse.json({
       ok: false,
@@ -75,12 +134,28 @@ export async function GET(req: NextRequest) {
   }
 
   if (!lastSeenAt) {
-    await sendDiscordAlert({
-      key: "watchdog_no_heartbeat",
-      severity: "error",
-      title: "Watchdog : aucun heartbeat worker",
-      fields: { familyId: FAMILY_ID, hint: "Worker pas encore démarré ou crash au boot ?" },
+    // Meme logique persistante : la ligne WorkerHeartbeat est supprimee par le
+    // worker a l'arret propre (liberation du verrou), donc son absence est le
+    // signal normal d'un worker eteint.
+    const isNew = await openAlertIfNew({
+      type: "worker.offline",
+      severity: "critical",
+      message: "Aucune ligne WorkerHeartbeat : worker eteint ou jamais demarre",
+      meta: { familySlug: FAMILY_SLUG },
     });
+    if (isNew) {
+      await sendDiscordAlert({
+        key: "watchdog_no_heartbeat",
+        severity: "error",
+        title: "🔴 Bot Discord hors ligne",
+        color: TONE_DOWN,
+        footer: SUPERVISION_FOOTER,
+        lines: [
+          { label: "Signal", value: "aucun heartbeat détecté" },
+          { label: "Impact", value: IMPACT_DOWN },
+        ],
+      });
+    }
     return NextResponse.json({
       ok: false,
       workerAlive: false,
@@ -91,18 +166,45 @@ export async function GET(req: NextRequest) {
   const ageMs = Date.now() - lastSeenAt.getTime();
   const workerAlive = ageMs < HEARTBEAT_MAX_AGE_MS;
 
+  // Etat persistant : une seule alerte par panne, + une alerte au retour.
+  // Sans ca, le timer (5 min) notifierait a chaque passage tant que la panne dure.
   if (!workerAlive) {
-    await sendDiscordAlert({
-      key: "watchdog_worker_stale",
-      severity: "error",
-      title: "Watchdog : worker Discord stale",
-      fields: {
-        workerName: workerName ?? "discord-worker",
-        lastSeenAt: lastSeenAt.toISOString(),
-        ageSeconds: Math.round(ageMs / 1000),
-        thresholdSeconds: HEARTBEAT_MAX_AGE_MS / 1000,
-      },
+    const isNew = await openAlertIfNew({
+      type: "worker.offline",
+      severity: "critical",
+      message: `Worker Discord sans battement depuis ${Math.round(ageMs / 1000)} s`,
+      meta: { workerName, lastSeenAt: lastSeenAt.toISOString(), ageMs },
     });
+    if (isNew) {
+      await sendDiscordAlert({
+        key: "watchdog_worker_stale",
+        severity: "error",
+        title: "🔴 Bot Discord ne répond plus",
+        color: TONE_DOWN,
+        footer: SUPERVISION_FOOTER,
+        lines: [
+          { label: "Dernier battement", value: discordRelative(lastSeenAt) },
+          { label: "Seuil", value: `${HEARTBEAT_MAX_AGE_MS / 1000} s` },
+          { label: "Impact", value: IMPACT_DOWN },
+        ],
+      });
+    }
+  } else {
+    const downSeconds = await resolveAlertIfOpen("worker.offline");
+    if (downSeconds !== null) {
+      await sendDiscordAlert({
+        key: "watchdog_worker_recovered",
+        severity: "info",
+        title: "✅ Bot Discord de nouveau opérationnel",
+        color: TONE_UP,
+        footer: SUPERVISION_FOOTER,
+        lines: [
+          { label: "Indisponibilité", value: formatDuration(downSeconds) },
+          { label: "Battement", value: discordRelative(lastSeenAt) },
+          { label: "État", value: "les traitements ont repris normalement" },
+        ],
+      });
+    }
   }
 
   // ── Surveillance mémoire ────────────────────────────────────────────

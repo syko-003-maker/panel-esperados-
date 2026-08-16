@@ -229,7 +229,15 @@ export default function FamilyClient({
 
   const pendingCount = rows.filter((r) => r.hasAnyDiff).length;
   const ownerCount = rows.filter((r) => r.wlOwnerIntent).length;
-  const byClass = (n: number) => rows.filter((r) => r.wlClassIntent === n).length;
+  // Deux compteurs distincts, là où un seul comptait les intentions sans le
+  // dire. Le libellé des tuiles indique désormais lequel est affiché : « WL 2 »
+  // sur un décompte d'intentions donnait un chiffre qui pouvait ne correspondre
+  // à aucun état réel côté LYG.
+  const byRealClass = (n: number) => rows.filter((r) => r.wlClass === n).length;
+  const byIntentClass = (n: number) => rows.filter((r) => r.wlClassIntent === n).length;
+  // En live, les tuiles décrivent l'état LYG ; en planification, le plan.
+  const byClass = liveMode ? byRealClass : byIntentClass;
+  const tileSuffix = liveMode ? " (LYG)" : " (planifié)";
 
   return (
     <div className="grid gap-6">
@@ -297,9 +305,9 @@ export default function FamilyClient({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <DataTile label="Membres" value={rows.length} tone="info" />
           <DataTile label="Owners" value={ownerCount} tone={ownerCount > 0 ? "success" : "default"} />
-          <DataTile label="WL 1 (Chef)" value={byClass(1)} tone="success" />
-          <DataTile label="WL 2" value={byClass(2)} tone="info" />
-          <DataTile label="WL 3-4" value={byClass(3) + byClass(4)} tone="warning" />
+          <DataTile label={`WL 1 (Chef)${tileSuffix}`} value={byClass(1)} tone="success" />
+          <DataTile label={`WL 2${tileSuffix}`} value={byClass(2)} tone="info" />
+          <DataTile label={`WL 3-4${tileSuffix}`} value={byClass(3) + byClass(4)} tone="warning" />
           <DataTile
             label="À appliquer LYG"
             value={pendingCount}
@@ -384,17 +392,38 @@ export default function FamilyClient({
                 row.discordId && row.discordAvatarHash
                   ? getDiscordAvatarUrl(row.discordId, row.discordAvatarHash)
                   : null;
-              const liveLabel = classLabel(row.wlClass);
+              // Un membre actif sans aucune WL est désormais listé (il ne
+              // l'était pas avant, faute de quoi on ne pouvait pas l'ajouter).
+              // « — » laissait croire à une donnée manquante : on nomme l'état.
+              const notWhitelisted = row.wlClass === null && row.wlClassIntent === null;
+              const liveLabel = notWhitelisted ? "Non whitelisté" : classLabel(row.wlClass);
+              // Entrée WL réelle côté LYG sans joueur identifié : le SteamID est
+              // dans la famille, mais LYG ne fournit ni nom RP ni Discord, donc
+              // la sync a créé une fiche vide. Ce n'est pas un déchet — c'est la
+              // seule trace visible qu'un compte Steam étranger est whitelisté.
+              // On la nomme au lieu de la laisser apparaître comme « Sans nom ».
+              const unidentified =
+                !row.rpName?.trim() && !row.discordId?.trim() && row.wlClass !== null;
               const intentLabel = classLabel(row.wlClassIntent);
               const ownerLive = row.wlOwner;
               const ownerIntent = row.wlOwnerIntent;
               const intentClass = row.wlClassIntent;
+              // Les boutons doivent raisonner sur ce que l'action va RÉELLEMENT
+              // modifier : en live elle part vers LYG, donc l'état de référence
+              // est `wlClass` ; en planification elle édite l'intention, donc
+              // c'est `wlClassIntent`.
+              //
+              // Avant, tout était piloté par l'intention, y compris en live :
+              // un membre réellement WL 4 dont l'intention était nulle se voyait
+              // proposer « Ajouter », ce qui appelait lygFamilyAdd sur quelqu'un
+              // déjà dans la famille.
+              const gatingClass = liveMode ? row.wlClass : intentClass;
               // Up/Down : réservé Chef Famille + Sous-Chef Famille (canManageRanks).
               // Add/Remove : tout writer (canWrite = Chef + Sous-Chef + EM).
-              const canRankUp = canWrite && canManageRanks && intentClass !== null && intentClass > 1;
-              const canRankDown = canWrite && canManageRanks && intentClass !== null && intentClass < 5;
-              const canAdd = canWrite && intentClass === null;
-              const canRemove = canWrite && intentClass !== null;
+              const canRankUp = canWrite && canManageRanks && gatingClass !== null && gatingClass > 1;
+              const canRankDown = canWrite && canManageRanks && gatingClass !== null && gatingClass < 5;
+              const canAdd = canWrite && gatingClass === null;
+              const canRemove = canWrite && gatingClass !== null;
 
               return (
                 <li
@@ -421,8 +450,17 @@ export default function FamilyClient({
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-slate-100">
-                          {row.rpName ?? "Sans nom"}
+                        <span
+                          className={`truncate text-sm font-semibold ${
+                            unidentified ? "text-amber-300" : "text-slate-100"
+                          }`}
+                          title={
+                            unidentified
+                              ? "Ce SteamID est whitelisté sur LYG mais n'est rattaché à aucun membre du panel."
+                              : undefined
+                          }
+                        >
+                          {unidentified ? "WL sans membre identifié" : (row.rpName ?? "Sans nom")}
                         </span>
                         {ownerIntent ? (
                           <Crown className="h-3.5 w-3.5 text-amber-300 drop-shadow-[0_0_6px_hsl(var(--sunset-gold)/0.55)]" />

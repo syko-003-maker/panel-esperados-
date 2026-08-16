@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
+import { getPublicPanelUrl } from "@/lib/urls";
 
 const WORKER_SECRET = process.env.DISCORD_WORKER_SECRET ?? process.env.INGEST_SECRET;
 
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (recruitment) {
-      const panelBaseUrl = process.env.NEXTAUTH_URL ?? process.env.PANEL_BASE_URL ?? "";
+      const panelBaseUrl = getPublicPanelUrl();
       const panelUrl = panelBaseUrl ? `${panelBaseUrl}/staff/recruitment/${recruitment.id}` : null;
 
       return NextResponse.json({
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (complaint) {
-      const panelBaseUrl = process.env.NEXTAUTH_URL ?? process.env.PANEL_BASE_URL ?? "";
+      const panelBaseUrl = getPublicPanelUrl();
       const panelUrl = panelBaseUrl ? `${panelBaseUrl}/staff/complaints/${complaint.id}` : null;
 
       return NextResponse.json({

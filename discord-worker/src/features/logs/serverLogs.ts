@@ -16,6 +16,11 @@ import {
 } from "discord.js";
 import { PrismaClient } from "@prisma/client";
 import { buildTicketLog } from "./ticketLogEmbed.js";
+import { getInternalPanelUrl } from "../../lib/urls.js";
+import { fetchWithTimeout } from "../../lib/http.js";
+
+/** Appels internes worker -> panel : 15 s. */
+const INTERNAL_TIMEOUT_MS = 15_000;
 
 const LOGS_CHANNEL_ID    = "1312846003627622522";
 const WELCOME_CHANNEL_ID = "1336727638227685426"; // 🎉 Bienvenue publique
@@ -340,11 +345,12 @@ export async function onMemberLeave(member: GuildMember | PartialGuildMember): P
   // côté panel dans l'audit (LYG_FAMILY_REMOVE_AUTO_*).
   if (panelWlClass !== null && panelSteamId && /^\d{17}$/.test(panelSteamId)) {
     try {
-      const base = String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+      const base = getInternalPanelUrl();
       const secret = String(process.env.INGEST_SECRET ?? "").trim();
       if (base && secret) {
-        const res = await fetch(`${base}/api/internal/lyg/family-remove`, {
+        const res = await fetchWithTimeout(`${base}/api/internal/lyg/family-remove`, {
           method: "POST",
+          timeoutMs: INTERNAL_TIMEOUT_MS,
           headers: { "content-type": "application/json", "x-ingest-secret": secret },
           body: JSON.stringify({ steamId: panelSteamId, source: "discord_leave" }),
         });
@@ -1146,16 +1152,16 @@ export function setupServerLogs(client: Client): void {
   logsClient = client;
   // Logs
   client.on("guildMemberAdd",    (m)     => { onMemberJoin(m as GuildMember).catch((e) => console.error("[Logs] guildMemberAdd error:", e)); });
-  client.on("guildMemberRemove", (m)     => { onMemberLeave(m as GuildMember).catch(() => {}); });
+  client.on("guildMemberRemove", (m)     => { onMemberLeave(m as GuildMember).catch((e) => console.error("[Logs] guildMemberRemove error:", e)); });
   client.on("messageDelete",     (msg)   => { onMessageDelete(msg).catch((e) => console.error("[Logs] messageDelete error:", e)); });
   client.on("messageUpdate",     (o, n)  => onMessageUpdate(o, n));
   client.on("guildMemberUpdate", (o, n)  => {
-    onScreeningComplete(o, n as GuildMember).catch(() => {});
-    onMemberUpdate(o, n as GuildMember).catch(() => {});
+    onScreeningComplete(o, n as GuildMember).catch((e) => console.error("[Logs] screeningComplete error:", e));
+    onMemberUpdate(o, n as GuildMember).catch((e) => console.error("[Logs] guildMemberUpdate error:", e));
   });
   client.on("guildBanAdd",       (ban)   => { onBanAdd(ban as any).catch((e) => console.error("[Logs] onBanAdd error:", e)); });
   client.on("guildBanRemove",    (ban)   => { onBanRemove(ban as any).catch((e) => console.error("[Logs] onBanRemove error:", e)); });
-  client.on("voiceStateUpdate",  (o, n)  => { onVoiceStateUpdate(o, n).catch(() => {}); });
+  client.on("voiceStateUpdate",  (o, n)  => { onVoiceStateUpdate(o, n).catch((e) => console.error("[Logs] voiceStateUpdate error:", e)); });
   client.on("roleUpdate",        (o, n)  => onRoleUpdate(o, n));
 
   // Tickets supprimés ou fermés hors des boutons du bot.

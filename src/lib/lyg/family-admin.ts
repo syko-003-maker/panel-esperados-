@@ -2,6 +2,39 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID, resolveFamilyId } from "@/lib/family";
 import { decryptSecret, encryptSecret, maskSecret } from "@/lib/crypto-secret";
+import { logInfo } from "@/lib/obs";
+
+/**
+ * Observation brute des réponses de families.lyg.fr.
+ *
+ * Le succès est aujourd'hui déduit du seul code HTTP (`302 || 200`). Or sur les
+ * 23 actions manuelles enregistrées entre le 25/05 et le 11/08/2026, LYG a
+ * répondu 302 dans 100 % des cas — succès comme échec éventuel. Le code ne
+ * saurait donc pas distinguer une opération réellement effectuée d'un simple
+ * retour au formulaire.
+ *
+ * `callLygAdmin` capture déjà `location` et `bodyText`, mais les jette. On se
+ * contente ici de les journaliser : de quoi établir plus tard, sur des réponses
+ * RÉELLES, la règle qui distingue succès et échec — plutôt que de la deviner
+ * maintenant sans avoir jamais observé un échec.
+ *
+ * Aucune décision n'est prise à partir de ces valeurs à ce stade.
+ */
+const OBSERVED_BODY_MAX_CHARS = 200;
+
+/** Neutralise tout ce qui ressemble à un identifiant de session dans une trace. */
+function redactSecrets(value: string): string {
+  return value
+    .replace(/PHPSESSID\s*=\s*[^;\s"'&]+/gi, "PHPSESSID=[redacted]")
+    .replace(/\b(token|session|auth|csrf)\s*=\s*[^;\s"'&]+/gi, "$1=[redacted]");
+}
+
+/** Extrait compact et sûr du corps HTML : sans saut de ligne, tronqué, expurgé. */
+function summarizeBody(bodyText: string): string {
+  const flat = bodyText.replace(/\s+/g, " ").trim();
+  const cut = flat.slice(0, OBSERVED_BODY_MAX_CHARS);
+  return redactSecrets(cut);
+}
 
 /**
  * Client proxy pour le site admin families.lyg.fr.
@@ -232,10 +265,22 @@ async function markUsed(meta: { ok: boolean; error?: string | null; status: numb
 
 async function markExpired(reason: string) {
   const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
-  await prisma.lygCredential.update({
-    where: { familyId: familyDbId },
-    data: { expired: true, lastError: reason, lastUsedAt: new Date() },
-  }).catch(() => {});
+  // Si ce marquage echoue en silence, le cookie reste affiche comme VALIDE
+  // alors qu'il ne fonctionne plus : le chef ne sait pas qu'il doit le
+  // renouveler, et chaque appel LYG echoue sans explication. On trace, mais
+  // on ne propage pas : l'appelant traite deja l'echec LYG d'origine.
+  await prisma.lygCredential
+    .update({
+      where: { familyId: familyDbId },
+      data: { expired: true, lastError: reason, lastUsedAt: new Date() },
+    })
+    .catch((err: unknown) => {
+      console.error("[lyg/family-admin] marquage du cookie expire echoue", {
+        familyDbId,
+        reason,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,6 +329,26 @@ async function executeAction(
   }
 
   const tookMs = Date.now() - started;
+
+  // Observation pure, placée avant tout branchement pour couvrir les trois
+  // issues (expiré / retenu OK / retenu en échec) avec un seul point de sortie
+  // dans les logs. `retained` reproduit la décision du code SANS la modifier :
+  // c'est la valeur à confronter plus tard à l'effet métier réel.
+  logInfo("lyg_family_action_observed", {
+    action: type,
+    steamId,
+    status: response.status,
+    location: response.location ? redactSecrets(response.location) : null,
+    bodyExcerpt: summarizeBody(response.bodyText),
+    bodyLength: response.bodyText.length,
+    expiredDetected: response.expired,
+    retained: response.expired
+      ? "failed_expired"
+      : response.status === 302 || response.status === 200
+        ? "ok"
+        : "failed_status",
+    tookMs,
+  });
 
   if (response.expired) {
     await markExpired("Cookie PHPSESSID expiré (redirect vers /login)");

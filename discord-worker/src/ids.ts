@@ -1,3 +1,4 @@
+import { getPublicPanelUrl } from "./lib/urls.js";
 // ✅ IMPORTANT: Read env dynamically with Proxy
 // This delays env reading until first access, allowing dotenv.config() to load first
 
@@ -80,7 +81,10 @@ export const IDS = new Proxy(
         case "STAFF_ROLE_IDS":
           return getStaffRoleIdsFromEnv();
         case "PANEL_BASE_URL":
-          return getEnv("PANEL_BASE_URL", false) || getEnv("INGEST_BASE_URL", false) || "http://localhost:3000";
+          // URL PUBLIQUE uniquement. Le repli historique sur INGEST_BASE_URL
+          // (adresse loopback) est ce qui a produit des liens Discord en
+          // http://127.0.0.1:3000 pendant des mois.
+          return getPublicPanelUrl();
         case "TICKETS_OPEN_LIMIT":
           return parseInt(getEnv("TICKETS_OPEN_LIMIT", false) || "1", 10);
         case "FAMILY_ID":

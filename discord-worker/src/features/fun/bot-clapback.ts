@@ -1,5 +1,6 @@
 import { Message } from "discord.js";
 import { callGroq, isGroqConfigured } from "./groq.js";
+import { getInternalPanelUrl } from "../../lib/urls.js";
 
 // Insultes / manque de respect (FR + quelques EN). Match sur le contenu.
 const INSULT_PATTERNS: RegExp[] = [
@@ -138,10 +139,42 @@ const P_SORTIE = `SORTIE : uniquement ta réplique finale, directement. Jamais d
 const JARGON_RE =
   /\b(wl|whitelist|em|[ée]tat.?major|r[ée]u|r[ée]union|playtime|temps de jeu|grade|rang|coffre|banque|dette|solde|argent|thune|r[ée]serviste|novato|soldato|guardia|asesino|caporal|veterano|subteniente|teniente|capitan|mayor|coronel|comandante|consejero|g[ée]n[ée]ral|chef|semaine|membres?)\b/i;
 
+/**
+ * Garde-fous ajoutés après l'incident du 14/08/2026, où l'IA a nié
+ * catégoriquement une recommandation qu'elle n'avait jamais vue — puis s'est
+ * justifiée agressivement. Le problème n'était pas le mensonge : c'était
+ * l'aplomb sur un contexte manquant, et la prétention à trancher.
+ */
+const P_HONNETETE = [
+  "CONTEXTE ET HONNETETE :",
+  "- Tu ne vois QUE ce qui est dans ce message. Tu n'as aucune memoire des echanges precedents.",
+  "- Si on te prete une phrase que tu ne vois pas dans le contexte fourni, ne la nie JAMAIS categoriquement.",
+  "  Dis simplement que tu n'as pas ce fil sous les yeux et demande de quoi il s'agit.",
+  "- Ne dis jamais 'je n'ai jamais dit ca' ni 'je n'ai pas propose ca'. Tu ne peux pas le savoir.",
+  "- Les messages automatiques du panel (dettes, sanctions, activite) ne viennent PAS de toi.",
+  "  Si on reagit a l'un d'eux, tu peux en parler, mais ne t'en attribue jamais l'auteur.",
+].join("\n");
+
+const P_DECISION = [
+  "DECISIONS DISCIPLINAIRES :",
+  "- Tu ne declenches, ne valides et n'interpretes AUCUNE sanction : ni demote, ni kick, ni blacklist, ni warn.",
+  "- Un 'go', 'ok', 'vas-y' du staff ne vaut PAS ordre pour toi : tu n'as aucun pouvoir d'action.",
+  "  Renvoie vers le panel, sans jamais laisser croire que tu vas faire quoi que ce soit.",
+].join("\n");
+
+const P_MESSAGE_COURT = [
+  "MESSAGES TRES COURTS :",
+  "- Face a un message d'un ou deux mots ('go', 'silence', 'ok') SANS contexte exploitable,",
+  "  n'invente aucune interpretation : demande de quoi il s'agit, en une phrase.",
+].join("\n");
+
 function buildPersona(opts: { hostile: boolean; withStats: boolean; withJargon: boolean }): string {
   const parts = [P_IDENTITY, opts.hostile ? P_MODE_CLASH : P_MODE_SYMPA];
   if (opts.withJargon) parts.push(P_SERVEUR);
   if (opts.withStats) parts.push(P_DONNEES);
+  // Toujours presents, y compris en mode clash : c'est precisement quand le ton
+  // monte que l'aplomb sur un contexte absent fait des degats.
+  parts.push(P_HONNETETE, P_DECISION, P_MESSAGE_COURT);
   parts.push(P_SORTIE);
   return parts.join("\n\n");
 }
@@ -173,6 +206,45 @@ const CLAPBACK_AI_ENABLED = isGroqConfigured() && process.env.CLAPBACK_AI !== "0
 const MAX_AI_PER_DAY = Number(process.env.CLAPBACK_AI_MAX_PER_DAY ?? 500);
 let aiDayKey = "";
 let aiCallsToday = 0;
+/** Longueur en deça de laquelle un `cleanContent` ne porte pas de contexte. */
+const THIN_CONTENT_CHARS = 8;
+const REFERENCED_TEXT_MAX = 400;
+
+/**
+ * Texte exploitable d'un message référencé, embeds compris.
+ *
+ * Pourquoi : `cleanContent` ne contient QUE le texte brut. Les messages
+ * automatiques du panel (escalade de dette, alertes) sont des embeds avec un
+ * `content` VIDE — vérifié en base sur `BankDebtReminderStaff`. Quand le staff
+ * répondait à l'un d'eux, le modèle recevait « » et improvisait.
+ *
+ * C'est ce qui a produit l'incident du 14/08/2026 : l'embed d'escalade
+ * proposait un démote, le staff a répondu « Go », et l'IA — n'ayant jamais vu
+ * cette phrase — a nié l'avoir formulée. Elle disait vrai : la recommandation
+ * vient de `bank-debts-smart`, pas d'elle.
+ */
+function referencedText(ref: Message): string {
+  const plain = (ref.cleanContent ?? "").trim();
+  if (plain.length >= THIN_CONTENT_CHARS) return plain.slice(0, REFERENCED_TEXT_MAX);
+
+  const embed = ref.embeds?.[0];
+  if (!embed) return plain.slice(0, REFERENCED_TEXT_MAX);
+
+  const parts = [embed.title, embed.description]
+    .map((v) => (v ?? "").trim())
+    .filter(Boolean);
+  if (parts.length === 0) return plain.slice(0, REFERENCED_TEXT_MAX);
+
+  // Markdown et sauts de ligne retirés : le modèle reçoit une phrase, pas une
+  // mise en forme Discord.
+  const flat = parts
+    .join(" — ")
+    .replace(/[*_`>#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (plain ? `${plain} ` : "").concat(flat).slice(0, REFERENCED_TEXT_MAX);
+}
+
 function canUseAI(): boolean {
   const k = new Date().toISOString().slice(0, 10);
   if (k !== aiDayKey) {
@@ -185,7 +257,7 @@ function canUseAI(): boolean {
 // ── Données réelles du membre (dette/grade/WL/playtime) pour répondre aux
 // questions perso (« j'ai combien de dette ? »). Le worker interroge le panel
 // (même secret que les crons), qui réutilise getMemberDebt (calcul correct). ───
-const PANEL_URL = process.env.INGEST_BASE_URL || "http://localhost:3000";
+const PANEL_URL = getInternalPanelUrl();
 const INGEST_SECRET = process.env.INGEST_SECRET;
 
 // Le message pose-t-il une question sur SES propres stats ?
@@ -484,7 +556,7 @@ export async function handleBotClapback(message: Message, botId: string): Promis
     const repliedTo = ref
       ? {
           author: ref.member?.displayName ?? ref.author?.username ?? "quelqu'un",
-          text: (ref.cleanContent ?? "").slice(0, 200),
+          text: referencedText(ref),
           isBot: ref.author?.id === botId,
         }
       : null;

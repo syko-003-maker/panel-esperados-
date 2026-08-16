@@ -87,10 +87,51 @@ export async function resolveFamilyId(familySlug: string = DEFAULT_FAMILY_ID): P
 }
 
 /**
+ * Cache des normalisations déjà faites (slug OU cuid → cuid).
+ * Une famille ne change pas d'identifiant en cours de vie du process.
+ */
+const normalizedFamilyIds = new Map<string, string>();
+
+/**
+ * Normalise n'importe quelle forme d'identifiant de famille vers le CUID.
+ *
+ * CONVENTION DU PROJET : `Family.id` (un cuid) est la seule valeur qui doit
+ * atteindre la base. `Family.slug` ("esperados") est une valeur d'ENTRÉE —
+ * paramètre d'URL, corps de requête, variable d'environnement — et doit être
+ * résolue immédiatement.
+ *
+ * Historiquement les deux circulaient indifféremment, ce qui a produit des
+ * tables où les deux conventions coexistent (DiscordConfig, DiscordOutbox,
+ * DiscordTemplate, AuditLog) : selon le chemin de code, on écrivait dans un
+ * jeu de lignes et on lisait dans l'autre.
+ *
+ * Accepte donc les deux formes et renvoie toujours le cuid. Idempotent : un
+ * cuid passé en entrée ressort inchangé.
+ */
+export async function toFamilyCuid(input?: string | null): Promise<string> {
+  const value = String(input ?? "").trim();
+  if (!value) return resolveFamilyId();
+
+  const cached = normalizedFamilyIds.get(value);
+  if (cached) return cached;
+
+  // Déjà un cuid existant ? On ne touche à rien.
+  const byId = await prisma.family.findUnique({
+    where: { id: value },
+    select: { id: true },
+  });
+  const resolved = byId?.id ?? (await resolveFamilyId(value));
+
+  normalizedFamilyIds.set(value, resolved);
+  return resolved;
+}
+
+/**
  * Clear the cached Family ID (useful for testing or manual refresh)
  */
 export function clearFamilyCache(): void {
   cachedFamilyId = null;
+  normalizedFamilyIds.clear();
 }
 
 /**

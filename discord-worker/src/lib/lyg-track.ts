@@ -1,9 +1,13 @@
+import { getInternalPanelUrl } from "./urls.js";
 /**
  * Helper pour reporter les appels LYG au panel (pour la page Système).
  * Fire-and-forget — n'échoue jamais.
  */
 
-const PANEL_URL = process.env.PANEL_URL ?? process.env.NEXTAUTH_URL ?? "http://127.0.0.1:3000";
+// Appel INTERNE (/api/internal/lyg-track) : il doit passer par la loopback.
+// Avant, il retombait sur NEXTAUTH_URL et sortait donc sur le domaine public
+// pour revenir sur la meme machine, via DNS + nginx + TLS.
+const PANEL_URL = getInternalPanelUrl();
 const INGEST_SECRET = process.env.INGEST_SECRET ?? "";
 
 export function trackLygCall(ok: boolean, status: number, endpoint: string): void {

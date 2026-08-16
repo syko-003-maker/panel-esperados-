@@ -1,3 +1,6 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
+import { readSyncOutcome } from "./lib/sync-outcome.js";
 // Avant : 1h. Maintenant : 10 min — refresh Member.playtime7d souvent pour
 // que stats / dettes / alertes inactivité soient toujours à jour. Coût LYG
 // négligeable (1 call / 10 min = ~1.5 calls / 15 min).
@@ -6,7 +9,7 @@ const DEFAULT_INTERVAL_MS = 10 * 60 * 1000;
 let lastPlaytimeAutoSyncAt = 0;
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -54,7 +57,7 @@ async function runPlaytimeAutoSyncJobInner(): Promise<void> {
   const endpoint = `${baseUrl}/api/cron/playtime-auto-sync`;
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         "x-ingest-secret": secret,
@@ -71,9 +74,17 @@ async function runPlaytimeAutoSyncJobInner(): Promise<void> {
       return;
     }
 
+    // L'horodatage marque un aller-retour réussi avec le panel, pas une
+    // synchronisation effective : c'est ce que surveille le détecteur de stall
+    // (`intervalMs * 2` dans index.ts). Le distinguer ici déclencherait de
+    // fausses alertes « stalled » à chaque saut légitime.
     lastPlaytimeAutoSyncAt = Date.now();
-    console.log("[PLAYTIME_AUTO_SYNC] ok", {
+
+    const outcome = readSyncOutcome(bodyText);
+    console.log(`[PLAYTIME_AUTO_SYNC] ${outcome.label}`, {
       status: response.status,
+      ...(outcome.reason ? { skippedBecause: outcome.reason } : {}),
+      ...(outcome.durationMs !== undefined ? { durationMs: outcome.durationMs } : {}),
       ranAt: new Date(lastPlaytimeAutoSyncAt).toISOString(),
     });
   } catch (error) {

@@ -15,8 +15,13 @@ import {
 import { startJob, finishJob } from "./lib/job-idempotence.js";
 import { logInfo, logWarn, logError } from "./lib/worker-obs.js";
 import { IDS } from "./ids.js";
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 
-const PANEL_URL = process.env.INGEST_BASE_URL || "http://localhost:3000";
+/** Appels internes worker -> panel : 15 s. */
+const INTERNAL_TIMEOUT_MS = 15_000;
+
+const PANEL_URL = getInternalPanelUrl();
 
 interface RecruitmentDecisionParams {
   ticketKey: string;
@@ -27,7 +32,13 @@ async function hasStaffDecisionAccess(interaction: ButtonInteraction): Promise<b
   const guild = interaction.guild;
   if (!guild) return false;
 
-  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const member = await guild.members.fetch(interaction.user.id).catch((err: unknown) => {
+    console.warn("[recruitment-decision] lecture du membre echouee", {
+      userId: interaction.user.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  });
   if (!member) return false;
 
   const allowedRoleIds = new Set(
@@ -101,8 +112,9 @@ async function callDecisionAPI(
     }
 
     const url = `${PANEL_URL}/api/discord/recruitment/decide`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
+      timeoutMs: INTERNAL_TIMEOUT_MS,
       headers: {
         "Content-Type": "application/json",
         "x-ingest-secret": ingestSecret,

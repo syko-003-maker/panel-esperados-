@@ -181,7 +181,9 @@ export async function POST(req: Request) {
 
   const meeting = await prisma.meeting.create({
     data: {
-      familyId,
+      // FK Meeting→Family : `rows: { create }` est une relation, on ne peut
+      // donc plus passer `familyId` en scalaire dans le meme create.
+      family: { connect: { id: familyId } },
       meetingDate,
       weekKey,
       title,

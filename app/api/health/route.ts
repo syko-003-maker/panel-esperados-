@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { toFamilyCuid } from "@/lib/family";
 
-const FAMILY_ID = "esperados";
+const FAMILY_SLUG = "esperados";
 const WORKER_HEALTHCHECK_URL = process.env.WORKER_HEALTHCHECK_URL ?? "http://127.0.0.1:3001/health";
 const HEARTBEAT_MAX_AGE_MS = 180_000; // 3 min
 
@@ -80,7 +81,7 @@ async function readWorkerHeartbeat(): Promise<{
     // Cast en any : le client Prisma peut ne pas exposer le model
     // si la migration n'a pas encore été appliquée — on tolère ce cas.
     const hb = await (prisma as any).workerHeartbeat?.findUnique({
-      where: { familyId: FAMILY_ID },
+      where: { familyId: await toFamilyCuid(FAMILY_SLUG) },
       select: { lastSeenAt: true, workerName: true, meta: true },
     });
     if (!hb) return { alive: false, error: "no_heartbeat_row" };

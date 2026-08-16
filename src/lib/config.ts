@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { toFamilyCuid } from "@/lib/family";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -127,8 +128,9 @@ function invalidateCache(familyId?: string, key?: string): void {
 export async function getConfig<T extends ConfigValue = ConfigValue>(
   key: string,
   defaultValue?: T,
-  familyId: string = DEFAULT_FAMILY_ID
+  familyIdOrSlug: string = DEFAULT_FAMILY_ID
 ): Promise<T> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   // Check cache first
   const cached = getFromCache(familyId, key);
   if (cached !== undefined) {
@@ -160,8 +162,9 @@ export async function getConfig<T extends ConfigValue = ConfigValue>(
 export async function setConfig(
   key: string,
   value: ConfigValue,
-  familyId: string = DEFAULT_FAMILY_ID
+  familyIdOrSlug: string = DEFAULT_FAMILY_ID
 ): Promise<void> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   await prisma.appConfig.upsert({
     where: { familyId_key: { familyId, key } },
     create: {
@@ -183,8 +186,9 @@ export async function setConfig(
  */
 export async function deleteConfig(
   key: string,
-  familyId: string = DEFAULT_FAMILY_ID
+  familyIdOrSlug: string = DEFAULT_FAMILY_ID
 ): Promise<void> {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   await prisma.appConfig.deleteMany({
     where: { familyId, key },
   });
@@ -225,7 +229,8 @@ export async function getAllConfigs(
 /**
  * Get raw configs from DB (for admin UI)
  */
-export async function getConfigsRaw(familyId: string = DEFAULT_FAMILY_ID) {
+export async function getConfigsRaw(familyIdOrSlug: string = DEFAULT_FAMILY_ID) {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.appConfig.findMany({
     where: { familyId },
     orderBy: { key: "asc" },

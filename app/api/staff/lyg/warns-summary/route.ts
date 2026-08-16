@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireChefOrEtatMajor } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { GRADE_ROLE_IDS_ORDERED, EXTRA_MEMBER_ROLE_IDS } from "@/lib/grade-colors";
+import { isLygWarnActive } from "@/lib/lyg/warn-validity";
 
 export async function GET() {
   const guard = await requireChefOrEtatMajor();
@@ -62,10 +63,16 @@ export async function GET() {
     },
   });
 
+  // Un seul « maintenant » pour tout le lot : sinon deux membres peuvent être
+  // évalués de part et d'autre de la date-limite au sein d'une même réponse.
+  const now = new Date();
+
   const data = members
     .map((m) => {
       const warns = m.lygWarns;
-      const activeWarns = warns.filter((w) => !w.expired).length;
+      // `expired` seul ne suffit pas : il n'est rafraîchi que pour les membres
+      // que le poller interroge. Voir isLygWarnActive().
+      const activeWarns = warns.filter((w) => isLygWarnActive(w, now)).length;
       const last = warns[0] ?? null;
       return {
         memberId: m.id,
@@ -82,7 +89,8 @@ export async function GET() {
           reason: w.reason,
           type: w.type,
           date: w.warnDate.toISOString(),
-          expired: w.expired,
+          // Le badge de l'UI doit dire la même chose que le compteur.
+          expired: !isLygWarnActive(w, now),
         })),
       };
     })

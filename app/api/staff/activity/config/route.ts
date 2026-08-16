@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireChef, requirePrivileged } from "@/lib/guards";
 import { getActivityConfig, updateActivityConfig } from "@/lib/activity-config";
+import { toFamilyCuid } from "@/lib/family";
 
 const DEFAULT_FAMILY_ID = "esperados";
 
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   if (guard instanceof Response) return guard;
 
   const { searchParams } = new URL(req.url);
-  const familyId = searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  const familyId = await toFamilyCuid(searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
 
   const config = await getActivityConfig(prisma, familyId);
   return NextResponse.json({ ok: true, familyId, config });
@@ -25,7 +26,7 @@ async function handleUpdate(req: Request) {
     return NextResponse.json({ ok: false, error: "INVALID_BODY" }, { status: 400 });
   }
 
-  const familyId = String(body.familyId ?? DEFAULT_FAMILY_ID).trim() || DEFAULT_FAMILY_ID;
+  const familyId = await toFamilyCuid(String(body.familyId ?? DEFAULT_FAMILY_ID).trim());
   const patch = { ...body } as Record<string, unknown>;
   delete patch.familyId;
 

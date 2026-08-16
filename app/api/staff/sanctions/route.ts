@@ -635,7 +635,13 @@ export async function POST(req: Request) {
       body: dmBody,
       url: "/dashboard",
       dedupeKey: "member_dm:sanction:" + sanction.id,
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      // Le DM est la doublure du push : sa perte laissait le membre sans aucune alerte.
+      console.warn("[member-dm] mise en file echouee", {
+        event: "sanction_created",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   return NextResponse.json({

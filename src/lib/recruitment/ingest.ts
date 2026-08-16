@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildRecruitmentNotes, extractRecruitmentEvaluation } from "@/lib/recruitment/legacy";
+import { toFamilyCuid } from "@/lib/family";
 
 export type RecruitmentDiscordPayload = {
   createdById?: string;
@@ -64,7 +65,10 @@ export async function createRecruitmentFromDiscord(payload: RecruitmentDiscordPa
     throw new Error("MISSING_CANDIDATE_RP_NAME");
   }
 
-  const familyId = process.env.FAMILY_ID ?? "esperados";
+  // Convention CUID : le slug reste une valeur d'entree, resolue avant
+  // l'ecriture. Fonction sans appelant aujourd'hui, corrigee par principe
+  // pour qu'une reactivation ne reintroduise pas de slug dans Recruitment.
+  const familyId = await toFamilyCuid(process.env.FAMILY_ID ?? "esperados");
   let createdById = normalizeString(payload.createdById);
 
   if (!createdById) {

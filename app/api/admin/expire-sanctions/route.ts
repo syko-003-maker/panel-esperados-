@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireStaffAccess } from "@/lib/rbac";
-import { DEFAULT_FAMILY_ID } from "@/lib/family";
+import { DEFAULT_FAMILY_ID, toFamilyCuid } from "@/lib/family";
 import { enqueueRemoveRole } from "@/lib/discord/discord";
 import { getAvertRoleId } from "@/lib/sanctions";
 
@@ -9,10 +9,23 @@ import { getAvertRoleId } from "@/lib/sanctions";
 // Use a secret header for security
 const CRON_SECRET = process.env.CRON_SECRET;
 
+/**
+ * Deux secrets acceptés, comme toutes les routes `/api/cron/*`.
+ *
+ * Le worker ne dispose que d'`INGEST_SECRET` (il charge son propre .env.prod,
+ * où `CRON_SECRET` est absent). N'accepter que `x-cron-secret` condamnait donc
+ * cette route à répondre 401 au worker — sans bruit, puisque personne ne
+ * l'appelait. `x-cron-secret` reste accepté pour les appels manuels existants.
+ */
 function validateCronSecret(req: Request): boolean {
-  if (!CRON_SECRET) return false; // Refuse if secret not configured — fail safe
-  const secret = req.headers.get("x-cron-secret");
-  return secret === CRON_SECRET;
+  const cronSecret = req.headers.get("x-cron-secret");
+  if (CRON_SECRET && cronSecret && cronSecret === CRON_SECRET) return true;
+
+  const ingestSecret = req.headers.get("x-ingest-secret");
+  const expectedIngest = process.env.INGEST_SECRET;
+  if (expectedIngest && ingestSecret && ingestSecret === expectedIngest) return true;
+
+  return false; // Aucun secret valide, ou aucun secret configuré — fail safe
 }
 
 /**
@@ -26,7 +39,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  // Les 276 sanctions portent le CUID de la famille ; `DEFAULT_FAMILY_ID` est un
+  // slug. Sans cette normalisation le `where` ne remontait rien : la route
+  // répondait 200 en n'expirant strictement aucune sanction.
+  const familyId = await toFamilyCuid(req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
   const now = new Date();
 
   try {
@@ -125,7 +141,9 @@ export async function GET(req: NextRequest) {
     if (guard instanceof Response) return guard;
   }
 
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  // Même normalisation que le POST : sans elle ce diagnostic renvoyait des
+  // compteurs à zéro, ce qui aurait fait croire à l'absence de sanctions.
+  const familyId = await toFamilyCuid(req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
 
   try {
     const counts = await prisma.sanction.groupBy({

@@ -6,6 +6,10 @@ import { resolveFamilyId, DEFAULT_FAMILY_ID } from "@/lib/family";
 import { enqueueAssignRole, enqueueRemoveRole } from "@/lib/discord/discord";
 import { createAuditLog } from "@/lib/audit";
 import { getDiscordAvatarUrl } from "@/lib/discord/getDiscordAvatarUrl";
+import { fetchWithTimeout } from "@/lib/http";
+
+/** Appel Discord sur chemin utilisateur : 10 s. */
+const DISCORD_TIMEOUT_MS = 10_000;
 import {
   CHEF_FAMILLE_ROLE_ID,
   SOUS_CHEF_FAMILLE_ROLE_ID,
@@ -175,10 +179,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "BOT_TOKEN_MISSING" }, { status: 500 });
     }
 
-    const res = await fetch(
-      `https://discord.com/api/v10/guilds/${GUILD_ID}/members/${discordId}`,
-      { headers: { Authorization: `Bot ${token}` }, cache: "no-store" }
-    );
+    // Timeout + capture : ce fichier n'avait AUCUN bloc try. Sans cela, un
+    // appel Discord qui expire remonterait en 500 au lieu d'un message clair.
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(
+        `https://discord.com/api/v10/guilds/${GUILD_ID}/members/${discordId}`,
+        { headers: { Authorization: `Bot ${token}` }, cache: "no-store", timeoutMs: DISCORD_TIMEOUT_MS }
+      );
+    } catch (err) {
+      console.error("[settings/access] appel Discord echoue", {
+        discordId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json(
+        { ok: false, error: "DISCORD_UNAVAILABLE" },
+        { status: 503 }
+      );
+    }
 
     const familyDbId = await resolveFamilyId(DEFAULT_FAMILY_ID);
     const now = new Date();

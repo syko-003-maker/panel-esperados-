@@ -13,6 +13,7 @@
 import type { Client as DiscordClient, TextChannel } from "discord.js";
 import { EmbedBuilder } from "discord.js";
 import { PrismaClient } from "@prisma/client";
+import { toFamilyCuid } from "../../lib/family-id.js";
 
 const HIERARCHY_CHANNEL_ID = "1312846003358924877";
 const FAMILY_SLUG = "esperados";
@@ -387,8 +388,14 @@ async function syncHierarchyMessageInner(
 
     const embed = await buildHierarchyEmbed(client, prisma);
 
+    // Convention CUID : FAMILY_SLUG est une valeur d'entree, jamais une cle
+    // de base. Sans cette resolution, ce bloc creait une SECONDE ligne
+    // DiscordConfig indexee sur le slug — et repostait donc un nouveau message
+    // de hierarchie au lieu d'editer l'existant.
+    const familyCuid = await toFamilyCuid(prisma, FAMILY_SLUG);
+
     const config = await prisma.discordConfig.findUnique({
-      where: { familyId: FAMILY_SLUG },
+      where: { familyId: familyCuid },
       select: { hierarchyMessageId: true },
     });
     let messageId = config?.hierarchyMessageId ?? null;
@@ -407,8 +414,8 @@ async function syncHierarchyMessageInner(
 
     const sent = await (channel as TextChannel).send({ embeds: [embed] });
     await prisma.discordConfig.upsert({
-      where: { familyId: FAMILY_SLUG },
-      create: { familyId: FAMILY_SLUG, hierarchyMessageId: sent.id },
+      where: { familyId: familyCuid },
+      create: { familyId: familyCuid, hierarchyMessageId: sent.id },
       update: { hierarchyMessageId: sent.id },
     });
     log("hierarchy_synced", { messageId: sent.id, action: "create" });

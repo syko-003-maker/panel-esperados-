@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/auth";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/rbac";
+import { toFamilyCuid } from "@/lib/family";
 
 export async function POST(req: NextRequest) {
   // Check authentication
@@ -32,11 +33,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { familyId = "esperados", dryRun = true } = await req.json();
+    const { familyId: familyIdOrSlug = "esperados", dryRun = true } = await req.json();
 
-    // Resolve family
+    // Resolve family — l'entree peut etre un slug OU un cuid. Avant, la
+    // recherche se faisait sur `id` avec un slug : jamais trouvee, la route
+    // repondait systematiquement 404 « Family not found ».
+    const familyDbId = await toFamilyCuid(familyIdOrSlug);
     const family = await prisma.family.findUnique({
-      where: { id: familyId },
+      where: { id: familyDbId },
       select: { id: true },
     });
 

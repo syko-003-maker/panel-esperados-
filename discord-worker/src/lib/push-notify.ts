@@ -1,3 +1,4 @@
+import { getInternalPanelUrl } from "./urls.js";
 /**
  * Notification push via le panel (route interne /api/ingest/push).
  * Le worker n'a ni la lib web-push ni les clés VAPID : on délègue au panel,
@@ -5,7 +6,7 @@
  * Fire-and-forget : un échec de push ne doit jamais casser un poller.
  */
 
-const BASE_URL = process.env.INGEST_BASE_URL ?? "";
+const BASE_URL = getInternalPanelUrl();
 const SECRET = process.env.INGEST_SECRET ?? "";
 
 type PushTarget = { audience: "staff" } | { discordIds: string[] };

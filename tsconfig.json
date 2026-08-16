@@ -36,5 +36,14 @@
     "**/*.mts"
   ],
 
-  "exclude": ["node_modules", "scripts"]
+  "exclude": [
+    "node_modules",
+    "scripts",
+    // Le worker est un projet séparé : il a son propre tsconfig (ES2022,
+    // strict, sortie dans dist/) et son propre build. Sans cette exclusion,
+    // le panel le type-vérifiait avec SA cible ES2017 — une syntaxe valide
+    // côté worker (un littéral BigInt, par exemple) cassait alors le build
+    // du panel, sans rapport avec le panel lui-même.
+    "discord-worker"
+  ]
 }

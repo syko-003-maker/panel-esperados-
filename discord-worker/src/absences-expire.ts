@@ -1,3 +1,5 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 /**
  * Cron worker : déclenche /api/staff/absences/expire-discord pour supprimer
  * les messages Discord des absences dont endAt est passé.
@@ -11,7 +13,7 @@ const DEFAULT_INTERVAL_MS = 15 * 60_000; // 15 min
 let lastAbsencesExpireAt = 0;
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -59,7 +61,7 @@ async function runAbsencesExpireJobInner(): Promise<void> {
   const endpoint = `${baseUrl}/api/staff/absences/expire-discord`;
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: { "x-cron-secret": secret },
     });

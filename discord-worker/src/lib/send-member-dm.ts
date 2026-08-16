@@ -1,4 +1,6 @@
 import { Client, EmbedBuilder } from "discord.js";
+import { getPublicPanelUrl } from "./urls.js";
+import { nonceOptions } from "./outbox-nonce.js";
 
 /**
  * Envoie un DM Discord « doublure » à un membre (filet de sécurité des push).
@@ -9,9 +11,12 @@ import { Client, EmbedBuilder } from "discord.js";
 export async function sendMemberDm(
   client: Client,
   discordId: string,
-  payload: { title: string; body: string; url?: string }
+  payload: { title: string; body: string; url?: string },
+  // Optionnel : id du job outbox. Fourni => l'envoi devient idempotent
+  // (Discord dedupe sur le nonce). Absent => comportement strictement inchange.
+  jobId?: string | null
 ): Promise<boolean> {
-  const siteBase = process.env.NEXTAUTH_URL ?? "https://losesperados.fr";
+  const siteBase = getPublicPanelUrl();
   const url = payload.url
     ? payload.url.startsWith("http")
       ? payload.url
@@ -28,7 +33,7 @@ export async function sendMemberDm(
 
   try {
     const user = await client.users.fetch(discordId);
-    await user.send({ embeds: [embed] });
+    await user.send({ embeds: [embed], ...nonceOptions(jobId) });
     return true;
   } catch {
     return false;

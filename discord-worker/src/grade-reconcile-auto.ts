@@ -1,3 +1,5 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 // Réconciliation des grades : le worker ping la route cron du panel toutes les
 // ~15 min, qui aligne le champ grade stocké de chaque membre sur son rôle Discord
 // réel (base uniquement, aucune écriture Discord). Corrige les grades restés en
@@ -6,7 +8,7 @@
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -31,7 +33,7 @@ export async function runGradeReconcileJob(): Promise<void> {
       console.warn("[GRADE_RECONCILE] skipped: missing INGEST_BASE_URL or INGEST_SECRET");
       return;
     }
-    const res = await fetch(`${baseUrl}/api/cron/grade-reconcile`, {
+    const res = await fetchWithTimeout(`${baseUrl}/api/cron/grade-reconcile`, {
       method: "POST",
       headers: { "x-ingest-secret": secret },
     });

@@ -204,7 +204,44 @@ export async function POST(req: Request) {
     // de demande de WL ne sera envoyé que si l'auto-add a échoué.
     let lygAutoAdd: "ok" | "failed" | "skipped" | undefined;
     let lygAutoAddError: string | null = null;
-    const steamIdForLyg = (updated.steamId ?? "").trim();
+
+    // Même règle que le chemin panel : la fiche Member prime sur la candidature.
+    // Ce chemin-ci ne consultait pas du tout le Member — un SteamID corrigé sur
+    // la fiche n'avait donc aucune chance d'être pris en compte.
+    const recruitmentSteamId = (updated.steamId ?? "").trim();
+    let steamIdForLyg = recruitmentSteamId;
+    let steamIdSource: "recruitment" | "member" = "recruitment";
+
+    if (decision === "APPROVE" && updated.discordId) {
+      const linkedMember = await prisma.member.findFirst({
+        where: { discordId: updated.discordId },
+        select: { steamId: true },
+      });
+      const memberSteamId = (linkedMember?.steamId ?? "").trim();
+      if (/^\d{17}$/.test(memberSteamId)) {
+        steamIdForLyg = memberSteamId;
+        steamIdSource = "member";
+        if (recruitmentSteamId && recruitmentSteamId !== memberSteamId) {
+          logWarn("recruitment_decide_steamid_divergence", {
+            requestId,
+            ticketKey,
+            discordId: updated.discordId,
+            steamIdUsed: memberSteamId,
+            steamIdSource: "member",
+            recruitmentSteamId,
+          });
+        }
+      }
+    }
+    if (decision === "APPROVE") {
+      logInfo("recruitment_decide_steamid_source", {
+        requestId,
+        ticketKey,
+        steamIdSource,
+        steamId: steamIdForLyg,
+      });
+    }
+
     if (decision === "APPROVE") {
       if (steamIdForLyg && /^\d{17}$/.test(steamIdForLyg)) {
         try {

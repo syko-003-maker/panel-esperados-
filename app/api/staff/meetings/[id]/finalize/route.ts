@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireEncadrantOrAbove, isSessionFullWriter } from "@/lib/guards";
 import { getSession } from "@/auth";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
-import { resolveFamilyId } from "@/lib/family";
+import { resolveFamilyId, toFamilyCuid } from "@/lib/family";
 import { recordPanelMetric } from "@/lib/metrics";
 import { requireMeetingsEnabled } from "@/lib/feature-guard";
 import { computeMeetingSummary } from "@/lib/meetings";
@@ -17,6 +17,7 @@ import { getSanctionExpirationDate } from "@/lib/sanctions";
 import { GRADE_LABEL_BY_ROLE_ID } from "@/lib/grade-colors";
 import { capturePreReservistRank } from "@/lib/staff/pre-reservist";
 import { getRankGradeLevel } from "@/lib/discord-rank";
+import { runMeetingActivityEvaluation } from "@/lib/activity/run-meeting-evaluation";
 
 import {
   resolveMeetingDecisionCode,
@@ -489,7 +490,8 @@ export async function POST(
   // ── Audit log ───────────────────────────────────────────────────────
   await prisma.auditLog.create({
     data: {
-      familyId: DEFAULT_FAMILY_ID,
+      // DEFAULT_FAMILY_ID est un SLUG : on le resout avant ecriture.
+      familyId: await toFamilyCuid(DEFAULT_FAMILY_ID),
       actorType: "staff",
       actorId: userId,
       actorName: session?.user?.name ?? null,
@@ -521,6 +523,48 @@ export async function POST(
     kept: results.kept,
     errors: results.errors.length,
   }).catch(() => {});
+
+  // ── Évaluation d'activité ───────────────────────────────────────────
+  // Placée ici volontairement : la réunion est FINAL, `finalizedAt` est posé,
+  // sanctions et rôles sont traités. L'évaluation lit ces données arrêtées.
+  //
+  // NON BLOQUANTE : une finalisation crée des sanctions et applique des rôles.
+  // Elle ne doit jamais échouer à cause d'un calcul d'activité. En cas
+  // d'erreur, la réunion reste simplement non évaluée — `lastEvaluatedMeetingId`
+  // n'étant écrit qu'après succès, rien n'est marqué comme terminé à tort.
+  //
+  // À ce stade : calcul et persistance de l'état métier UNIQUEMENT. Aucun job
+  // Outbox, aucun `lastAlerted`, aucun envoi Discord, aucun appel LYG.
+  //
+  // Hors périmètre assumé : une réunion déjà finalisée dont l'évaluation a
+  // échoué n'est PAS reprise automatiquement. Il n'existe pas de mécanisme de
+  // rattrapage — à concevoir séparément si le besoin apparaît.
+  try {
+    const activity = await runMeetingActivityEvaluation({
+      meetingId,
+      familyId: await toFamilyCuid(DEFAULT_FAMILY_ID),
+      actorId: userId,
+    });
+    if (activity.ok) {
+      console.log("[finalize] activite evaluee", {
+        meetingId,
+        persisted: activity.persisted,
+        evaluated: activity.evaluation.evaluated,
+        atypical: activity.evaluation.atypical,
+        medianMinutes: activity.evaluation.medianMinutes,
+        decisions: activity.evaluation.decisions.length,
+        // Décisions calculées mais VOLONTAIREMENT non émises à ce stade.
+        wouldEmit: activity.evaluation.toEmit.length,
+      });
+    } else {
+      console.warn("[finalize] activite non evaluee", { meetingId, reason: activity.reason });
+    }
+  } catch (err) {
+    console.error("[finalize] evaluation d'activite echouee (finalisation preservee)", {
+      meetingId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return NextResponse.json({
     ok: true,

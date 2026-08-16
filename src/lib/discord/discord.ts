@@ -1,11 +1,12 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { toFamilyCuid } from "@/lib/family";
 import { activityConfigToRules, type ActivityConfig } from "@/lib/activity-config";
 import { computeFlags, isTemporarilyExempt, isWl1Exempt } from "@/lib/activity-rules";
 import type { LegacyActivityState } from "@/lib/activity-legacy";
 
 type TemplateVars = Record<string, string | number | null | undefined>;
-type PrismaClientLike = PrismaClient | Prisma.TransactionClient;
+export type PrismaClientLike = PrismaClient | Prisma.TransactionClient;
 
 export type DiscordEmbedField = {
   name: string;
@@ -27,6 +28,18 @@ export type DiscordEmbedPayload = {
   timestamp?: string | Date;
 };
 
+/**
+ * Le `P2002` avalé : `dedupeKey` porte un index UNIQUE, donc un conflit
+ * signifie « un job identique existe déjà ». Ce n'est pas un échec, et le
+ * `null` renvoyé vaut succès.
+ *
+ * ⚠️ NE PAS APPELER DANS UNE TRANSACTION. En PostgreSQL, une contrainte violée
+ * abandonne toute la transaction : attraper le P2002 en TypeScript ne la
+ * ressuscite pas, et chaque commande suivante échoue en 25P02. Constaté en
+ * test le 15/08/2026. Dans une transaction, utiliser
+ * `createMany({ skipDuplicates: true })`, qui passe par `ON CONFLICT DO
+ * NOTHING` et n'échoue jamais.
+ */
 async function createOutboxJob(client: PrismaClientLike, data: Prisma.DiscordOutboxCreateInput) {
   try {
     return await client.discordOutbox.create({ data });
@@ -61,7 +74,14 @@ function isAutoInitDiscordChannelsEnabled() {
 // Fallback recruitment channel ID if not configured
 const FALLBACK_RECRUITMENT_CHANNEL_ID = "1312846001194799274";
 
-export async function getOrCreateDiscordConfig(familyId: string) {
+/**
+ * Le paramètre accepte encore un slug (nombreux appelants historiques), mais
+ * la ligne lue/écrite est TOUJOURS celle du cuid. Sans ça, l'interface staff
+ * éditait la ligne « esperados » pendant que certains chemins d'envoi lisaient
+ * la ligne cuid — deux configurations vivantes en parallèle.
+ */
+export async function getOrCreateDiscordConfig(familyIdOrSlug: string) {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   const autoInitEnabled = isAutoInitDiscordChannelsEnabled();
   const defaultRecruitmentChannelId = normalizeEnvChannelId(
     process.env.DEFAULT_RECRUITMENT_CHANNEL_ID
@@ -100,7 +120,7 @@ export async function enqueueMessage(params: {
 }) {
   return prisma.discordOutbox.create({
     data: {
-      familyId: params.familyId,
+      familyId: await toFamilyCuid(params.familyId),
       type: "SEND_MESSAGE",
       status: "PENDING",
       channelId: params.channelId,
@@ -126,7 +146,7 @@ export async function enqueueDeleteMessage(params: {
 }) {
   return prisma.discordOutbox.create({
     data: {
-      familyId: params.familyId,
+      familyId: await toFamilyCuid(params.familyId),
       type: "DELETE_MESSAGE",
       status: "PENDING",
       channelId: params.channelId,
@@ -147,7 +167,7 @@ export async function enqueueEmbedMessage(params: {
 }) {
   return prisma.discordOutbox.create({
     data: {
-      familyId: params.familyId,
+      familyId: await toFamilyCuid(params.familyId),
       type: "SEND_MESSAGE",
       status: "PENDING",
       channelId: params.channelId,
@@ -170,7 +190,7 @@ export async function enqueueAssignRole(params: {
 }) {
   return prisma.discordOutbox.create({
     data: {
-      familyId: params.familyId,
+      familyId: await toFamilyCuid(params.familyId),
       type: "ASSIGN_ROLE",
       status: "PENDING",
       guildId: params.guildId,
@@ -194,7 +214,7 @@ export async function enqueueRemoveRole(params: {
 }) {
   return prisma.discordOutbox.create({
     data: {
-      familyId: params.familyId,
+      familyId: await toFamilyCuid(params.familyId),
       type: "REMOVE_ROLE",
       status: "PENDING",
       guildId: params.guildId,
@@ -207,7 +227,9 @@ export async function enqueueRemoveRole(params: {
   });
 }
 
-export async function getTemplate(familyId: string, key: string) {
+/** Accepte slug ou cuid ; la ligne lue est toujours celle du cuid. */
+export async function getTemplate(familyIdOrSlug: string, key: string) {
+  const familyId = await toFamilyCuid(familyIdOrSlug);
   return prisma.discordTemplate.findUnique({
     where: { familyId_key: { familyId, key } },
   });
@@ -230,7 +252,7 @@ export async function enqueueMessageFromTemplate(params: {
   if (!content.trim()) return null;
 
   return enqueueMessage({
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     channelId: params.channelId,
     content,
     entity: params.entity ?? null,
@@ -262,7 +284,7 @@ export async function enqueueJustificationEvent(params: {
   if (params.type === "sanction") meta.sanctionId = params.entityId;
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
@@ -290,7 +312,7 @@ export async function enqueueMemberAbsenceCreated(params: {
   if (params.memberId) meta.memberId = params.memberId;
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
@@ -336,40 +358,12 @@ export async function enqueueBankDebtPingSingle(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
     entity: "member",
     entityId: params.memberId,
-    meta,
-  });
-}
-
-export async function enqueueBankDebtPingBatch(params: {
-  familyId: string;
-  threshold: number;
-  createdByUserId: string;
-  client?: PrismaClientLike;
-  now?: Date;
-}) {
-  const jobType = "BANK_DEBT_PING_BATCH";
-  const now = params.now ?? new Date();
-  const dedupeKey = `${jobType}:${params.threshold}:${toHourKey(now)}`;
-  const client = params.client ?? prisma;
-
-  const meta: Record<string, string | number> = {
-    threshold: params.threshold,
-    createdByUserId: params.createdByUserId,
-  };
-
-  return createOutboxJob(client, {
-    familyId: params.familyId,
-    type: jobType,
-    status: "PENDING",
-    dedupeKey,
-    entity: "bank_debt_batch",
-    entityId: null,
     meta,
   });
 }
@@ -424,7 +418,7 @@ export async function enqueueRecruitmentDecision(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
@@ -472,7 +466,7 @@ export async function enqueueSanctionNotify(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
@@ -540,7 +534,7 @@ export async function enqueueComplaintDecision(params: {
   }
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
@@ -567,7 +561,7 @@ export async function enqueueMemberDm(params: {
 }) {
   const client = params.client ?? prisma;
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: "MEMBER_DM",
     status: "PENDING",
     dedupeKey: params.dedupeKey,
@@ -616,7 +610,7 @@ export async function enqueueSanctionApply(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: jobType,
     status: "PENDING",
     dedupeKey,
@@ -655,7 +649,7 @@ export async function enqueueActivityAlert(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: params.type,
     status: "PENDING",
     dedupeKey,
@@ -745,7 +739,7 @@ function buildDigestRows(params: {
     (acc, item) => {
       acc.total += 1;
       if (item.isExempt) acc.exempt += 1;
-      if (item.flags.includes("INACTIVE_14D")) acc.inactive14d += 1;
+      if (item.flags.includes("INACTIVE")) acc.inactive14d += 1;
       if (item.flags.includes("LOW_PLAYTIME")) acc.lowPlaytime += 1;
       if (item.suggestedAction === "RECOMMEND_KICK") acc.recommendKick += 1;
       return acc;
@@ -827,7 +821,7 @@ export async function enqueueActivityDigest(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: "ACTIVITY_DIGEST",
     status: "PENDING",
     dedupeKey,
@@ -857,55 +851,11 @@ export async function enqueueActivityActionNotify(params: {
   };
 
   return createOutboxJob(client, {
-    familyId: params.familyId,
+    familyId: await toFamilyCuid(params.familyId),
     type: "ACTIVITY_ACTION_NOTIFY",
     status: "PENDING",
     entity: "activity",
     entityId: params.discordId,
-    meta,
-  });
-}
-
-export async function enqueueMeetingNotifyUpsert(params: {
-  familyId: string;
-  meetingId: string;
-  channelId?: string | null;
-  client?: PrismaClientLike;
-}) {
-  const client = params.client ?? prisma;
-  const meta: Record<string, string | null> = {
-    meetingId: params.meetingId,
-    channelId: params.channelId ?? null,
-  };
-
-  return createOutboxJob(client, {
-    familyId: params.familyId,
-    type: "MEETING_NOTIFY_UPSERT",
-    status: "PENDING",
-    entity: "meeting",
-    entityId: params.meetingId,
-    meta,
-  });
-}
-
-export async function enqueueMeetingNotifyRecap(params: {
-  familyId: string;
-  meetingId: string;
-  channelId?: string | null;
-  client?: PrismaClientLike;
-}) {
-  const client = params.client ?? prisma;
-  const meta: Record<string, string | null> = {
-    meetingId: params.meetingId,
-    channelId: params.channelId ?? null,
-  };
-
-  return createOutboxJob(client, {
-    familyId: params.familyId,
-    type: "MEETING_NOTIFY_RECAP",
-    status: "PENDING",
-    entity: "meeting",
-    entityId: params.meetingId,
     meta,
   });
 }

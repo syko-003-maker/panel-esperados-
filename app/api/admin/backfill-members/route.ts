@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/db";
 import { DEFAULT_FAMILY_ID } from "@/lib/family";
 import { getGradeLevel } from "@/lib/import-validation";
+import { toFamilyCuid } from "@/lib/family";
 
 const DEFAULT_GRADE = "WL4";
 
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
 
   const session = guard.session as any;
   const userId = session?.userId ?? session?.user?.id ?? null;
-  const familyId = req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID;
+  const familyId = await toFamilyCuid(req.nextUrl.searchParams.get("familyId") ?? DEFAULT_FAMILY_ID);
 
   const results = {
     scanned: {

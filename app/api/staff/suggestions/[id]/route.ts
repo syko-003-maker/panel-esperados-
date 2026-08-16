@@ -34,8 +34,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: "RIEN_A_METTRE_A_JOUR" }, { status: 400 });
   }
 
-  const updated = await prisma.suggestion.update({ where: { id }, data, select: { id: true, status: true, staffNote: true } }).catch(() => null);
-  if (!updated) return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  // Avant : toute erreur DB devenait un 404 "NOT_FOUND" trompeur. On distingue
+  // desormais "la suggestion n'existe pas" d'une panne d'ecriture.
+  let updated;
+  try {
+    updated = await prisma.suggestion.update({ where: { id }, data, select: { id: true, status: true, staffNote: true } });
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    console.error("[staff/suggestions] mise a jour echouee", { id, code });
+    if (code === "P2025") {
+      return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: false, error: "UPDATE_FAILED" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true, ...updated });
 }
 
@@ -44,6 +55,15 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (guard instanceof Response) return guard;
 
   const { id } = await params;
-  await prisma.suggestion.delete({ where: { id } }).catch(() => {});
+  try {
+    await prisma.suggestion.delete({ where: { id } });
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    console.error("[staff/suggestions] suppression echouee", { id, code });
+    if (code === "P2025") {
+      return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: false, error: "DELETE_FAILED" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

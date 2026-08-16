@@ -15,8 +15,13 @@
 
 import type { Client as DiscordClient, Collection, Message } from "discord.js";
 import { logInfo, logWarn, logError } from "../../lib/worker-obs.js";
+import { getInternalPanelUrl } from "../../lib/urls.js";
+import { fetchWithTimeout } from "../../lib/http.js";
 
-const PANEL_URL = process.env.INGEST_BASE_URL || "http://localhost:3000";
+/** Appels internes worker -> panel : 15 s. */
+const INTERNAL_TIMEOUT_MS = 15_000;
+
+const PANEL_URL = getInternalPanelUrl();
 const INGEST_SECRET = process.env.INGEST_SECRET;
 
 /** Les tickets utiles tiennent largement dedans ; au-delà on ne gagne rien. */
@@ -115,8 +120,9 @@ export async function archiveRecruitmentMessages(params: {
       return { ok: false, messageCount: messages.length, messages };
     }
 
-    const res = await fetch(`${PANEL_URL}/api/ingest/recruitment/messages-archive`, {
+    const res = await fetchWithTimeout(`${PANEL_URL}/api/ingest/recruitment/messages-archive`, {
       method: "POST",
+      timeoutMs: INTERNAL_TIMEOUT_MS,
       headers: {
         "Content-Type": "application/json",
         "x-ingest-secret": INGEST_SECRET,
@@ -190,8 +196,9 @@ export async function archiveSingleMessage(msg: Message): Promise<void> {
   try {
     // La route retrouve le recrutement par sa clé de ticket ; on la déduit du
     // salon via le panel, qui garde le lien discordThreadId → ticketKey.
-    const res = await fetch(`${PANEL_URL}/api/ingest/recruitment/messages-archive`, {
+    const res = await fetchWithTimeout(`${PANEL_URL}/api/ingest/recruitment/messages-archive`, {
       method: "POST",
+      timeoutMs: INTERNAL_TIMEOUT_MS,
       headers: { "Content-Type": "application/json", "x-ingest-secret": INGEST_SECRET },
       body: JSON.stringify({ channelId: channel.id, messages: [payload] }),
     });

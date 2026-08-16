@@ -6,6 +6,7 @@ import { loadFamilyActivityState } from "@/lib/activity-legacy";
 import { normalizeActivityState } from "@/lib/activity-backfill";
 import { enqueueActivityDigest } from "@/lib/discord/discord";
 import { isActiveMembersScopeMember } from "@/lib/staff/member-scope";
+import { toFamilyCuid } from "@/lib/family";
 
 const DEFAULT_FAMILY_ID = "esperados";
 
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   if (guard instanceof Response) return guard;
 
   const body = await req.json().catch(() => ({}));
-  const familyId = String(body?.familyId ?? DEFAULT_FAMILY_ID).trim() || DEFAULT_FAMILY_ID;
+  const familyId = await toFamilyCuid(String(body?.familyId ?? DEFAULT_FAMILY_ID).trim());
 
   const config = await getActivityConfig(prisma, familyId);
   if (!config.digestEnabled) {

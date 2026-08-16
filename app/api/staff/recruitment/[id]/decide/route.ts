@@ -108,17 +108,52 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   // SteamID is only required for ACCEPT (whitelist validation)
-  // Fallback: si Recruitment.steamId est vide, tenter de le récupérer depuis le Member lié
-  let steamId = (recruitment.steamId ?? "").trim();
-  if (decisionRaw === "ACCEPT" && !steamId && recruitment.discordId) {
+  //
+  // La fiche Member prime sur la candidature. Le Recruitment est la déclaration
+  // du candidat à un instant T : si elle contenait un mauvais SteamID corrigé
+  // depuis sur la fiche, c'est la fiche qui dit vrai. L'ancienne priorité
+  // (Recruitment d'abord, Member seulement s'il était vide) a whitelisté un
+  // compte Steam erroné le 11/08/2026 — le SteamID avait été corrigé sur la
+  // fiche 36 min plus tard, sans que la candidature en sache rien.
+  //
+  // Le Member existe forcément ici : la transaction d'acceptation ne fait que
+  // le réactiver (`isActive: true`), elle ne le crée pas.
+  const recruitmentSteamId = (recruitment.steamId ?? "").trim();
+  let steamId = recruitmentSteamId;
+  let steamIdSource: "recruitment" | "member" = "recruitment";
+
+  if (decisionRaw === "ACCEPT" && recruitment.discordId) {
     const linkedMember = await prisma.member.findFirst({
       where: { discordId: recruitment.discordId },
       select: { steamId: true },
     });
-    if (linkedMember?.steamId?.trim()) {
-      steamId = linkedMember.steamId.trim();
-      logInfo("recruitment_decide_steamid_fallback", { requestId, recruitmentId: id, discordId: recruitment.discordId });
+    const memberSteamId = (linkedMember?.steamId ?? "").trim();
+    // Seul un SteamID réellement exploitable détrône la candidature : sinon on
+    // remplacerait une valeur valide par une valeur inutilisable.
+    if (/^\d{17}$/.test(memberSteamId)) {
+      steamId = memberSteamId;
+      steamIdSource = "member";
+      if (recruitmentSteamId && recruitmentSteamId !== memberSteamId) {
+        // Le signal qui manquait : les deux enregistrements se contredisent.
+        // Les deux valeurs sont conservées telles quelles — aucune réécriture.
+        logWarn("recruitment_decide_steamid_divergence", {
+          requestId,
+          recruitmentId: id,
+          discordId: recruitment.discordId,
+          steamIdUsed: memberSteamId,
+          steamIdSource: "member",
+          recruitmentSteamId,
+        });
+      }
     }
+  }
+  if (decisionRaw === "ACCEPT") {
+    logInfo("recruitment_decide_steamid_source", {
+      requestId,
+      recruitmentId: id,
+      steamIdSource,
+      steamId,
+    });
   }
   if (decisionRaw === "ACCEPT" && !steamId) {
     logWarn("recruitment_decide_missing_steamid", { requestId, recruitmentId: id });
@@ -392,7 +427,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       body: "Bienvenue dans la famille Los Esperados ! Ta candidature a été validée.",
       url: "/dashboard",
       dedupeKey: "member_dm:recruit:" + updated.id,
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      // Le DM est la doublure du push : sa perte laissait le membre sans aucune alerte.
+      console.warn("[member-dm] mise en file echouee", {
+        event: "recruitment_decision",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   const statusLabel = decisionRaw === "ACCEPT" ? "CLOSED_ACCEPTED" : "CLOSED_REJECTED";

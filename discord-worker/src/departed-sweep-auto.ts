@@ -1,3 +1,5 @@
+import { getInternalPanelUrl } from "./lib/urls.js";
+import { fetchWithTimeout } from "./lib/http.js";
 // Détection automatique des départs : le worker ping la route cron du panel
 // toutes les ~10 min, qui désactive les membres partis (plus vus au roster LYG
 // depuis > grace, relatif au dernier sync). Cheap : un simple UPDATE ciblé.
@@ -5,7 +7,7 @@
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 min
 
 function getBaseUrl(): string {
-  return String(process.env.INGEST_BASE_URL ?? "").replace(/\/+$/, "");
+  return getInternalPanelUrl();
 }
 
 function getSecret(): string {
@@ -30,7 +32,7 @@ export async function runDepartedSweepJob(): Promise<void> {
       console.warn("[DEPARTED_SWEEP] skipped: missing INGEST_BASE_URL or INGEST_SECRET");
       return;
     }
-    const res = await fetch(`${baseUrl}/api/cron/deactivate-departed`, {
+    const res = await fetchWithTimeout(`${baseUrl}/api/cron/deactivate-departed`, {
       method: "POST",
       headers: { "x-ingest-secret": secret },
     });

@@ -22,7 +22,6 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const TICKET_PARENT_CHANNEL = process.env.DISCORD_TICKETS_CATEGORY_ID || null;
-const COMPLAINT_FAMILY_ID = "esperados"; // les Complaint existantes utilisent ce slug
 const COOLDOWN_MS = 5 * 60_000;
 
 function makeTicketKey(): string {
@@ -129,7 +128,7 @@ export async function POST(req: Request) {
       title,
       description,
       evidence: evidence || null,
-      familyId: COMPLAINT_FAMILY_ID,
+      familyId: familyDbId,
       complainantId: scope.memberId,
       targetId: target.id,
       targetName: target.rpName,
@@ -145,7 +144,7 @@ export async function POST(req: Request) {
   await prisma.discordOutbox
     .create({
       data: {
-        familyId: COMPLAINT_FAMILY_ID,
+        familyId: familyDbId,
         type: "SANCTION_NOTIFY",
         status: "PENDING",
         attempt: 0,
